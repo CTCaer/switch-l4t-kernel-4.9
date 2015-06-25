@@ -378,11 +378,11 @@ static int cx231xx_dvb_bus_ctrl(struct dvb_frontend *fe, int acquire)
 	struct cx231xx_dvb *dvb = dev->dvb;
 
 	if (acquire) {
-		if (-1 != dvb->power_on)
+		if (dvb != NULL && -1 != dvb->power_on)
 			++dvb->power_on;
 		return cx231xx_set_mode(dev, CX231XX_DIGITAL_MODE);
 	} else {
-		if (-1 != dvb->power_on) {
+		if (dvb != NULL && -1 != dvb->power_on) {
 			--dvb->power_on;
 			if (dvb->power_on)
 				return 0;
