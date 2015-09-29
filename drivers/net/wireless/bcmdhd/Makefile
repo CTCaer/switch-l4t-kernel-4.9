@@ -265,6 +265,14 @@ ifneq ($(CONFIG_BCMDHD_CUSTOM_NET_PERF_TEGRA),)
   DHDOFILES += dhd_custom_net_perf_tegra.o
 endif
 
+ifneq ($(CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA),)
+  DHDOFILES += dhd_custom_net_bw_est_tegra.o
+endif
+
+ifneq ($(CONFIG_BCMDHD_CUSTOM_NET_DIAG_TEGRA),)
+  DHDOFILES += dhd_custom_net_diag_tegra.o
+endif
+
 ifeq ($(CONFIG_BCMDHD_QMONITOR),y)
   DHDOFILES += dhd_qmon.o
 endif

@@ -114,4 +114,11 @@ void tegra_net_perf_rx(struct sk_buff *skb);
 
 void tegra_net_perf_tx(struct sk_buff *skb);
 
+/* export low-level boost functions for other components to use */
+
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+void wifi_sclk_enable(void);
+void wifi_sclk_disable(void);
+#endif
+
 #endif  /* _dhd_custom_net_perf_tegra_h_ */

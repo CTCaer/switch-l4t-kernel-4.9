@@ -91,6 +91,10 @@
 #include "dhd_custom_sysfs_tegra_scan.h"
 #endif
 
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+#include "dhd_custom_net_bw_est_tegra.h"
+#endif
+
 #define IW_WSEC_ENABLED(wsec)   ((wsec) & (WEP_ENABLED | TKIP_ENABLED | AES_ENABLED))
 
 static struct device *cfg80211_parent_dev = NULL;
@@ -4492,6 +4496,10 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 		MAC2STRDBG((u8*)(&ext_join_params->assoc.bssid)), cfg->channel,
 		ext_join_params->ssid.SSID, ext_join_params->ssid.SSID_len));
 
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+	tegra_net_bw_est_set_src_macaddr(dhd->mac.octet);
+	tegra_net_bw_est_set_dst_macaddr(ext_join_params->assoc.bssid.octet);
+#endif
 	kfree(ext_join_params);
 	if (err) {
 		wl_clr_drv_status(cfg, CONNECTING, dev);

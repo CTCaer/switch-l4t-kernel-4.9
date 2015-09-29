@@ -104,3 +104,17 @@ config BCMDHD_QMONITOR
 	  to the Video Encoder if its bitrate can be increased or
 	  must be decreased. Currently, this works only with P2P interfaces
 	  and with PROP_TXSTATUS.
+
+config BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+	bool "Custom network bandwidth estimator for Tegra platform"
+	depends on BCMDHD
+	default y
+	---help---
+	  Enable custom network bandwidth estimator for Tegra platform.
+
+config BCMDHD_CUSTOM_NET_DIAG_TEGRA
+	bool "Custom network diagnostics for Tegra platform"
+	depends on BCMDHD
+	default y
+	---help---
+	  Enable custom network diagnostics for Tegra platform.

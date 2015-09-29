@@ -22,7 +22,11 @@ static DEFINE_SEMAPHORE(wifi_sclk_lock);
 static struct clk *wifi_sclk;
 static int wifi_sclk_count;
 
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+void wifi_sclk_enable(void)
+#else
 static void wifi_sclk_enable(void)
+#endif
 {
 	if (!wifi_sclk)
 		return;
@@ -35,7 +39,11 @@ static void wifi_sclk_enable(void)
 	up(&wifi_sclk_lock);
 }
 
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+void wifi_sclk_disable(void)
+#else
 static void wifi_sclk_disable(void)
+#endif
 {
 	if (!wifi_sclk)
 		return;
