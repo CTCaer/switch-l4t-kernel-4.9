@@ -114,6 +114,8 @@
 #define CMD_RXRATESTATS		"RXRATESTATS"
 #define CMD_MAXLINKSPEED	"MAXLINKSPEED"
 #define CMD_AMPDU_SEND_DELBA	"AMPDU_SEND_DELBA"
+#define CMD_SETBTCPARAMS	"SETBTCPARAMS"
+#define CMD_GETBTCPARAMS	"GETBTCPARAMS"
 
 /* Commands for iovar settings */
 #define CMD_SETIOVAR           "SETIOVAR"
@@ -258,6 +260,8 @@ int wl_cfg80211_get_p2p_noa(struct net_device *net, char* buf, int len)
 int wl_cfg80211_set_p2p_ps(struct net_device *net, char* buf, int len)
 { return 0; }
 #endif /* WK_CFG80211 */
+int wl_btcoex_set_btcparams(struct net_device *dev, char *command, int total_len);
+int wl_btcoex_get_btcparams(struct net_device *dev, char *command, int total_len);
 
 extern int dhd_set_slpauto_mode(struct net_device *dev, s32 val);
 
@@ -2658,7 +2662,11 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 buf_size)
 		bytes_written = wl_android_set_wfds_hash(net, command, priv_cmd.total_len, 0);
 	}
 #endif /* WLWFDS */
-	else {
+	else if (strnicmp(command, CMD_SETBTCPARAMS, strlen(CMD_SETBTCPARAMS)) == 0) {
+		bytes_written = wl_btcoex_set_btcparams(net, command, priv_cmd.total_len);
+	} else if (strnicmp(command, CMD_GETBTCPARAMS, strlen(CMD_GETBTCPARAMS)) == 0) {
+		bytes_written = wl_btcoex_get_btcparams(net, command, priv_cmd.total_len);
+	} else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
 		bytes_written = scnprintf(command, sizeof("FAIL"), "FAIL");
 	}

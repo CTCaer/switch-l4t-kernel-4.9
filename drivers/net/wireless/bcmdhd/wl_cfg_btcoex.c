@@ -547,3 +547,44 @@ int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, dhd_pub_t *dhd, char *co
 
 	return (strlen("OK"));
 }
+
+int wl_btcoex_set_btcparams(struct net_device *dev, char *command, int total_len)
+{
+	int bytes_written = 0, ret = -1;
+	uint32 param = -1, value = -1;
+
+	if (sscanf(command, "%*s %d %d", &param, &value) != 2) {
+		WL_ERR(("%s: command error", __func__));
+		return BCME_BADARG;
+	}
+	WL_TRACE(("%s:btcparams param %d, value %d\n", __func__, param, value));
+	memset(command, 0, total_len);
+	ret = dev_wlc_intvar_set_reg(dev, "btc_params", (char *)&param, (char *)&value);
+	if (ret != BCME_OK) {
+		WL_ERR(("%s: failed %d\n", __func__, ret));
+		return ret;
+	}
+	bytes_written = snprintf(command, total_len, "OK");
+	return bytes_written;
+}
+
+int wl_btcoex_get_btcparams(struct net_device *dev, char *command, int total_len)
+{
+	int bytes_written = 0, ret = -1, value = 0 ;
+	uint param = 0;
+
+	if (sscanf(command, "%*s %d", &param) != 1) {
+	WL_ERR(("%s: command error", __func__));
+		return BCME_BADARG;
+	}
+	WL_TRACE(("%s: btcparams value %d\n", __func__, param));
+	ret = dev_wlc_intvar_get_reg(dev, "btc_params", param, &value);
+	if (ret != BCME_OK) {
+		WL_ERR(("%s: failed %d\n", __func__, ret));
+		return ret;
+	}
+	memset(command, 0, total_len);
+	bytes_written = snprintf(command, total_len, "%d", value);
+	return bytes_written;
+}
+
