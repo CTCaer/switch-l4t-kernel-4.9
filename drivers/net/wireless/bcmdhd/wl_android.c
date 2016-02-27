@@ -1295,8 +1295,8 @@ int wl_android_set_roam_mode(struct net_device *dev, char *command, int total_le
 		return -1;
 	}
 	else
-		DHD_ERROR(("%s: succeeded to set roaming Mode %d, error = %d\n",
-		__FUNCTION__, mode, error));
+		DHD_NV_INFO(("succeeded to set roaming Mode %d, error = %d\n",
+					 mode, error));
 	return 0;
 }
 

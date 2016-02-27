@@ -2894,7 +2894,7 @@ dhd_wlfc_transfer_packets(void *data)
 		}
 
 		if (ctx->FIFO_credit[ac] < 3) {
-			DHD_EVENT(("Avoid pkt processing if credit is low (<3)\n"));
+			DHD_INFO(("Avoid pkt processing if credit is low (<3)\n"));
 			continue;
 		}
 

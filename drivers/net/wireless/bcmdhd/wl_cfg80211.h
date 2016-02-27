@@ -83,7 +83,7 @@ struct wl_ibss;
 #define	WL_ERR(args)									\
 do {										\
 	if (wl_dbg_level & WL_DBG_ERR) {				\
-			printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
+			printk(KERN_INFO " %s : ", __func__);	\
 			printk args;						\
 		}								\
 } while (0)
@@ -91,7 +91,7 @@ do {										\
 #define	WL_ERR(args)									\
 do {										\
 	if ((wl_dbg_level & WL_DBG_ERR) && net_ratelimit()) {				\
-			printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
+			printk(KERN_INFO " %s : ", __func__);	\
 			printk args;						\
 		}								\
 } while (0)
@@ -104,7 +104,7 @@ do {										\
 #define	WL_INFORM(args)									\
 do {										\
 	if (wl_dbg_level & WL_DBG_INFO) {				\
-			printk(KERN_INFO "CFG80211-INFO) %s : ", __func__);	\
+			printk(KERN_INFO " %s : ", __func__);	\
 			printk args;						\
 		}								\
 } while (0)
@@ -116,7 +116,7 @@ do {										\
 #define	WL_SCAN(args)								\
 do {									\
 	if (wl_dbg_level & WL_DBG_SCAN) {			\
-		printk(KERN_INFO "CFG80211-SCAN) %s :", __func__);	\
+		printk(KERN_INFO " %s :", __func__);	\
 		printk args;							\
 	}									\
 } while (0)
@@ -126,7 +126,7 @@ do {									\
 #define	WL_TRACE(args)								\
 do {									\
 	if (wl_dbg_level & WL_DBG_TRACE) {			\
-		printk(KERN_INFO "CFG80211-TRACE) %s :", __func__);	\
+		printk(KERN_INFO " %s :", __func__);	\
 		printk args;							\
 	}									\
 } while (0)
@@ -138,7 +138,7 @@ do {									\
 #define	WL_DBG(args)								\
 do {									\
 	if (wl_dbg_level & WL_DBG_DBG) {			\
-		printk(KERN_DEBUG "CFG80211-DEBUG) %s :", __func__);	\
+		printk(KERN_DEBUG " %s :", __func__);	\
 		printk args;							\
 	}									\
 } while (0)
