@@ -699,6 +699,8 @@ extern void dhd_dbg_remove(void);
 
 #endif /* BCMSDIO */
 
+#define OZ_ETHERTYPE 0x892e
+extern atomic_t tegra_downgrade_ac;
 
 #ifdef SDTEST
 /* Echo packet generator (pkts/s) */
@@ -2545,6 +2547,18 @@ dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 		pktsetprio(pktbuf, FALSE);
 #endif /* QOS_MAP_SET */
 
+	/* Downgrade voice to video priority */
+	if (atomic_read(&tegra_downgrade_ac) &&
+		((struct sk_buff *) (pktbuf))->protocol != htons(OZ_ETHERTYPE)) {
+		switch (PKTPRIO(pktbuf)) {
+		case PRIO_8021D_VO:
+		case PRIO_8021D_NC:
+			PKTSETPRIO(pktbuf, PRIO_8021D_VI); /* VO -> VI */
+			break;
+		default:
+			break;
+		}
+	}
 
 #if defined(PCIE_FULL_DONGLE) && !defined(PCIE_TX_DEFERRAL)
 	/*

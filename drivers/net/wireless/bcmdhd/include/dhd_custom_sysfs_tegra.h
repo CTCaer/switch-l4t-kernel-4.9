@@ -273,4 +273,13 @@ tegra_sysfs_control_pkt(int number);
 void
 tegra_sysfs_dpc_pkt(void);
 
+ssize_t
+tegra_sysfs_hostapd_downgradevotovi_show(struct device *dev,
+	struct device_attribute *attr,
+	char *buf);
+
+ssize_t
+tegra_sysfs_hostapd_downgradevotovi_store(struct device *dev,
+	struct device_attribute *attr,
+	const char *buf, size_t count);
 #endif  /* _dhd_custom_sysfs_tegra_h_ */
