@@ -2680,3 +2680,40 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 #endif /* defined(KEEP_ALIVE) */
 /* Android ComboSCAN support */
 
+/* Parse EAPOL 4 way handshake messages */
+void dhd_dump_eapol_4way_message(char *dump_data, bool direction)
+{
+	int pair, ack, mic, kerr, req, sec, install;
+	unsigned short us_tmp;
+	unsigned char type;
+
+	/* Extract EAPOL Key type from 802.1x authentication header
+	 * EAPOL WPA2 key type - 2, EAPOL WPA key type - 254
+	 */
+	type = dump_data[18];
+	if (type == 2 || type == 254) {
+		us_tmp = (dump_data[19] << 8) | dump_data[20];
+		pair = 0 != (us_tmp & 0x08);
+		ack = 0 != (us_tmp & 0x80);
+		mic = 0 != (us_tmp & 0x100);
+		kerr = 0 != (us_tmp & 0x400);
+		req = 0 != (us_tmp & 0x800);
+		sec = 0 != (us_tmp & 0x200);
+		install = 0 != (us_tmp & 0x40);
+
+		if (!sec && !mic && ack && !install && pair && !kerr && !req)
+			DHD_NV_INFO(("ETHER_TYPE_802_1X [%s] : M1 of 4way\n",
+				    direction ? "TX" : "RX"));
+		else if (pair && !install && !ack && mic &&
+				!sec && !kerr && !req)
+			DHD_NV_INFO(("ETHER_TYPE_802_1X [%s] : M2 of 4way\n",
+				    direction ? "TX" : "RX"));
+		else if (pair && ack && mic && sec && !kerr && !req)
+			DHD_NV_INFO(("ETHER_TYPE_802_1X [%s] : M3 of 4way\n",
+				    direction ? "TX" : "RX"));
+		else if (pair && !install && !ack && mic &&
+				sec && !req && !kerr)
+			DHD_NV_INFO(("ETHER_TYPE_802_1X [%s] : M4 of 4way\n",
+				    direction ? "TX" : "RX"));
+	}
+}

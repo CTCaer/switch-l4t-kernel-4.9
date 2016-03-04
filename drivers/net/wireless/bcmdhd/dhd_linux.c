@@ -168,6 +168,7 @@ extern bool ap_cfg_running;
 extern bool ap_fw_loaded;
 #endif
 
+extern void dhd_dump_eapol_4way_message(char *dump_data, bool direction);
 
 #ifdef ENABLE_ADAPTIVE_SCHED
 #define DEFAULT_CPUFREQ_THRESH		1000000	/* threshold frequency : 1000000 = 1GHz */
@@ -2445,10 +2446,9 @@ dhd_tx_dump(osl_t *osh, void *pkt)
 	dump_data = PKTDATA(osh, pkt);
 	protocol = (dump_data[12] << 8) | dump_data[13];
 
-	if (protocol == ETHER_TYPE_802_1X) {
-		DHD_ERROR(("ETHER_TYPE_802_1X [TX]: ver %d, type %d, replay %d\n",
-			dump_data[14], dump_data[15], dump_data[30]));
-	}
+	if (protocol == ETHER_TYPE_802_1X)
+		/* flag true indicates Tx path */
+		dhd_dump_eapol_4way_message(dump_data, true);
 }
 #endif /* DHD_8021X_DUMP */
 
@@ -3065,12 +3065,9 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 		protocol = (dump_data[12] << 8) | dump_data[13];
 #endif /* DHD_RX_DUMP || DHD_8021X_DUMP || DHD_DHCP_DUMP */
 #ifdef DHD_8021X_DUMP
-		if (protocol == ETHER_TYPE_802_1X) {
-			DHD_ERROR(("ETHER_TYPE_802_1X [RX]: "
-				"ver %d, type %d, replay %d\n",
-				dump_data[14], dump_data[15],
-				dump_data[30]));
-		}
+		if (protocol == ETHER_TYPE_802_1X)
+			/* flag false indicates Rx path */
+			dhd_dump_eapol_4way_message(dump_data, false);
 #endif /* DHD_8021X_DUMP */
 #ifdef DHD_DHCP_DUMP
 		if (protocol != ETHER_TYPE_BRCM && protocol == ETHER_TYPE_IP) {
