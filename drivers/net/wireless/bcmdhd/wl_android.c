@@ -89,6 +89,7 @@
 #define CMD_P2P_DEV_ADDR	"P2P_DEV_ADDR"
 #define CMD_SETFWPATH		"SETFWPATH"
 #define CMD_SETBAND		"SETBAND"
+#define CMD_UPDATE_CHANNEL_LIST "UPDATE_CHANNEL_LIST"
 #define CMD_GETBAND		"GETBAND"
 #define CMD_COUNTRY		"COUNTRY"
 #define CMD_NV_COUNTRY         "NV_COUNTRY"
@@ -2489,6 +2490,12 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 buf_size)
 	else if (brcm_strnicmp(command, CMD_SETBAND, strlen(CMD_SETBAND)) == 0) {
 		uint band = *(command + strlen(CMD_SETBAND) + 1) - '0';
 		bytes_written = wldev_set_band(net, band);
+	} else if (strnicmp(command, CMD_UPDATE_CHANNEL_LIST,
+		strlen(CMD_UPDATE_CHANNEL_LIST)) == 0) {
+#ifdef WL_CFG80211
+		wl_update_wiphybands(NULL, true);
+#endif
+		bytes_written = 0;
 	}
 	else if (brcm_strnicmp(command, CMD_GETBAND, strlen(CMD_GETBAND)) == 0) {
 		bytes_written = wl_android_get_band(net, command, priv_cmd.total_len);
