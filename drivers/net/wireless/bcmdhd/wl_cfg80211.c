@@ -6597,6 +6597,7 @@ wl_cfg80211_change_bss(struct wiphy *wiphy,
 	return 0;
 }
 
+extern u32 restrict_bw_20;
 static s32
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0))
 wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
@@ -6658,17 +6659,24 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 				if (err) {
 					WL_ERR(("error get mimo_bw_cap (%d)\n", err));
 				}
-				if (bw_cap != WLC_N_BW_20ALL)
-					bw = WL_CHANSPEC_BW_40;
+				if (bw_cap != WLC_N_BW_20ALL) {
+					if (restrict_bw_20)
+						bw = WL_CHANSPEC_BW_20;
+					else
+						bw = WL_CHANSPEC_BW_40;
+				}
 			}
 		} else {
-			if (WL_BW_CAP_80MHZ(cfg->ioctl_buf[0]))
-				bw = WL_CHANSPEC_BW_80;
-			else if (WL_BW_CAP_40MHZ(cfg->ioctl_buf[0]))
-				bw = WL_CHANSPEC_BW_40;
-			else
+			if (restrict_bw_20)
 				bw = WL_CHANSPEC_BW_20;
-
+			else {
+				if (WL_BW_CAP_80MHZ(cfg->ioctl_buf[0]))
+					bw = WL_CHANSPEC_BW_80;
+				else if (WL_BW_CAP_40MHZ(cfg->ioctl_buf[0]))
+					bw = WL_CHANSPEC_BW_40;
+				else
+					bw = WL_CHANSPEC_BW_20;
+			}
 		}
 
 	} else if (chan->band == IEEE80211_BAND_2GHZ)

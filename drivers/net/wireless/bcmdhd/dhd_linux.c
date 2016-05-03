@@ -515,6 +515,9 @@ uint dhd_download_fw_on_driverload = TRUE;
 char firmware_path[MOD_PARAM_PATHLEN];
 char nvram_path[MOD_PARAM_PATHLEN];
 
+/* flag to restrict p2p GO bw to 20Mhz */
+u32 restrict_bw_20;
+
 /* backup buffer for firmware and nvram path */
 char fw_bak_path[MOD_PARAM_PATHLEN];
 char nv_bak_path[MOD_PARAM_PATHLEN];
