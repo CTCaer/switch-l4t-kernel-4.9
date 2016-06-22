@@ -130,7 +130,7 @@ tegra_sysfs_register(struct device *dev)
 	if (err) {
 		pr_err("%s: failed to create tegra sysfs group %s\n",
 			__func__, tegra_sysfs_group_hostapd.name);
-		goto cleanup;
+		goto cleanup_rftest;
 	}
 
 	/* create debugfs */
@@ -153,6 +153,8 @@ tegra_sysfs_register(struct device *dev)
 #endif
 	goto exit;
 
+cleanup_rftest:
+	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_rf_test);
 cleanup:
 	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_histogram);
 exit:
@@ -177,6 +179,7 @@ tegra_sysfs_unregister(struct device *dev)
 	}
 
 	/* remove sysfs */
+	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_hostapd);
 	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_rf_test);
 	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_histogram);
 
