@@ -75,7 +75,7 @@
 #endif /* DHDTCPACK_SUPPRESS */
 
 #ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
-#include "dhd_custom_sysfs_tegra.h"
+#include "dhd_custom_sysfs_tegra_stat.h"
 #endif
 
 bool dhd_mp_halting(dhd_pub_t *dhdp);
@@ -2300,6 +2300,9 @@ dhd_bus_txctl(struct dhd_bus *bus, uchar *msg, uint msglen)
 		htol32_ua_store(0, frame + SDPCM_FRAMETAG_LEN + sizeof(swheader));
 	}
 	if (!TXCTLOK(bus)) {
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+	TEGRA_SYSFS_HISTOGRAM_DRIVER_STAT_INC(aggr_bus_credit_unavail);
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
 		DHD_INFO(("%s: No bus credit bus->tx_max %d, bus->tx_seq %d\n",
 			__FUNCTION__, bus->tx_max, bus->tx_seq));
 		bus->ctrl_frame_stat = TRUE;

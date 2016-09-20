@@ -112,9 +112,11 @@
 #ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
 #include "dhd_custom_sysfs_tegra.h"
 #include "dhd_custom_sysfs_tegra_scan.h"
+#include "dhd_custom_sysfs_tegra_stat.h"
 
 #define RX_CAPTURE(skb)\
 	{\
+		TEGRA_SYSFS_HISTOGRAM_WAKE_CNT_INC(skb);\
 		tegra_sysfs_histogram_tcpdump_rx(skb, __func__, __LINE__);\
 	}\
 

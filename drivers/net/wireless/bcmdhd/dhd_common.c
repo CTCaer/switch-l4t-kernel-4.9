@@ -80,8 +80,10 @@ extern void htsf_update(struct dhd_info *dhd, void *data);
 #endif
 int dhd_msg_level = DHD_ERROR_VAL;
 
-
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
 #include "dhd_custom_sysfs_tegra.h"
+#include "dhd_custom_sysfs_tegra_stat.h"
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
 
 #ifdef SOFTAP
 char fw_path2[MOD_PARAM_PATHLEN];
@@ -408,15 +410,19 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 #ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
 	int i;
 	/* Changing PM is not allowed while RF test is enabled */
-	if (atomic_read(&rf_test)) {
-		if (ioc->cmd == WLC_SET_PM && ioc->buf) {
-			uint pm_mode = *(uint*)ioc->buf;
-			if (ioc->set) {
+	if (ioc->cmd == WLC_SET_PM && ioc->buf) {
+		uint pm_mode = *(uint *)ioc->buf;
+		if (ioc->set) {
+			if (atomic_read(&rf_test)) {
 				atomic_set(&cur_power_mode, pm_mode);
 				DHD_ERROR(("%s: WLC_SET_PM: %d not allowed\n", __FUNCTION__, pm_mode));
 				return BCME_OK;
 			}
+		TEGRA_SYSFS_HISTOGRAM_PM_STATE_UPDATE(pm_mode);
 		}
+	}
+
+	if (atomic_read(&rf_test)) {
 		if (ioc->cmd == WLC_SET_VAR) {
 			uint value;
 			for (i = 0; i < NUM_RF_TEST_PARAMS; i++) {
@@ -450,6 +456,7 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 		ret = dhd_prot_ioctl(dhd_pub, ifidx, ioc, buf, len);
 #endif /* defined(WL_WLC_SHIM) */
 #ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+		TEGRA_SYSFS_HISTOGRAM_DRIVER_STAT_INC(aggr_num_ioctl);
 		tegra_sysfs_control_pkt(ioc->cmd);
 #endif
 		if (ret && dhd_pub->up) {

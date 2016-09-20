@@ -3,7 +3,7 @@
  *
  * NVIDIA Tegra Sysfs for BCMDHD driver
  *
- * Copyright (C) 2014 NVIDIA Corporation. All rights reserved.
+ * Copyright (C) 2014-2016 NVIDIA Corporation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -20,6 +20,7 @@
 #include <linux/system-wakeup.h>
 #include "dhd_custom_sysfs_tegra.h"
 #include "dhd_custom_sysfs_tegra_scan.h"
+#include "dhd_custom_sysfs_tegra_stat.h"
 
 
 int lp0_logs_enable = 1;
@@ -30,6 +31,8 @@ const char string_dpc_pkt[] = "dpc called";
 const char dummy_inf[] = "dummy:";
 int bcmdhd_irq_number;
 atomic_t tegra_downgrade_ac = ATOMIC_INIT(0);
+
+extern int bcmdhd_resume_trigger;
 
 static DEVICE_ATTR(rssi, S_IRUGO | S_IWUSR,
 	tegra_sysfs_histogram_rssi_show,
@@ -182,7 +185,6 @@ tegra_sysfs_unregister(struct device *dev)
 	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_hostapd);
 	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_rf_test);
 	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_histogram);
-
 }
 
 int tegra_sysfs_wifi_on;
@@ -253,7 +255,6 @@ tegra_sysfs_resume(void)
 	tegra_sysfs_histogram_scan_work_start();
 	tegra_sysfs_histogram_stat_work_start();
 	tegra_sysfs_histogram_tcpdump_work_start();
-
 }
 
 void
@@ -262,6 +263,8 @@ tegra_sysfs_resume_capture(void)
 	if (lp0_logs_enable) {
 		if (get_wakeup_reason_irq() != bcmdhd_irq_number)
 			return;
+		if (!bcmdhd_resume_trigger)
+			bcmdhd_resume_trigger = 1;
 		tcpdump_pkt_save('w', dummy_inf,
 			__func__, __LINE__, string_resume,
 			sizeof(string_resume), 0);

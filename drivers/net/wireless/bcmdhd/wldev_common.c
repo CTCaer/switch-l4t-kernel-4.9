@@ -35,6 +35,10 @@
 #include <wldev_common.h>
 #include <bcmutils.h>
 
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+#include "dhd_custom_sysfs_tegra_stat.h"
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
+
 #define htod32(i) (i)
 #define htod16(i) (i)
 #define dtoh32(i) (i)
@@ -295,6 +299,10 @@ int wldev_get_rssi(
 	error = wldev_ioctl(dev, WLC_GET_RSSI, scb_val, sizeof(scb_val_t), 0);
 	if (unlikely(error))
 		return error;
+
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+	TEGRA_SYSFS_HISTOGRAM_DRIVER_STAT_INC(aggr_num_rssi_ioctl);
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
 
 	return error;
 }

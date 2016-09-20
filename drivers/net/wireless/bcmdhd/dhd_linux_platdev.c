@@ -53,6 +53,7 @@
 #include <host/sdhci.h>
 #ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
 #include "dhd_custom_sysfs_tegra.h"
+#include "dhd_custom_sysfs_tegra_stat.h"
 #endif
 #ifdef CONFIG_TEGRA_SYS_EDP
 #include <soc/tegra/sysedp.h>

@@ -3,7 +3,7 @@
  *
  * NVIDIA Tegra Sysfs for BCMDHD driver
  *
- * Copyright (C) 2014-2015 NVIDIA Corporation. All rights reserved.
+ * Copyright (C) 2014-2016 NVIDIA Corporation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -17,51 +17,67 @@
  */
 
 #include "dhd_custom_sysfs_tegra.h"
-#include "bcmutils.h"
-#include "wlioctl.h"
-#include "wldev_common.h"
+#include "dhd_custom_sysfs_tegra_stat.h"
 
 int wifi_stat_debug;
 
-struct tegra_sysfs_histogram_stat bcmdhd_stat;
-
 struct net_device *dhd_custom_sysfs_tegra_histogram_stat_netdev;
+struct tegra_sysfs_histogram_stat bcmdhd_stat;
+struct tegra_sysfs_histogram_stat bcmdhd_stat_saved;
+struct timespec dhdstats_ts;
+unsigned short cur_drv_state = DRV_STATE_SUSPEND;
+unsigned short cur_pm_state = DRV_PM_MODE_INIT;
 
 static void
 stat_work_func(struct work_struct *work);
 
 static unsigned int stat_delay_ms;
 static unsigned int stat_rate_ms = 10 * 1000;
+/* overall bcmdhd stat rate in msec */
+static unsigned int bcmdhd_stat_rate_ms = 15 * 60 * 1000;
+
 static DECLARE_DELAYED_WORK(stat_work, stat_work_func);
+
+int bcmdhd_resume_trigger;
+int resume_done;
+
+void tegra_sysfs_histogram_driver_stat_suspend(void)
+{
+	/* No-op */
+}
+
+void tegra_sysfs_histogram_driver_stat_resume(void)
+{
+	/* No-op */
+}
 
 void
 tegra_sysfs_histogram_stat_set_channel(int channel)
 {
-	int i, n;
+	int i, n = -1;
 
 	/* stop collecting channel stat(s) */
 	if (channel < 0) {
-		bcmdhd_stat.channel_stat = NULL;
 		return;
 	}
 
 	/* allocate array index for collecting channel stat(s) */
-	bcmdhd_stat.channel_stat = NULL;
-	n = -1;
-	for (i = 0; i < sizeof(bcmdhd_stat.channel_stat_list) /
-		sizeof(bcmdhd_stat.channel_stat_list[0]); i++) {
-		if ((n == -1) && !bcmdhd_stat.channel_stat_list[i].channel) {
+	bcmdhd_stat.gen_stat.channel_stat = NULL;
+
+	for (i = 0; i < sizeof(bcmdhd_stat.gen_stat.channel_stat_list) /
+		sizeof(bcmdhd_stat.gen_stat.channel_stat_list[0]); i++) {
+		if ((n == -1) && !bcmdhd_stat.gen_stat.channel_stat_list[i].channel) {
 			n = i;
 			continue;
 		}
-		if (bcmdhd_stat.channel_stat_list[i].channel == channel) {
+		if (bcmdhd_stat.gen_stat.channel_stat_list[i].channel == channel) {
 			n = i;
 			break;
 		}
 	}
 	if (n != -1) {
-		bcmdhd_stat.channel_stat = &bcmdhd_stat.channel_stat_list[n];
-		bcmdhd_stat.channel_stat->channel = channel;
+		bcmdhd_stat.gen_stat.channel_stat = &bcmdhd_stat.gen_stat.channel_stat_list[n];
+		bcmdhd_stat.gen_stat.channel_stat->channel = channel;
 	}
 }
 
@@ -75,6 +91,10 @@ void
 tegra_sysfs_histogram_stat_work_start(void)
 {
 //	pr_info("%s\n", __func__);
+	if (!resume_done) {
+		TEGRA_SYSFS_HISTOGRAM_DRV_STATE_UPDATE(DRV_STATE_ACTIVE);
+		resume_done = 1;
+	}
 	if (stat_rate_ms > 0)
 		schedule_delayed_work(&stat_work,
 			msecs_to_jiffies(stat_rate_ms));
@@ -85,6 +105,11 @@ tegra_sysfs_histogram_stat_work_stop(void)
 {
 //	pr_info("%s\n", __func__);
 	cancel_delayed_work_sync(&stat_work);
+
+	if (resume_done) {
+		TEGRA_SYSFS_HISTOGRAM_DRV_STATE_UPDATE(DRV_STATE_SUSPEND);
+		resume_done = 0;
+	}
 }
 
 static void
@@ -95,6 +120,8 @@ stat_work_func(struct work_struct *work)
 	char *netif = net ? net->name : "";
 	wl_cnt_t *cnt;
 	int i;
+	struct timespec now;
+	get_monotonic_boottime(&now);
 
 	UNUSED_PARAMETER(dwork);
 
@@ -131,6 +158,22 @@ stat_work_func(struct work_struct *work)
 				? 64 : sizeof(wl_cnt_t) - i,
 			0);
 	}
+
+	/* Update the overall bcmdhd stats */
+	if (MSEC(now) - MSEC(bcmdhd_stat.time) > bcmdhd_stat_rate_ms) {
+		bcmdhd_stat.time = now;
+		TEGRA_SYSFS_HISTOGRAM_AGGR_DRV_STATE(now);
+		TEGRA_SYSFS_HISTOGRAM_AGGR_PM_STATE(now);
+		memcpy(&bcmdhd_stat.fw_stat, cnt, sizeof(wl_cnt_t));
+		tcpdump_pkt_save(TCPDUMP_TAG_STAT,
+			netif,
+			__func__,
+			__LINE__,
+			(unsigned char *) &bcmdhd_stat,
+			sizeof(struct tegra_sysfs_histogram_stat),
+			0);
+	}
+
 	kfree(cnt);
 
 	/* schedule next stat */
@@ -165,19 +208,19 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		return 0;
 	}
 #else
-	ktime_t now = ktime_get();
+	struct timespec now;
 	int i, n, comma;
-
-	/* update statistics end time */
-	bcmdhd_stat.end_time = now;
+	get_monotonic_boottime(&now);
+	TEGRA_SYSFS_HISTOGRAM_AGGR_DRV_STATE(now);
+	TEGRA_SYSFS_HISTOGRAM_AGGR_PM_STATE(now);
 
 	/* print statistics head */
 	n = 0;
 	snprintf(buf + n, PAGE_SIZE - n,
 		"{\n"
-		"\"version\": 1,\n"
-		"\"start_time\": %llu,\n"
-		"\"end_time\": %llu,\n"
+		"\"version\": 2,\n"
+		"\"start_time\": %lu,\n"
+		"\"end_time\": %lu,\n"
 		"\"wifi_on_success\": %lu,\n"
 		"\"wifi_on_retry\": %lu,\n"
 		"\"wifi_on_fail\": %lu,\n"
@@ -193,32 +236,32 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		"\"ago_start\": %lu,\n"
 		"\"connect_on_2g_channel\": %lu,\n"
 		"\"connect_on_5g_channel\": %lu,\n",
-		ktime_to_ms(bcmdhd_stat.start_time),
-		ktime_to_ms(bcmdhd_stat.end_time),
-		bcmdhd_stat.wifi_on_success,
-		bcmdhd_stat.wifi_on_retry,
-		bcmdhd_stat.wifi_on_fail,
-		bcmdhd_stat.connect_success,
-		bcmdhd_stat.connect_fail,
-		bcmdhd_stat.connect_fail_reason_15,
-		bcmdhd_stat.disconnect_rssi_low,
-		bcmdhd_stat.disconnect_rssi_high,
-		bcmdhd_stat.fw_tx_err,
-		bcmdhd_stat.fw_tx_retry,
-		bcmdhd_stat.fw_rx_err,
-		bcmdhd_stat.hang,
-		bcmdhd_stat.ago_start,
-		bcmdhd_stat.connect_on_2g_channel,
-		bcmdhd_stat.connect_on_5g_channel);
+		MSEC(dhdstats_ts),
+		MSEC(now),
+		PRINT_DIFF(gen_stat.wifi_on_success),
+		PRINT_DIFF(gen_stat.wifi_on_retry),
+		PRINT_DIFF(gen_stat.wifi_on_fail),
+		PRINT_DIFF(gen_stat.connect_success),
+		PRINT_DIFF(gen_stat.connect_fail),
+		PRINT_DIFF(gen_stat.connect_fail_reason_15),
+		PRINT_DIFF(gen_stat.disconnect_rssi_low),
+		PRINT_DIFF(gen_stat.disconnect_rssi_high),
+		PRINT_DIFF(gen_stat.fw_tx_err),
+		PRINT_DIFF(gen_stat.fw_tx_retry),
+		PRINT_DIFF(gen_stat.fw_rx_err),
+		PRINT_DIFF(gen_stat.hang),
+		PRINT_DIFF(gen_stat.ago_start),
+		PRINT_DIFF(gen_stat.connect_on_2g_channel),
+		PRINT_DIFF(gen_stat.connect_on_5g_channel));
 
 	/* print statistics */
 	n = strlen(buf);
 	snprintf(buf + n, PAGE_SIZE - n,
 		"\"channel_stat\": [");
 	comma = 0;
-	for (i = 0; i < sizeof(bcmdhd_stat.channel_stat_list) /
-		sizeof(bcmdhd_stat.channel_stat_list[0]); i++) {
-		if (!bcmdhd_stat.channel_stat_list[i].channel)
+	for (i = 0; i < sizeof(bcmdhd_stat.gen_stat.channel_stat_list) /
+		sizeof(bcmdhd_stat.gen_stat.channel_stat_list[0]); i++) {
+		if (!bcmdhd_stat.gen_stat.channel_stat_list[i].channel)
 			continue;
 		if (comma) {
 			n = strlen(buf);
@@ -229,10 +272,10 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		snprintf(buf + n, PAGE_SIZE - n,
 			"\n"
 			"  [%d,%lu,%lu,%lu]",
-			bcmdhd_stat.channel_stat_list[i].channel,
-			bcmdhd_stat.channel_stat_list[i].connect_count,
-			bcmdhd_stat.channel_stat_list[i].rssi_low,
-			bcmdhd_stat.channel_stat_list[i].rssi_high);
+			bcmdhd_stat.gen_stat.channel_stat_list[i].channel,
+			PRINT_DIFF(gen_stat.channel_stat_list[i].connect_count),
+			PRINT_DIFF(gen_stat.channel_stat_list[i].rssi_low),
+			PRINT_DIFF(gen_stat.channel_stat_list[i].rssi_high));
 		comma = 1;
 	}
 	n = strlen(buf);
@@ -246,17 +289,52 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		"\"sdio_tx_err\": %lu,\n"
 		"\"rssi\": %d,\n"
 		"\"rssi_low\": %lu,\n"
-		"\"rssi_high\": %lu\n"
+		"\"rssi_high\": %lu\n",
+		PRINT_DIFF(gen_stat.sdio_tx_err),
+		bcmdhd_stat.gen_stat.rssi,
+		PRINT_DIFF(gen_stat.rssi_low),
+		PRINT_DIFF(gen_stat.rssi_high));
+
+	/* print driver statistics */
+	n = strlen(buf);
+	snprintf(buf + n, PAGE_SIZE - n,
+		"\"aggr_num_sta_scans\": %lu,\n"
+		"\"aggr_num_p2p_scans\": %lu,\n"
+		"\"aggr_time_drv_suspend\": %lu,\n"
+		"\"aggr_time_drv_active\": %lu,\n"
+		"\"aggr_num_rssi_ioctl\": %lu,\n"
+		"\"aggr_num_ioctl\": %lu,\n",
+		PRINT_DIFF(driver_stat.aggr_num_sta_scans),
+		PRINT_DIFF(driver_stat.aggr_num_p2p_scans),
+		PRINT_DIFF(driver_stat.aggr_time_drv_suspend),
+		PRINT_DIFF(driver_stat.aggr_time_drv_active),
+		PRINT_DIFF(driver_stat.aggr_num_rssi_ioctl),
+		PRINT_DIFF(driver_stat.aggr_num_ioctl));
+
+	for (i = 0; i < NUM_PM_MODES; i++) {
+		n = strlen(buf);
+		snprintf(buf + n, PAGE_SIZE - n,
+			"\"aggr_PM[%d]_time\": %lu,\n",
+			i, PRINT_DIFF(driver_stat.aggr_PM_time[i]));
+	}
+
+	n = strlen(buf);
+	snprintf(buf + n, PAGE_SIZE - n,
+		"\"aggr_num_wowlan\": %lu,\n"
+		"\"aggr_num_wowlan_unicast\": %lu,\n"
+		"\"aggr_num_wowlan_multicast\": %lu,\n"
+		"\"aggr_num_wowlan_broadcast\": %lu,\n"
+		"\"aggr_bus_credit_unavail\": %lu,\n"
 		"}\n",
-		bcmdhd_stat.sdio_tx_err,
-		bcmdhd_stat.rssi,
-		bcmdhd_stat.rssi_low,
-		bcmdhd_stat.rssi_high);
+		PRINT_DIFF(driver_stat.aggr_num_wowlan),
+		PRINT_DIFF(driver_stat.aggr_num_wowlan_unicast),
+		PRINT_DIFF(driver_stat.aggr_num_wowlan_multicast),
+		PRINT_DIFF(driver_stat.aggr_num_wowlan_broadcast),
+		PRINT_DIFF(driver_stat.aggr_bus_credit_unavail));
 
-	/* reset statistics */
-	memset(&bcmdhd_stat, 0, sizeof(bcmdhd_stat));
-	bcmdhd_stat.start_time = now;
-
+	/* update statistics end time */
+	dhdstats_ts = now;
+	bcmdhd_stat_saved = bcmdhd_stat;
 	/* success */
 	return strlen(buf);
 
@@ -270,6 +348,8 @@ tegra_sysfs_histogram_stat_store(struct device *dev,
 {
 	int err;
 	unsigned int uint;
+	struct net_device *net = dhd_custom_sysfs_tegra_histogram_stat_netdev;
+	char *netif = net ? net->name : "";
 
 //	pr_info("%s\n", __func__);
 
@@ -289,6 +369,22 @@ tegra_sysfs_histogram_stat_store(struct device *dev,
 		}
 		pr_info("%s: set stat rate (ms) %u\n", __func__, uint);
 		stat_rate_ms = uint;
+	} else if (strncmp(buf, "bcmdhd_stat_rate ", 17) == 0) {
+		err = kstrtouint(buf + 17, 0, &uint);
+		if (err < 0) {
+			pr_err("%s: invalid bcmdhd_stat rate (ms)\n", __func__);
+			return count;
+		}
+		pr_info("%s: set bcmdhd_stat rate (ms) %u\n", __func__, uint);
+		bcmdhd_stat_rate_ms = uint;
+	} else if (strncmp(buf, "framework_stat ", 15) == 0) {
+		tcpdump_pkt_save('E',
+			netif,
+			__func__,
+			__LINE__,
+			buf + 15,
+			strlen(buf+15),
+			0);
 	} else {
 		pr_err("%s: unknown command\n", __func__);
 	}

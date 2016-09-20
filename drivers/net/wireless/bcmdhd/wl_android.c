@@ -59,6 +59,7 @@
 
 #ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
 #include "dhd_custom_sysfs_tegra.h"
+#include "dhd_custom_sysfs_tegra_stat.h"
 #endif
 
 #include <proto/802.1d.h>

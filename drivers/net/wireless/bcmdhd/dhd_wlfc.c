@@ -47,6 +47,9 @@
 #include <dhd_ip.h>
 
 
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+#include "dhd_custom_sysfs_tegra_stat.h"
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
 
 /*
  * wlfc naming and lock rules:
@@ -2895,6 +2898,9 @@ dhd_wlfc_transfer_packets(void *data)
 
 		if (ctx->FIFO_credit[ac] < 3) {
 			DHD_INFO(("Avoid pkt processing if credit is low (<3)\n"));
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+			TEGRA_SYSFS_HISTOGRAM_DRIVER_STAT_INC(aggr_bus_credit_unavail);
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
 			continue;
 		}
 
