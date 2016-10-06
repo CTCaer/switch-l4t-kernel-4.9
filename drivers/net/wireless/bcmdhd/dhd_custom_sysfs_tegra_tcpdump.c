@@ -206,7 +206,7 @@ DEFINE_SPINLOCK(tcpdump_lock);
 static DEFINE_SEMAPHORE(tcpdump_read_lock);
 
 extern int lp0_logs_enable;
-static int pkt_save = 1;
+static int pkt_save;
 static int pkt_rx_save = 1;
 static int pkt_tx_save = 1;
 static atomic_t insert_dummy_timestamp = ATOMIC_INIT(1);
@@ -258,7 +258,7 @@ tcpdump_pkt_save(char tag, const char *netif, const char *func, int line,
 		return;
 
 	/* check if (tcp/pwr/stat/...)dump packet save enable */
-	if (pkt_save == 0)
+	if ((multi == 0) && (pkt_save == 0))
 		return;
 
 	/* copy (tcp/pwr/stat/...)dump pkt */
@@ -560,12 +560,12 @@ tegra_sysfs_histogram_tcpdump_store(struct device *dev,
 		return count;
 	} else if (strncmp(buf, "test_pwrdump", 12) == 0) {
 		pr_info("%s: test pwrdump - add phony record\n", __func__);
-		tcpdump_pkt_save('P', "multi0", __func__, __LINE__,
+		tcpdump_pkt_save(TCPDUMP_TAG_PWR, "multi0", __func__, __LINE__,
 			(unsigned char *) buf + 12, count - 12, 0);
 		return count;
 	} else if (strncmp(buf, "test_statdump", 13) == 0) {
 		pr_info("%s: test statdump - add phony record\n", __func__);
-		tcpdump_pkt_save('S', "multi0", __func__, __LINE__,
+		tcpdump_pkt_save(TCPDUMP_TAG_STAT, "multi0", __func__, __LINE__,
 			(unsigned char *) buf + 13, count - 13, 0);
 		return count;
 	} else {
