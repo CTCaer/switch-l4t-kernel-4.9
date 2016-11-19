@@ -530,6 +530,11 @@ module_param_string(info_string, info_string, MOD_PARAM_INFOLEN, 0444);
 int op_mode = 0;
 int disable_proptx = 0;
 module_param(op_mode, int, 0644);
+
+unsigned long dpc_sleep_cnt;
+atomic_t dpc_bound = ATOMIC_INIT(8); /* ms */
+atomic_t dpc_frame_time = ATOMIC_INIT(16); /* ms */
+
 extern int wl_control_wl_start(struct net_device *dev);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(BCMLXSDMMC)
 struct semaphore dhd_registration_sem;

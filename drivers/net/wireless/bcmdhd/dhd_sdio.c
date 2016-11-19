@@ -103,6 +103,7 @@ extern bool  bcmsdh_fatal_error(void *sdh);
 #endif
 
 #define DHD_TXMINMAX	1	/* Max tx frames if rx still pending */
+#define FRAME_TIME      16  /* Interframe interval for NV use cases */
 
 #define MEMBLOCK	2048		/* Block size used for downloading of dongle image */
 #define MAX_NVRAMBUF_SIZE	(6 * 1024) /* max nvram buf size */
@@ -5144,6 +5145,11 @@ dhdsdio_pr94636_WAR(dhd_bus_t *bus)
 }
 #endif /* SDHOST3 */
 /* Return TRUE if there may be more frames to read */
+
+extern unsigned long dpc_sleep_cnt;
+extern atomic_t dpc_bound;
+extern atomic_t dpc_frame_time;
+
 static uint
 dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 {
@@ -5169,6 +5175,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 	uchar reorder_info_buf[WLHOST_REORDERDATA_TOTLEN];
 	uint reorder_info_len;
 	uint pkt_count;
+	ktime_t start_time, cur_time;
 
 #if defined(DHD_DEBUG) || defined(SDTEST)
 	bool sdtest = FALSE;	/* To limit message spew from test mode */
@@ -5197,10 +5204,16 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 	/* Not finished unless we encounter no more frames indication */
 	*finished = FALSE;
 
-
+	start_time = ktime_get();
 	for (rxseq = bus->rx_seq, rxleft = maxframes;
 	     !bus->rxskip && rxleft && bus->dhd->busstate != DHD_BUS_DOWN;
 	     rxseq++, rxleft--) {
+		cur_time = ktime_get();
+		if (ktime_to_ms(ktime_sub(cur_time, start_time))
+				> atomic_read(&dpc_bound)) {
+			++dpc_sleep_cnt;
+			osl_sleep(atomic_read(&dpc_frame_time) - atomic_read(&dpc_bound));
+		}
 #ifdef DHDTCPACK_SUP_DBG
 		if (bus->dhd->tcpack_sup_mode != TCPACK_SUP_DELAYTX) {
 			if (bus->dotxinrx == FALSE)
@@ -5219,7 +5232,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 		} else if (bus->dotxinrx && (bus->clkstate == CLK_AVAIL) &&
 			!bus->fcstate && DATAOK(bus) &&
 			(pktq_mlen(&bus->txq, ~bus->flowcontrol) > bus->txinrx_thres)) {
-			dhdsdio_sendfromq(bus, dhd_txbound);
+			dhdsdio_sendfromq(bus, dhd_txminmax);
 #ifdef DHDTCPACK_SUPPRESS
 			/* In TCPACK_SUP_DELAYTX mode, do txinrx only if
 			 * 1. Any DATA packet to TX

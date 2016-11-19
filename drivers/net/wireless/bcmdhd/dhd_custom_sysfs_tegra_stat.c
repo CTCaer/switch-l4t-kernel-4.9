@@ -341,6 +341,10 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 #endif
 }
 
+extern unsigned long dpc_sleep_cnt;
+extern atomic_t dpc_bound;
+extern atomic_t dpc_frame_time;
+
 ssize_t
 tegra_sysfs_histogram_stat_store(struct device *dev,
 	struct device_attribute *attr,
@@ -385,6 +389,30 @@ tegra_sysfs_histogram_stat_store(struct device *dev,
 			buf + 15,
 			strlen(buf+15),
 			0);
+	} else if (strncmp(buf, "dpc_sleep_cnt", 13) == 0) {
+		pr_err("dpc_sleep_cnt: %ld\n", dpc_sleep_cnt);
+	} else if (strncmp(buf, "dpc_frame_time ", 15) == 0) {
+		err = kstrtouint(buf + 15, 0, &uint);
+		if (err < 0) {
+			pr_err("%s: invalid dpc_frame_time (ms)\n", __func__);
+			return count;
+		} else if (uint < 0 || uint < atomic_read(&dpc_bound)) {
+			pr_err("%s: invalid dpc_frame_time (ms)\n", __func__);
+		    return count;
+		}
+		pr_info("%s: set dpc_frame_time (ms) %u\n", __func__, uint);
+		atomic_set(&dpc_frame_time, uint);
+	} else if (strncmp(buf, "dpc_bound ", 10) == 0) {
+		err = kstrtouint(buf + 10, 0, &uint);
+		if (err < 0) {
+			pr_err("%s: invalid dpc_bound (ms)\n", __func__);
+			return count;
+		} else if (uint < 0 || uint > atomic_read(&dpc_frame_time)) {
+			pr_err("%s: invalid dpc_bound (ms)\n", __func__);
+			return count;
+		}
+		pr_info("%s: set dpc_bound (ms) %u\n", __func__, uint);
+		atomic_set(&dpc_bound, uint);
 	} else {
 		pr_err("%s: unknown command\n", __func__);
 	}
