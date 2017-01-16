@@ -864,7 +864,7 @@ static void tty_vhangup_session(struct tty_struct *tty)
 
 int tty_hung_up_p(struct file *filp)
 {
-	return (filp->f_op == &hung_up_tty_fops);
+	return (filp && filp->f_op == &hung_up_tty_fops);
 }
 
 EXPORT_SYMBOL(tty_hung_up_p);
