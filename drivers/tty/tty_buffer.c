@@ -502,7 +502,7 @@ int tty_buffer_get_count(struct tty_port *port)
 EXPORT_SYMBOL(tty_buffer_get_count);
 
 static int
-receive_buf(struct tty_ldisc *ld, struct tty_buffer *head, int count)
+receive_buf(struct tty_port *port, struct tty_buffer *head, int count)
 {
 	unsigned char *p = char_buf_ptr(head, head->read);
 	char	      *f = NULL;
@@ -510,7 +510,7 @@ receive_buf(struct tty_ldisc *ld, struct tty_buffer *head, int count)
 	if (~head->flags & TTYB_NORMAL)
 		f = flag_buf_ptr(head, head->read);
 
-	return tty_ldisc_receive_buf(ld, p, f, count);
+	return port->client_ops->receive_buf(port, p, f, count);
 }
 
 /**
@@ -530,16 +530,6 @@ static void flush_to_ldisc(struct work_struct *work)
 {
 	struct tty_port *port = container_of(work, struct tty_port, buf.work);
 	struct tty_bufhead *buf = &port->buf;
-	struct tty_struct *tty;
-	struct tty_ldisc *disc;
-
-	tty = READ_ONCE(port->itty);
-	if (tty == NULL)
-		return;
-
-	disc = tty_ldisc_ref(tty);
-	if (disc == NULL)
-		return;
 
 	mutex_lock(&buf->lock);
 
@@ -570,7 +560,7 @@ static void flush_to_ldisc(struct work_struct *work)
 			continue;
 		}
 
-		count = receive_buf(disc, head, count);
+		count = receive_buf(port, head, count);
 		if (!count)
 			break;
 		head->read += count;
@@ -585,7 +575,6 @@ static void flush_to_ldisc(struct work_struct *work)
 
 	mutex_unlock(&buf->lock);
 
-	tty_ldisc_deref(disc);
 }
 
 /**
