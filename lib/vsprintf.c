@@ -1736,6 +1736,7 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
  * 'h', 'l', or 'L' for integer fields
  * 'z' support added 23/7/1999 S.H.
  * 'z' changed to 'Z' --davidm 1/25/99
+ * 'Z' changed to 'z' --adobriyan 2017-01-25
  * 't' added for ptrdiff_t
  *
  * @fmt: the format string
@@ -1835,7 +1836,7 @@ qualifier:
 	/* get the conversion qualifier */
 	qualifier = 0;
 	if (*fmt == 'h' || _tolower(*fmt) == 'l' ||
-	    _tolower(*fmt) == 'z' || *fmt == 't') {
+	    *fmt == 'z' || *fmt == 't') {
 		qualifier = *fmt++;
 		if (unlikely(qualifier == *fmt)) {
 			if (qualifier == 'l') {
@@ -1904,7 +1905,7 @@ qualifier:
 	else if (qualifier == 'l') {
 		BUILD_BUG_ON(FORMAT_TYPE_ULONG + SIGN != FORMAT_TYPE_LONG);
 		spec->type = FORMAT_TYPE_ULONG + (spec->flags & SIGN);
-	} else if (_tolower(qualifier) == 'z') {
+	} else if (qualifier == 'z') {
 		spec->type = FORMAT_TYPE_SIZE_T;
 	} else if (qualifier == 't') {
 		spec->type = FORMAT_TYPE_PTRDIFF;
@@ -2654,7 +2655,7 @@ int vsscanf(const char *buf, const char *fmt, va_list args)
 		/* get conversion qualifier */
 		qualifier = -1;
 		if (*fmt == 'h' || _tolower(*fmt) == 'l' ||
-		    _tolower(*fmt) == 'z') {
+		    *fmt == 'z') {
 			qualifier = *fmt++;
 			if (unlikely(qualifier == *fmt)) {
 				if (qualifier == 'h') {
@@ -2848,7 +2849,6 @@ int vsscanf(const char *buf, const char *fmt, va_list args)
 			else
 				*va_arg(args, unsigned long long *) = val.u;
 			break;
-		case 'Z':
 		case 'z':
 			*va_arg(args, size_t *) = val.u;
 			break;
