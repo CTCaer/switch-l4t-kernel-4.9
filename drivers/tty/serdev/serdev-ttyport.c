@@ -165,6 +165,28 @@ static void ttyport_set_flow_control(struct serdev_controller *ctrl, bool enable
 	tty_set_termios(tty, &ktermios);
 }
 
+static int ttyport_get_tiocm(struct serdev_controller *ctrl)
+{
+	struct serport *serport = serdev_controller_get_drvdata(ctrl);
+	struct tty_struct *tty = serport->tty;
+
+	if (!tty->ops->tiocmget)
+		return -ENOTSUPP;
+
+	return tty->driver->ops->tiocmget(tty);
+}
+
+static int ttyport_set_tiocm(struct serdev_controller *ctrl, unsigned int set, unsigned int clear)
+{
+	struct serport *serport = serdev_controller_get_drvdata(ctrl);
+	struct tty_struct *tty = serport->tty;
+
+	if (!tty->ops->tiocmset)
+		return -ENOTSUPP;
+
+	return tty->driver->ops->tiocmset(tty, set, clear);
+}
+
 static const struct serdev_controller_ops ctrl_ops = {
 	.write_buf = ttyport_write_buf,
 	.write_flush = ttyport_write_flush,
@@ -173,6 +195,8 @@ static const struct serdev_controller_ops ctrl_ops = {
 	.close = ttyport_close,
 	.set_flow_control = ttyport_set_flow_control,
 	.set_baudrate = ttyport_set_baudrate,
+	.get_tiocm = ttyport_get_tiocm,
+	.set_tiocm = ttyport_set_tiocm,
 };
 
 struct device *serdev_tty_port_register(struct tty_port *port,
