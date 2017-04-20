@@ -380,7 +380,7 @@ static void tegra_net_bw_est_work_func(struct work_struct *work)
 	tegra_net_bw_est_value
 		= ((cnt1->txbyte - cnt0->txbyte) * 8) /
 			(jiffies1 - jiffies0 + 1) * HZ;
-	pr_info("%s: jiff: bw est = %lu bps (final)\n",
+	TEGRA_NET_BW_EST_DEBUG("%s: jiff: bw est = %lu bps (final)\n",
 		__func__, tegra_net_bw_est_value);
 #endif
 #if defined(USE_KTIME)
@@ -388,7 +388,7 @@ static void tegra_net_bw_est_work_func(struct work_struct *work)
 		= ((cnt1->txbyte - cnt0->txbyte) * 8) /
 			((unsigned long)
 			ktime_to_ms(ktime_sub(ktime1, ktime0))) * 1000UL;
-	pr_info("%s: ktime: bw est = %lu bps (final)\n",
+	TEGRA_NET_BW_EST_DEBUG("%s: ktime: bw est = %lu bps (final)\n",
 		__func__, tegra_net_bw_est_value);
 #endif
 
@@ -675,10 +675,15 @@ void tegra_net_bw_est_set_dst_macaddr(unsigned char *macaddr)
 
 /* private interface for network diagnostics */
 
-#ifdef CONFIG_BCMDHD_CUSTOM_NET_DIAG_TEGRA
-
 unsigned long tegra_net_bw_est_get_value(void)
 {
+
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+	if (!tegra_sysfs_wifi_on) {
+		return 0;
+	}
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
+
 	/* start work */
 	tegra_net_bw_est_work_start();
 
@@ -688,5 +693,3 @@ unsigned long tegra_net_bw_est_get_value(void)
 	/* return bw est */
 	return tegra_net_bw_est_value;
 }
-
-#endif

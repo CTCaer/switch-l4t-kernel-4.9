@@ -51,10 +51,10 @@ void tegra_net_bw_est_set_dst_macaddr(unsigned char *macaddr);
 
 /* private interface for network diagnostics */
 
-#ifdef CONFIG_BCMDHD_CUSTOM_NET_DIAG_TEGRA
-
 unsigned long tegra_net_bw_est_get_value(void);
 
-#endif
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+extern int tegra_sysfs_wifi_on;
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
 
 #endif  /* _dhd_custom_net_bw_est_tegra_h_ */

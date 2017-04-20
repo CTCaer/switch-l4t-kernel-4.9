@@ -478,6 +478,10 @@ set_cur_ccode:
 			__FUNCTION__, country_code, cspec.ccode, cspec.rev));
 		return error;
 	}
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+	memcpy(bcmdhd_stat.fw_stat.cur_country_code,
+			cspec.country_abbrev, WLC_CNTRY_BUF_SZ);
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
 	dhd_bus_country_set(dev, &cspec, notify);
 	WLDEV_ERROR(("%s: set country for %s as %s rev %d\n",
 		__FUNCTION__, country_code, cspec.ccode, cspec.rev));

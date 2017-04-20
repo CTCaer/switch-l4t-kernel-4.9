@@ -19,7 +19,9 @@
 #include "dhd_custom_sysfs_tegra.h"
 #include "dhd_custom_sysfs_tegra_stat.h"
 
+/* Flags */
 int wifi_stat_debug;
+int aggr_not_assoc_err_set;
 
 struct net_device *dhd_custom_sysfs_tegra_histogram_stat_netdev;
 struct tegra_sysfs_histogram_stat bcmdhd_stat;
@@ -164,6 +166,9 @@ stat_work_func(struct work_struct *work)
 		bcmdhd_stat.time = now;
 		TEGRA_SYSFS_HISTOGRAM_AGGR_DRV_STATE(now);
 		TEGRA_SYSFS_HISTOGRAM_AGGR_PM_STATE(now);
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+		bcmdhd_stat.driver_stat.cur_bw_est = tegra_net_bw_est_get_value();
+#endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
 		memcpy(&bcmdhd_stat.fw_stat, cnt, sizeof(wl_cnt_t));
 		tcpdump_pkt_save(TCPDUMP_TAG_STAT,
 			netif,
@@ -218,7 +223,11 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 	n = 0;
 	snprintf(buf + n, PAGE_SIZE - n,
 		"{\n"
-		"\"version\": 2,\n"
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+		"\"version\": 3.1,\n"
+#else
+		"\"version\": 3,\n"
+#endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
 		"\"start_time\": %lu,\n"
 		"\"end_time\": %lu,\n"
 		"\"wifi_on_success\": %lu,\n"
@@ -289,11 +298,30 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		"\"sdio_tx_err\": %lu,\n"
 		"\"rssi\": %d,\n"
 		"\"rssi_low\": %lu,\n"
-		"\"rssi_high\": %lu\n",
+		"\"rssi_high\": %lu,\n",
 		PRINT_DIFF(gen_stat.sdio_tx_err),
 		bcmdhd_stat.gen_stat.rssi,
 		PRINT_DIFF(gen_stat.rssi_low),
 		PRINT_DIFF(gen_stat.rssi_high));
+
+	/* print framework stats */
+	n = strlen(buf);
+	snprintf(buf + n, PAGE_SIZE - n,
+		"\"ccode_sig_fail\": [");
+	for (i = 0; i < SIG_FAIL_REASONS; i++) {
+		n = strlen(buf);
+		snprintf(buf + n, PAGE_SIZE - n,
+			"%d",
+			PRINT_DIFF(gen_stat.ccode_sig_fail[i]));
+		if (SIG_FAIL_REASONS - (i+1)) {
+			n = strlen(buf);
+			snprintf(buf + n, PAGE_SIZE - n,
+				",");
+		}
+	}
+	n = strlen(buf);
+	snprintf(buf + n, PAGE_SIZE - n,
+		"],\n");
 
 	/* print driver statistics */
 	n = strlen(buf);
@@ -311,12 +339,23 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		PRINT_DIFF(driver_stat.aggr_num_rssi_ioctl),
 		PRINT_DIFF(driver_stat.aggr_num_ioctl));
 
+	n = strlen(buf);
+	snprintf(buf + n, PAGE_SIZE - n,
+		"\"aggr_PM_time\": [");
 	for (i = 0; i < NUM_PM_MODES; i++) {
 		n = strlen(buf);
 		snprintf(buf + n, PAGE_SIZE - n,
-			"\"aggr_PM[%d]_time\": %lu,\n",
-			i, PRINT_DIFF(driver_stat.aggr_PM_time[i]));
+			"%lu",
+			PRINT_DIFF(driver_stat.aggr_PM_time[i]));
+		if (NUM_PM_MODES - (i+1)) {
+			n = strlen(buf);
+			snprintf(buf + n, PAGE_SIZE - n,
+				",");
+		}
 	}
+	n = strlen(buf);
+	snprintf(buf + n, PAGE_SIZE - n,
+		"],\n");
 
 	n = strlen(buf);
 	snprintf(buf + n, PAGE_SIZE - n,
@@ -325,12 +364,22 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		"\"aggr_num_wowlan_multicast\": %lu,\n"
 		"\"aggr_num_wowlan_broadcast\": %lu,\n"
 		"\"aggr_bus_credit_unavail\": %lu,\n"
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+		"\"cur_bw_est\": %lu,\n"
+#endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
+		"\"aggr_not_assoc_err\": %lu,\n"
+		"\"cur_country_code\": \"%s\"\n"
 		"}\n",
 		PRINT_DIFF(driver_stat.aggr_num_wowlan),
 		PRINT_DIFF(driver_stat.aggr_num_wowlan_unicast),
 		PRINT_DIFF(driver_stat.aggr_num_wowlan_multicast),
 		PRINT_DIFF(driver_stat.aggr_num_wowlan_broadcast),
-		PRINT_DIFF(driver_stat.aggr_bus_credit_unavail));
+		PRINT_DIFF(driver_stat.aggr_bus_credit_unavail),
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+		tegra_net_bw_est_get_value(),
+#endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
+		PRINT_DIFF(driver_stat.aggr_not_assoc_err),
+		bcmdhd_stat.fw_stat.cur_country_code);
 
 	/* update statistics end time */
 	dhdstats_ts = now;
@@ -382,6 +431,15 @@ tegra_sysfs_histogram_stat_store(struct device *dev,
 		pr_info("%s: set bcmdhd_stat rate (ms) %u\n", __func__, uint);
 		bcmdhd_stat_rate_ms = uint;
 	} else if (strncmp(buf, "framework_stat ", 15) == 0) {
+		if (strncmp(buf + 15, "sig ", 4) == 0) {
+			err = kstrtouint(buf + 19, 0, &uint);
+			if (err < 0 ||
+				(uint < 0 || uint > (SIG_FAIL_REASONS - 1))) {
+				pr_err("%s: invalid framework_stat\n", __func__);
+				return count;
+			}
+			TEGRA_SYSFS_HISTOGRAM_STAT_INC(ccode_sig_fail[uint]);
+		}
 		tcpdump_pkt_save('E',
 			netif,
 			__func__,

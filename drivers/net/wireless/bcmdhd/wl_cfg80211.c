@@ -4595,6 +4595,9 @@ wl_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 		TEGRA_SYSFS_HISTOGRAM_STAT_INC(disconnect_rssi_low);
 	else
 		TEGRA_SYSFS_HISTOGRAM_STAT_INC(disconnect_rssi_high);
+
+	/* Reset per connection lifetime stats */
+	SET_DRV_STAT(aggr_not_assoc_err, 0);
 #endif
 
 	/* cancel FW assoc timeout watchdog if set */
@@ -5228,6 +5231,12 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 		fw_assoc_state = dhd_is_associated(dhd, 0, &err);
 		if (!dhd_assoc_state || !fw_assoc_state) {
 			WL_ERR(("NOT assoc, error %d\n", err));
+#ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
+		if (!DRV_STAT_SET(aggr_not_assoc_err)) {
+		TEGRA_SYSFS_HISTOGRAM_DRIVER_STAT_INC(aggr_not_assoc_err);
+		SET_DRV_STAT(aggr_not_assoc_err, 1);
+		}
+#endif /* CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA */
 			if (err == -ENODATA)
 				return err;
 			if (!dhd_assoc_state) {
@@ -9412,6 +9421,9 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				if (ntoh32(e->reason) == 15) {
 					TEGRA_SYSFS_HISTOGRAM_STAT_INC(connect_fail_reason_15);
 				}
+
+				/* Reset per connection lifetime stats */
+				SET_DRV_STAT(aggr_not_assoc_err, 0);
 #endif
 
 				/* roam offload does not sync BSSID always, get it from dongle */

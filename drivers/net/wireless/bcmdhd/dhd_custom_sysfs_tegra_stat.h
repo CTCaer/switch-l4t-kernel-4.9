@@ -31,12 +31,23 @@
 #define BCMDHD_STAT_RATE (15*60*1000)
 #define NUM_PM_MODES 3
 
+/* Reason codes for ccode sig verification failure.
+ * 0 - TXT_FILE_NOT_FOUND
+ * 1 - SIG_FILE_NOT_FOUND
+ * 2 - FILE_READ_FAILED
+ * 3 - SIG_VERIFICATION_FAILED
+ */
+#define SIG_FAIL_REASONS 4
+
 #define DRV_STATE_ACTIVE 1
 #define DRV_STATE_SUSPEND 0
 #define DRV_PM_MODE_INIT 0
 
 #define MSEC(x) ((x).tv_sec * MSEC_PER_SEC + (x).tv_nsec / NSEC_PER_MSEC)
 #define PRINT_DIFF(x) ((bcmdhd_stat).x - (bcmdhd_stat_saved).x)
+
+#define DRV_STAT_SET(x) x##_set
+#define SET_DRV_STAT(x, val) { x##_set = val; }
 
 #define TEGRA_SYSFS_HISTOGRAM_STAT_INC(var)\
 	(\
@@ -233,10 +244,12 @@ typedef struct tegra_sysfs_stat_generic {
 	int rssi;
 	unsigned long rssi_low;
 	unsigned long rssi_high;
+	int ccode_sig_fail[SIG_FAIL_REASONS];
 } tegra_sysfs_stat_generic_t;
 
 typedef struct tegra_sysfs_stat_firmware {
 	wl_cnt_t fw_counters;
+	char cur_country_code[WLC_CNTRY_BUF_SZ];
 } tegra_sysfs_stat_firmware_t;
 
 typedef struct tegra_sysfs_stat_driver {
@@ -254,6 +267,15 @@ typedef struct tegra_sysfs_stat_driver {
 	unsigned long aggr_num_wowlan_multicast;
 	unsigned long aggr_num_wowlan_broadcast;
 	unsigned long aggr_bus_credit_unavail;
+	/* Per connection-lifetime stats
+	 * based on global flag <stat_name>_set.
+	 * Use macros DRV_STAT_SET, SET_DRV_STAT
+	 * to modify flag.
+     */
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+	unsigned long cur_bw_est; /* bps bw estimator*/
+#endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
+	unsigned long aggr_not_assoc_err;
 } tegra_sysfs_stat_driver_t;
 
 struct tegra_sysfs_histogram_stat {
@@ -272,6 +294,12 @@ extern struct tegra_sysfs_histogram_stat bcmdhd_stat;
 extern struct tegra_sysfs_histogram_stat bcmdhd_stat_saved;
 /* Last time stats node is shown */
 extern struct timespec dhdstats_ts;
+/* Flags */
+extern int aggr_not_assoc_err_set;
+
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+extern unsigned long tegra_net_bw_est_get_value(void);
+#endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
 
 void tegra_sysfs_histogram_driver_stat_suspend(void);
 void tegra_sysfs_histogram_driver_stat_resume(void);
