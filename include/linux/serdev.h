@@ -15,6 +15,7 @@
 
 #include <linux/types.h>
 #include <linux/device.h>
+#include <linux/termios.h>
 #include <linux/delay.h>
 
 struct serdev_controller;
@@ -82,6 +83,8 @@ struct serdev_controller_ops {
 	void (*close)(struct serdev_controller *);
 	void (*set_flow_control)(struct serdev_controller *, bool);
 	unsigned int (*set_baudrate)(struct serdev_controller *, unsigned int);
+	int (*get_tiocm)(struct serdev_controller *);
+	int (*set_tiocm)(struct serdev_controller *, unsigned int, unsigned int);
 };
 
 /**
@@ -190,6 +193,8 @@ void serdev_device_set_flow_control(struct serdev_device *, bool);
 int serdev_device_write_buf(struct serdev_device *, const unsigned char *, size_t);
 void serdev_device_write_flush(struct serdev_device *);
 int serdev_device_write_room(struct serdev_device *);
+int serdev_device_get_tiocm(struct serdev_device *);
+int serdev_device_set_tiocm(struct serdev_device *, int, int);
 
 /*
  * serdev device driver functions
@@ -236,7 +241,14 @@ static inline int serdev_device_write_room(struct serdev_device *sdev)
 
 #define serdev_device_driver_register(x)
 #define serdev_device_driver_unregister(x)
-
+static inline int serdev_device_get_tiocm(struct serdev_device *serdev)
+{
+	return -ENODEV;
+}
+static inline int serdev_device_set_tiocm(struct serdev_device *serdev, int set, int clear)
+{
+	return -ENODEV;
+}
 #endif /* CONFIG_SERIAL_DEV_BUS */
 
 static inline bool serdev_device_get_cts(struct serdev_device *serdev)
@@ -279,7 +291,7 @@ struct tty_driver;
 struct device *serdev_tty_port_register(struct tty_port *port,
 					struct device *parent,
 					struct tty_driver *drv, int idx);
-void serdev_tty_port_unregister(struct tty_port *port);
+int serdev_tty_port_unregister(struct tty_port *port);
 #else
 static inline struct device *serdev_tty_port_register(struct tty_port *port,
 					   struct device *parent,
@@ -287,7 +299,10 @@ static inline struct device *serdev_tty_port_register(struct tty_port *port,
 {
 	return ERR_PTR(-ENODEV);
 }
-static inline void serdev_tty_port_unregister(struct tty_port *port) {}
+static inline int serdev_tty_port_unregister(struct tty_port *port)
+{
+	return -ENODEV;
+}
 #endif /* CONFIG_SERIAL_DEV_CTRL_TTYPORT */
 
 #endif /*_LINUX_SERDEV_H */
