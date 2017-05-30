@@ -2660,18 +2660,28 @@ int
 dhd_wlfc_suspend(dhd_pub_t *dhd)
 {
 	uint32 tlv = 0;
+	int ret;
 
 	DHD_TRACE(("%s: masking wlfc events\n", __FUNCTION__));
 	if (!dhd->wlfc_enabled)
 		return -1;
 
-	if (!dhd_wl_ioctl_get_intiovar(dhd, "tlv", &tlv, WLC_GET_VAR, FALSE, 0))
+	ret = dhd_iovar(dhd, 0, "tlv", NULL, 0, (char *)&tlv, sizeof(tlv),
+			FALSE);
+	if (ret < 0) {
+		DHD_ERROR(("%s: failed to get bdcv2 tlv signaling\n", __FUNCTION__));
 		return -1;
+	}
 	if ((tlv & (WLFC_FLAGS_RSSI_SIGNALS | WLFC_FLAGS_XONXOFF_SIGNALS)) == 0)
 		return 0;
 	tlv &= ~(WLFC_FLAGS_RSSI_SIGNALS | WLFC_FLAGS_XONXOFF_SIGNALS);
-	if (!dhd_wl_ioctl_set_intiovar(dhd, "tlv", tlv, WLC_SET_VAR, TRUE, 0))
+	ret = dhd_iovar(dhd, 0, "tlv", (char *)&tlv, sizeof(tlv), NULL, 0,
+			TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s: failed to set bdcv2 tlv signaling to 0x%x\n",
+			__FUNCTION__, tlv));
 		return -1;
+	}
 
 	return 0;
 }
@@ -2680,19 +2690,29 @@ dhd_wlfc_suspend(dhd_pub_t *dhd)
 dhd_wlfc_resume(dhd_pub_t *dhd)
 {
 	uint32 tlv = 0;
+	int ret;
 
 	DHD_TRACE(("%s: unmasking wlfc events\n", __FUNCTION__));
 	if (!dhd->wlfc_enabled)
 		return -1;
 
-	if (!dhd_wl_ioctl_get_intiovar(dhd, "tlv", &tlv, WLC_GET_VAR, FALSE, 0))
+	ret = dhd_iovar(dhd, 0, "tlv", NULL, 0, (char *)&tlv, sizeof(tlv),
+			FALSE);
+	if (ret < 0) {
+		DHD_ERROR(("%s: failed to get bdcv2 tlv signaling\n", __FUNCTION__));
 		return -1;
+	}
 	if ((tlv & (WLFC_FLAGS_RSSI_SIGNALS | WLFC_FLAGS_XONXOFF_SIGNALS)) ==
 		(WLFC_FLAGS_RSSI_SIGNALS | WLFC_FLAGS_XONXOFF_SIGNALS))
 		return 0;
 	tlv |= (WLFC_FLAGS_RSSI_SIGNALS | WLFC_FLAGS_XONXOFF_SIGNALS);
-	if (!dhd_wl_ioctl_set_intiovar(dhd, "tlv", tlv, WLC_SET_VAR, TRUE, 0))
+	ret = dhd_iovar(dhd, 0, "tlv", (char *)&tlv, sizeof(tlv), NULL, 0,
+			TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s: failed to set bdcv2 tlv signaling to 0x%x\n",
+			__FUNCTION__, tlv));
 		return -1;
+	}
 
 	return 0;
 }
@@ -3284,7 +3304,9 @@ dhd_wlfc_init(dhd_pub_t *dhd)
 	*/
 
 	/* enable proptxtstatus signaling by default */
-	if (!dhd_wl_ioctl_set_intiovar(dhd, "tlv", tlv, WLC_SET_VAR, TRUE, 0)) {
+	ret = dhd_iovar(dhd, 0, "tlv", (char *)&tlv, sizeof(tlv), NULL, 0,
+			TRUE);
+	if (ret < 0) {
 		/*
 		Leaving the message for now, it should be removed after a while; once
 		the tlv situation is stable.
@@ -3296,8 +3318,8 @@ dhd_wlfc_init(dhd_pub_t *dhd)
 	mode = 0;
 
 	/* query caps */
-	ret = dhd_wl_ioctl_get_intiovar(dhd, "wlfc_mode", &fw_caps, WLC_GET_VAR, FALSE, 0);
-
+	ret = dhd_iovar(dhd, 0, "wlfc_mode", NULL, 0, (char *)&fw_caps, sizeof(fw_caps),
+			FALSE);
 	if (!ret) {
 		DHD_INFO(("%s: query wlfc_mode succeed, fw_caps=0x%x\n", __FUNCTION__, fw_caps));
 
@@ -3309,7 +3331,8 @@ dhd_wlfc_init(dhd_pub_t *dhd)
 			WLFC_SET_REUSESEQ(mode, WLFC_GET_REUSESEQ(fw_caps));
 			WLFC_SET_REORDERSUPP(mode, WLFC_GET_REORDERSUPP(fw_caps));
 		}
-		ret = dhd_wl_ioctl_set_intiovar(dhd, "wlfc_mode", mode, WLC_SET_VAR, TRUE, 0);
+		ret = dhd_iovar(dhd, 0, "wlfc_mode", (char *)&mode,
+				sizeof(mode), NULL, 0, TRUE);
 	}
 
 	dhd_os_wlfc_block(dhd);
@@ -3337,6 +3360,7 @@ dhd_wlfc_hostreorder_init(dhd_pub_t *dhd)
 {
 	/* enable only ampdu hostreorder here */
 	uint32 tlv;
+	int ret;
 
 	if (dhd == NULL) {
 		DHD_ERROR(("Error: %s():%d\n", __FUNCTION__, __LINE__));
@@ -3348,7 +3372,9 @@ dhd_wlfc_hostreorder_init(dhd_pub_t *dhd)
 	tlv = WLFC_FLAGS_HOST_RXRERODER_ACTIVE;
 
 	/* enable proptxtstatus signaling by default */
-	if (dhd_wl_ioctl_set_intiovar(dhd, "tlv", tlv, WLC_SET_VAR, TRUE, 0)) {
+	ret = dhd_iovar(dhd, 0, "tlv", (char *)&tlv, sizeof(tlv), NULL, 0,
+			TRUE);
+	if (ret < 0) {
 		DHD_ERROR(("%s(): failed to enable/disable bdcv2 tlv signaling\n",
 			__FUNCTION__));
 	}
@@ -3420,6 +3446,7 @@ dhd_wlfc_deinit(dhd_pub_t *dhd)
 	athost_wl_status_info_t* wlfc;
 	uint32 tlv = 0;
 	uint32 hostreorder = 0;
+	int ret;
 
 	if (dhd == NULL) {
 		DHD_ERROR(("Error: %s():%d\n", __FUNCTION__, __LINE__));
@@ -3436,7 +3463,8 @@ dhd_wlfc_deinit(dhd_pub_t *dhd)
 	dhd_os_wlfc_unblock(dhd);
 
 	/* query ampdu hostreorder */
-	dhd_wl_ioctl_get_intiovar(dhd, "ampdu_hostreorder", &hostreorder, WLC_GET_VAR, FALSE, 0);
+	ret = dhd_iovar(dhd, 0, "ampdu_hostreorder", NULL, 0, (char *)&hostreorder,
+			sizeof(hostreorder), FALSE);
 
 	if (hostreorder) {
 		tlv = WLFC_FLAGS_HOST_RXRERODER_ACTIVE;
@@ -3445,7 +3473,8 @@ dhd_wlfc_deinit(dhd_pub_t *dhd)
 	}
 
 	/* Disable proptxtstatus signaling for deinit */
-	dhd_wl_ioctl_set_intiovar(dhd, "tlv", tlv, WLC_SET_VAR, TRUE, 0);
+	ret = dhd_iovar(dhd, 0, "tlv", (char *)&tlv, sizeof(tlv), NULL, 0,
+			TRUE);
 
 	dhd_os_wlfc_block(dhd);
 
@@ -4065,6 +4094,7 @@ int dhd_wlfc_set_module_ignore(dhd_pub_t *dhd, int val)
 {
 	uint32 tlv = 0;
 	bool bChanged = FALSE;
+	int ret;
 
 	if (!dhd) {
 		DHD_ERROR(("Error: %s():%d\n", __FUNCTION__, __LINE__));
@@ -4092,7 +4122,9 @@ int dhd_wlfc_set_module_ignore(dhd_pub_t *dhd, int val)
 
 	if (bChanged) {
 		/* select enable proptxtstatus signaling */
-		if (dhd_wl_ioctl_set_intiovar(dhd, "tlv", tlv, WLC_SET_VAR, TRUE, 0)) {
+		ret = dhd_iovar(dhd, 0, "tlv", (char *)&tlv, sizeof(tlv), NULL,
+				0, TRUE);
+		if (ret < 0) {
 			DHD_ERROR(("%s: failed to set bdcv2 tlv signaling to 0x%x\n",
 				__FUNCTION__, tlv));
 		}
