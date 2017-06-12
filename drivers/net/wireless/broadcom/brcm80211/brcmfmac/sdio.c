@@ -4089,6 +4089,7 @@ fail:
 	brcmf_dbg(TRACE, "failed: dev=%s, err=%d\n", dev_name(dev), err);
 	device_release_driver(&sdiodev->func[2]->dev);
 	device_release_driver(dev);
+	device_release_driver(&sdiodev->func[2]->dev);
 }
 
 struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
