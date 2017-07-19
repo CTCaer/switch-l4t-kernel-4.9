@@ -1424,15 +1424,41 @@ static int
 select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 {
 	struct task_struct *curr;
+	struct sched_domain *sd;
 	struct rq *rq;
 
 	/* For anything but wake ups, just return the task_cpu */
 	if (sd_flag != SD_BALANCE_WAKE && sd_flag != SD_BALANCE_FORK)
 		goto out;
 
+	if (idle_cpu(cpu))
+		goto out;
+
 	rq = cpu_rq(cpu);
 
 	rcu_read_lock();
+
+	/* Try and find a cache-sharing idle CPU if it exists */
+	sd = rcu_dereference(per_cpu(sd_llc, cpu));
+	if (sd) {
+		int i;
+		bool wrapped = false;
+		struct cpumask mask;
+
+		cpumask_empty(&mask);
+		cpumask_and(&mask, sched_domain_span(sd), tsk_cpus_allowed(p));
+		/*
+		 * Prevent RT tasks from piling to the same CPU by starting the
+		 * search from task_cpu(p) instead of -1. task_cpu(p) is !idle.
+		 */
+		for_each_cpu_wrap(i, sched_domain_span(sd), cpu) {
+			if (idle_cpu(i)) {
+				cpu = i;
+				goto unlock;
+			}
+		}
+	}
+
 	curr = READ_ONCE(rq->curr); /* unlocked access */
 
 	/*
@@ -1470,6 +1496,8 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 		    p->prio < cpu_rq(target)->rt.highest_prio.curr)
 			cpu = target;
 	}
+
+unlock:
 	rcu_read_unlock();
 
 out:
