@@ -199,12 +199,14 @@ int
 is_wlc_event_frame(void *pktdata, uint pktlen, uint16 exp_usr_subtype,
 	bcm_event_msg_u_t *out_event)
 {
-	uint16 len;
+	uint16 evlen;
 	uint16 subtype;
 	uint16 usr_subtype;
 	bcm_event_t *bcm_event;
 	uint8 *pktend;
+	uint8 *evend;
 	int err = BCME_OK;
+	uint32 data_len;
 
 	pktend = (uint8 *)pktdata + pktlen;
 	bcm_event = (bcm_event_t *)pktdata;
@@ -225,9 +227,10 @@ is_wlc_event_frame(void *pktdata, uint pktlen, uint16 exp_usr_subtype,
 	}
 
 	/* check length in bcmeth_hdr */
-	len = ntoh16_ua((void *)&bcm_event->bcm_hdr.length);
+	evlen = ntoh16_ua((void *)&bcm_event->bcm_hdr.length);
+	evend = (uint8 *)&bcm_event->bcm_hdr.version + evlen;
 #ifdef EXT_STA
-	if (((uint8 *)&bcm_event->bcm_hdr.version + len) > pktend) {
+	if (evend != pktend) {
 		err = BCME_BADLEN;
 		goto done;
 	}
@@ -249,14 +252,15 @@ is_wlc_event_frame(void *pktdata, uint pktlen, uint16 exp_usr_subtype,
 	usr_subtype = ntoh16_ua((void *)&bcm_event->bcm_hdr.usr_subtype);
 	switch (usr_subtype) {
 	case BCMILCP_BCM_SUBTYPE_EVENT:
-		if (pktlen < sizeof(bcm_event_t)) {
+		if ((pktlen < sizeof(bcm_event_t)) ||
+		    (evend < ((uint8 *)bcm_event + sizeof(bcm_event_t)))) {
 			err = BCME_BADLEN;
 			goto done;
 		}
 
-		len = (uint16)sizeof(bcm_event_t) +
-			(uint16)ntoh32_ua((void *)&bcm_event->event.datalen);
-		if ((uint8 *)pktdata + len > pktend) {
+		data_len = ntoh32_ua((void *)&bcm_event->event.datalen);
+		if ((sizeof(bcm_event_t) + data_len +
+		    BCMILCP_BCM_SUBTYPE_EVENT_DATA_PAD) != pktlen) {
 			err = BCME_BADLEN;
 			goto done;
 		}
