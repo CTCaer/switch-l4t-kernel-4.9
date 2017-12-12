@@ -3,9 +3,9 @@
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
  * Copyright (C) 1999-2015, Broadcom Corporation
- * 
+ *
  * Portions contributed by Nvidia
- * Copyright (C) 2015 NVIDIA Corporation. All rights reserved.
+ * Copyright (C) 2015-2017, NVIDIA Corporation. All rights reserved.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -170,7 +170,7 @@ extern bool ap_cfg_running;
 extern bool ap_fw_loaded;
 #endif
 
-extern void dhd_dump_eapol_4way_message(char *dump_data, bool direction);
+extern void dhd_dump_eapol_4way_message(int ifidx, char *dump_data, bool direction);
 
 #ifdef ENABLE_ADAPTIVE_SCHED
 #define DEFAULT_CPUFREQ_THRESH		1000000	/* threshold frequency : 1000000 = 1GHz */
@@ -2414,7 +2414,7 @@ dhd_os_wlfc_unblock(dhd_pub_t *pub)
 
 #if defined(DHD_8021X_DUMP)
 void
-dhd_tx_dump(osl_t *osh, void *pkt)
+dhd_tx_dump(int ifidx, osl_t *osh, void *pkt)
 {
 	uint8 *dump_data;
 	uint16 protocol;
@@ -2424,7 +2424,7 @@ dhd_tx_dump(osl_t *osh, void *pkt)
 
 	if (protocol == ETHER_TYPE_802_1X)
 		/* flag true indicates Tx path */
-		dhd_dump_eapol_4way_message(dump_data, true);
+		dhd_dump_eapol_4way_message(ifidx, dump_data, true);
 }
 #endif /* DHD_8021X_DUMP */
 
@@ -2485,18 +2485,18 @@ dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 				dump_hex = (pktdata[udp_port_pos+249] << 8) |
 					pktdata[udp_port_pos+250];
 				if (dump_hex == 0x0101) {
-					DHD_ERROR(("DHCP - DISCOVER [TX]\n"));
+					DHD_ERROR(("ifidx:%d DHCP - DISCOVER [TX]\n", ifidx));
 				} else if (dump_hex == 0x0102) {
-					DHD_ERROR(("DHCP - OFFER [TX]\n"));
+					DHD_ERROR(("ifidx:%d DHCP - OFFER [TX]\n", ifidx));
 				} else if (dump_hex == 0x0103) {
-					DHD_ERROR(("DHCP - REQUEST [TX]\n"));
+					DHD_ERROR(("ifidx:%d DHCP - REQUEST [TX]\n", ifidx));
 				} else if (dump_hex == 0x0105) {
-					DHD_ERROR(("DHCP - ACK [TX]\n"));
+					DHD_ERROR(("ifidx:%d DHCP - ACK [TX]\n", ifidx));
 				} else {
-					DHD_ERROR(("DHCP - 0x%X [TX]\n", dump_hex));
+					DHD_ERROR(("ifidx:%d DHCP - 0x%X [TX]\n", ifidx, dump_hex));
 				}
 			} else if (source_port == 0x0043 || dest_port == 0x0043) {
-				DHD_ERROR(("DHCP - BOOTP [RX]\n"));
+				DHD_ERROR(("ifidx:%d DHCP - BOOTP [RX]\n", ifidx));
 			}
 		}
 #endif /* DHD_DHCP_DUMP */
@@ -2568,7 +2568,7 @@ dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 	dhd_htsf_addtxts(dhdp, pktbuf);
 #endif
 #if defined(DHD_8021X_DUMP)
-	dhd_tx_dump(dhdp->osh, pktbuf);
+	dhd_tx_dump(ifidx, dhdp->osh, pktbuf);
 #endif
 #ifdef PROP_TXSTATUS
 	{
@@ -3055,7 +3055,7 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 #ifdef DHD_8021X_DUMP
 		if (protocol == ETHER_TYPE_802_1X)
 			/* flag false indicates Rx path */
-			dhd_dump_eapol_4way_message(dump_data, false);
+			dhd_dump_eapol_4way_message(ifidx, dump_data, false);
 #endif /* DHD_8021X_DUMP */
 #ifdef DHD_DHCP_DUMP
 		if (protocol != ETHER_TYPE_BRCM && protocol == ETHER_TYPE_IP) {
@@ -3073,18 +3073,18 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 				dump_hex = (dump_data[udp_port_pos+249] << 8) |
 					dump_data[udp_port_pos+250];
 				if (dump_hex == 0x0101) {
-					DHD_ERROR(("DHCP - DISCOVER [RX]\n"));
+					DHD_ERROR(("ifidx:%d DHCP - DISCOVER [RX]\n", ifidx));
 				} else if (dump_hex == 0x0102) {
-					DHD_ERROR(("DHCP - OFFER [RX]\n"));
+					DHD_ERROR(("ifidx:%d DHCP - OFFER [RX]\n", ifidx));
 				} else if (dump_hex == 0x0103) {
-					DHD_ERROR(("DHCP - REQUEST [RX]\n"));
+					DHD_ERROR(("ifidx:%d DHCP - REQUEST [RX]\n", ifidx));
 				} else if (dump_hex == 0x0105) {
-					DHD_ERROR(("DHCP - ACK [RX]\n"));
+					DHD_ERROR(("ifidx:%d DHCP - ACK [RX]\n", ifidx));
 				} else {
-					DHD_ERROR(("DHCP - 0x%X [RX]\n", dump_hex));
+					DHD_ERROR(("ifidx:%d DHCP - 0x%X [RX]\n", dump_hex, ifidx));
 				}
 			} else if (source_port == 0x0043 || dest_port == 0x0043) {
-				DHD_ERROR(("DHCP - BOOTP [RX]\n"));
+				DHD_ERROR(("ifidx:%d DHCP - BOOTP [RX]\n", ifidx));
 			}
 		}
 #endif /* DHD_DHCP_DUMP */

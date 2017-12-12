@@ -9498,6 +9498,16 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				complete(&cfg->send_disconnected);
 			}
 			else if (wl_get_drv_status(cfg, CONNECTING, ndev)) {
+				u8 *curbssid = wl_read_prof(cfg, ndev, WL_PROF_BSSID);
+				if (memcmp(curbssid, &e->addr, ETHER_ADDR_LEN) != 0) {
+					WL_ERR(("BSSID of event is not from "
+						"cur (ignore it): " MACDBG
+						" event: " MACDBG" e->ifidx:%d\n",
+						MAC2STRDBG(curbssid),
+						MAC2STRDBG((const u8 *)(&e->addr)), e->ifidx));
+					return 0;
+				}
+
 				WL_ERR(("link down, during connecting\n"));
 				/* Issue WLC_DISASSOC to prevent FW roam attempts */
 				err = wldev_ioctl(ndev, WLC_DISASSOC, NULL, 0, true);

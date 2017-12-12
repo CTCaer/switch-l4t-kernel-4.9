@@ -2666,7 +2666,7 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 /* Android ComboSCAN support */
 
 /* Parse EAPOL 4 way handshake messages */
-void dhd_dump_eapol_4way_message(char *dump_data, bool direction)
+void dhd_dump_eapol_4way_message(int ifidx, char *dump_data, bool direction)
 {
 	int pair, ack, mic, kerr, req, sec, install;
 	unsigned short us_tmp;
@@ -2687,18 +2687,18 @@ void dhd_dump_eapol_4way_message(char *dump_data, bool direction)
 		install = 0 != (us_tmp & 0x40);
 
 		if (!sec && !mic && ack && !install && pair && !kerr && !req)
-			DHD_NV_INFO(("ETHER_TYPE_802_1X [%s] : M1 of 4way\n",
+			DHD_NV_INFO(("ifidx: %d ETHER_TYPE_802_1X [%s] : M1 of 4way\n", ifidx,
 				    direction ? "TX" : "RX"));
 		else if (pair && !install && !ack && mic &&
 				!sec && !kerr && !req)
-			DHD_NV_INFO(("ETHER_TYPE_802_1X [%s] : M2 of 4way\n",
+			DHD_NV_INFO(("ifidx: %d ETHER_TYPE_802_1X [%s] : M2 of 4way\n", ifidx,
 				    direction ? "TX" : "RX"));
 		else if (pair && ack && mic && sec && !kerr && !req)
-			DHD_NV_INFO(("ETHER_TYPE_802_1X [%s] : M3 of 4way\n",
+			DHD_NV_INFO(("ifidx: %d ETHER_TYPE_802_1X [%s] : M3 of 4way\n", ifidx,
 				    direction ? "TX" : "RX"));
 		else if (pair && !install && !ack && mic &&
 				sec && !req && !kerr)
-			DHD_NV_INFO(("ETHER_TYPE_802_1X [%s] : M4 of 4way\n",
+			DHD_NV_INFO(("ifidx: %d ETHER_TYPE_802_1X [%s] : M4 of 4way\n", ifidx,
 				    direction ? "TX" : "RX"));
 	}
 }
