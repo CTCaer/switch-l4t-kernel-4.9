@@ -36,6 +36,11 @@ static const struct device_type serdev_device_type = {
 	.release	= serdev_device_release,
 };
 
+static bool is_serdev_device(const struct device *dev)
+{
+	return dev->type == &serdev_device_type;
+}
+
 static void serdev_ctrl_release(struct device *dev)
 {
 	struct serdev_controller *ctrl = to_serdev_controller(dev);
@@ -49,6 +54,9 @@ static const struct device_type serdev_ctrl_type = {
 
 static int serdev_device_match(struct device *dev, struct device_driver *drv)
 {
+	if (!is_serdev_device(dev))
+		return 0;
+ 
 	/* TODO: ACPI and platform matching */
 	return of_driver_match_device(dev, drv);
 }
