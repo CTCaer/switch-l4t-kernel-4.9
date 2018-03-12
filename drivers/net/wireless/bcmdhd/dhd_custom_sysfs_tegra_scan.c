@@ -1292,6 +1292,24 @@ wifi_scan_request_done(struct cfg80211_scan_request *request)
 
 }
 
+int wifi_scan_sem_lock(void)
+{
+	WIFI_SCAN_DEBUG("%s: Lock Wifi semaphore\n", __func__);
+	/* lock semaphore */
+	if (down_interruptible(&wifi_scan_lock) < 0) {
+		pr_err("%s: cannot lock semaphore\n", __func__);
+		return -1;
+	}
+	return 0;
+}
+
+void wifi_scan_sem_unlock(void)
+{
+	WIFI_SCAN_DEBUG("%s: Unlock wifi semaphore\n", __func__);
+	/* unlock semaphore */
+	up(&wifi_scan_lock);
+}
+
 int wifi_scan_pno_time;
 int wifi_scan_pno_repeat;
 int wifi_scan_pno_freq_expo_max;

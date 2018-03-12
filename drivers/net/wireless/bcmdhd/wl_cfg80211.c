@@ -408,7 +408,7 @@ void wl_cfg80211_scan_abort(struct bcm_cfg80211 *cfg);
 #else
 static void wl_cfg80211_scan_abort(struct bcm_cfg80211 *cfg);
 #endif
-static void wl_cfg80211_cancel_scan(struct bcm_cfg80211 *cfg);
+void wl_cfg80211_cancel_scan(struct bcm_cfg80211 *cfg);
 static s32 wl_notify_escan_complete(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, bool aborted, bool fw_abort);
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 2, 0))
@@ -11123,7 +11123,7 @@ static struct notifier_block wl_cfg80211_netdev_notifier = {
  */
 static bool wl_cfg80211_netdev_notifier_registered = FALSE;
 
-static void wl_cfg80211_cancel_scan(struct bcm_cfg80211 *cfg)
+void wl_cfg80211_cancel_scan(struct bcm_cfg80211 *cfg)
 {
 	struct wireless_dev *wdev = NULL;
 	struct net_device *ndev = NULL;

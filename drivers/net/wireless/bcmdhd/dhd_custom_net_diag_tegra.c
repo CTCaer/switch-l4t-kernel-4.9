@@ -23,6 +23,8 @@
 #ifdef CONFIG_BCMDHD_CUSTOM_SYSFS_TEGRA
 #include "dhd_custom_sysfs_tegra.h"
 #endif
+#include "dhd_custom_sysfs_tegra_scan.h"
+#include <wl_cfg80211.h>
 
 static int tegra_net_diag_debug;
 
@@ -48,11 +50,23 @@ static void tegra_net_diag_work_func(struct work_struct *work)
 	struct net_device *net
 		= NULL;
 #endif
+	struct wireless_dev *wdev = NULL;
+	struct bcm_cfg80211 *cfg = NULL;
 	int err;
 
 	/* check input */
 	if (!net)
 		return;
+
+	/* Abort ongoing scan and acquire scan lock */
+	if (wifi_scan_sem_lock() < 0)
+		return;
+
+	wdev = net->ieee80211_ptr;
+	if (wdev != NULL && wdev->wiphy != NULL) {
+		cfg = wiphy_priv(wdev->wiphy);
+		wl_cfg80211_cancel_scan(cfg);
+	}
 
 	/* get assoc mode (802.11 mode a/b/g/n/ac) */
 	{
@@ -133,6 +147,7 @@ static void tegra_net_diag_work_func(struct work_struct *work)
 #ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
 	tegra_net_diag_data.bw_est = tegra_net_bw_est_get_value();
 #endif
+	wifi_scan_sem_unlock();
 
 }
 

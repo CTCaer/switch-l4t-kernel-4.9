@@ -211,6 +211,8 @@ extern struct wifi_scan_work wifi_scan_work_list[WIFI_SCAN_WORK_MAX];
 
 void
 wifi_scan_request_init(void);
+int wifi_scan_sem_lock(void);
+void wifi_scan_sem_unlock(void);
 
 int
 wifi_scan_request(wl_cfg80211_scan_funcptr_t scan_func,

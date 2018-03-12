@@ -20,6 +20,7 @@
 #ifdef CONFIG_BCMDHD_CUSTOM_NET_PERF_TEGRA
 #include "dhd_custom_net_perf_tegra.h"
 #endif
+#include <linux_osl.h>
 
 static int tegra_net_bw_est_debug;
 
@@ -252,6 +253,8 @@ static void tegra_net_bw_est_work_func(struct work_struct *work)
 
 	TEGRA_NET_BW_EST_DEBUG("%s\n", __func__);
 
+	tegra_net_bw_est_value = 0;
+
 	/* check network device / parameters */
 	if (!net) {
 		TEGRA_NET_BW_EST_DEBUG("%s: !net\n", __func__);
@@ -282,6 +285,8 @@ static void tegra_net_bw_est_work_func(struct work_struct *work)
 #ifdef CONFIG_BCMDHD_CUSTOM_NET_PERF_TEGRA
 	wifi_sclk_enable();
 #endif
+	/* wait for boost to take into effect */
+	OSL_SLEEP(2);
 
 	/* create starting / ending counters request */
 	cnt0 = kmalloc(2 * sizeof(wl_cnt_t), GFP_KERNEL);
@@ -357,7 +362,7 @@ static void tegra_net_bw_est_work_func(struct work_struct *work)
 			__func__, tegra_net_bw_est_value);
 #endif
 		/* wait for next sample window */
-		msleep(sample_time / denom);
+		OSL_SLEEP(sample_time / denom);
 	}
 
 	/* get ending tx byte count / time */

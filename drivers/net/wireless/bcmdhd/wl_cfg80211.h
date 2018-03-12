@@ -1077,4 +1077,6 @@ extern void wl_cfg80211_del_p2p_wdev(void);
 extern uint8 *wl_get_up_table(void);
 #endif /* QOS_MAP_SET */
 
+void wl_cfg80211_cancel_scan(struct bcm_cfg80211 *cfg);
+
 #endif /* _wl_cfg80211_h_ */
