@@ -18,6 +18,7 @@
 
 #include "dhd_custom_sysfs_tegra.h"
 #include "dhd_custom_sysfs_tegra_stat.h"
+#include "dhd_custom_net_diag_tegra.h"
 
 /* Flags */
 int wifi_stat_debug;
@@ -123,6 +124,9 @@ stat_work_func(struct work_struct *work)
 	wl_cnt_t *cnt;
 	int i;
 	struct timespec now;
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+	tegra_net_diag_data_t net_diag_data;
+#endif
 	get_monotonic_boottime(&now);
 
 	UNUSED_PARAMETER(dwork);
@@ -167,7 +171,9 @@ stat_work_func(struct work_struct *work)
 		TEGRA_SYSFS_HISTOGRAM_AGGR_DRV_STATE(now);
 		TEGRA_SYSFS_HISTOGRAM_AGGR_PM_STATE(now);
 #ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
-		bcmdhd_stat.driver_stat.cur_bw_est = tegra_net_bw_est_get_value();
+		memset(&net_diag_data, 0, sizeof(tegra_net_diag_data_t));
+		tegra_net_diag_get_value(&net_diag_data);
+		bcmdhd_stat.driver_stat.cur_bw_est = net_diag_data.bw_est;
 #endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
 		memcpy(&bcmdhd_stat.fw_stat, cnt, sizeof(wl_cnt_t));
 		tcpdump_pkt_save(TCPDUMP_TAG_STAT,
@@ -215,10 +221,16 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 #else
 	struct timespec now;
 	int i, n, comma;
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+	tegra_net_diag_data_t net_diag_data;
+#endif
 	get_monotonic_boottime(&now);
 	TEGRA_SYSFS_HISTOGRAM_AGGR_DRV_STATE(now);
 	TEGRA_SYSFS_HISTOGRAM_AGGR_PM_STATE(now);
-
+#ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
+	memset(&net_diag_data, 0, sizeof(tegra_net_diag_data_t));
+	tegra_net_diag_get_value(&net_diag_data);
+#endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
 	/* print statistics head */
 	n = 0;
 	snprintf(buf + n, PAGE_SIZE - n,
@@ -366,6 +378,8 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		"\"aggr_bus_credit_unavail\": %lu,\n"
 #ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
 		"\"cur_bw_est\": %lu,\n"
+		"\"cur_mode\": \"%s\",\n"
+		"\"cur_channel_width\": %d,\n"
 #endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
 		"\"aggr_not_assoc_err\": %lu,\n"
 		"\"cur_country_code\": \"%s\"\n"
@@ -376,7 +390,9 @@ tegra_sysfs_histogram_stat_show(struct device *dev,
 		PRINT_DIFF(driver_stat.aggr_num_wowlan_broadcast),
 		PRINT_DIFF(driver_stat.aggr_bus_credit_unavail),
 #ifdef CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA
-		tegra_net_bw_est_get_value(),
+		net_diag_data.bw_est,
+		net_diag_data.assoc_mode,
+		net_diag_data.assoc_channel_width,
 #endif /* CONFIG_BCMDHD_CUSTOM_NET_BW_EST_TEGRA */
 		PRINT_DIFF(driver_stat.aggr_not_assoc_err),
 		bcmdhd_stat.fw_stat.cur_country_code);

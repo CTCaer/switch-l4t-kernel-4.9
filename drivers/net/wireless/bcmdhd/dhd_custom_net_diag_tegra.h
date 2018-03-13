@@ -42,6 +42,8 @@ typedef struct tegra_net_diag_data {
 	unsigned long bw_est;
 } tegra_net_diag_data_t;
 
+void tegra_net_diag_get_value(tegra_net_diag_data_t *net_diag_data);
+
 int tegra_net_diag_register(struct device *dev);
 
 void tegra_net_diag_unregister(struct device *dev);
