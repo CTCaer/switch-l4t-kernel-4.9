@@ -1044,6 +1044,9 @@ struct smb_version_operations smb1_operations = {
 	.read_data_offset = cifs_read_data_offset,
 	.read_data_length = cifs_read_data_length,
 	.map_error = map_smb_to_linux_error,
+#ifdef CONFIG_CIFS_SYSFS
+	.report_error = report_smb_error_to_userspace,
+#endif
 	.find_mid = cifs_find_mid,
 	.check_message = checkSMB,
 	.dump_detail = cifs_dump_detail,

@@ -768,6 +768,11 @@ SendReceive2(const unsigned int xid, struct cifs_ses *ses,
 	rc = ses->server->ops->check_receive(midQ, ses->server,
 					     flags & CIFS_LOG_ERROR);
 
+#ifdef CONFIG_CIFS_SYSFS
+	if (rc < 0) {
+		ses->server->ops->report_error(ses->server->hostname, midQ->resp_buf);
+	}
+#endif
 	/* mark it so buf will not be freed by cifs_delete_mid */
 	if ((flags & CIFS_NO_RESP) == 0)
 		midQ->resp_buf = NULL;

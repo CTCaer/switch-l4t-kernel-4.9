@@ -232,6 +232,10 @@ struct smb_version_operations {
 	unsigned int (*read_data_length)(char *);
 	/* map smb to linux error */
 	int (*map_error)(char *, bool);
+#ifdef CONFIG_CIFS_SYSFS
+	/* report smb error to userspace */
+	void (*report_error)(char *, char *);
+#endif
 	/* find mid corresponding to the response message */
 	struct mid_q_entry * (*find_mid)(struct TCP_Server_Info *, char *);
 	void (*dump_detail)(void *);

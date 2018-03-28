@@ -33,6 +33,9 @@ struct smb_rqst;
  * All Prototypes
  *****************************************************************
  */
+#ifdef CONFIG_CIFS_SYSFS
+extern void report_smb2_error_to_userspace(char *hostname, char* buf);
+#endif
 extern int map_smb2_to_linux_error(char *buf, bool log_err);
 extern int smb2_check_message(char *buf, unsigned int length,
 			      struct TCP_Server_Info *server);

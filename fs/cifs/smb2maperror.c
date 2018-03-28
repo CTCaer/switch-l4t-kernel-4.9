@@ -27,6 +27,10 @@
 #include "smb2proto.h"
 #include "smb2status.h"
 
+#ifdef CONFIG_CIFS_SYSFS
+#include "sysfs.h"
+#endif
+
 struct status_to_posix_error {
 	__le32 smb2_status;
 	int posix_error;
@@ -2445,6 +2449,18 @@ smb2_print_status(__le32 status)
 	}
 	return;
 }
+
+#ifdef CONFIG_CIFS_SYSFS
+void
+report_smb2_error_to_userspace(char *hostname, char* buf) {
+	struct smb2_hdr *hdr = (struct smb2_hdr *)buf;
+
+	__le32 smb2err = hdr->Status;
+	if (smb2err == STATUS_LOGON_FAILURE) {
+		cifs_sysfs_notify_error(hostname, "LOGON_FAILURE");
+	}
+}
+#endif
 
 int
 map_smb2_to_linux_error(char *buf, bool log_err)

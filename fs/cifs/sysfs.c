@@ -28,11 +28,22 @@ static struct kobj_type cifs_uevent_ktype = {
 };
 
 void cifs_sysfs_notify_change(const char* source, cifs_event_type event_type) {
-	char env_source[30];
+	char env_source[128];
 	char env_state[30];
 	char *envp[3] = { env_source, env_state, NULL };
-	sprintf(env_source, "SOURCE=%s", source);
-	sprintf(env_state, "STATE=%d", event_type);
+	scnprintf(env_source, sizeof(env_source), "SOURCE=%s", source);
+	scnprintf(env_state, sizeof(env_state), "STATE=%d", event_type);
+	kobject_uevent_env(cifs_sysfs_kobj, KOBJ_CHANGE, envp);
+}
+
+void cifs_sysfs_notify_error(const char* source, const char* message) {
+	char env_source[128];
+	char env_state[30];
+	char env_message[30];
+	char *envp[4] = { env_source, env_state, env_message, NULL };
+	scnprintf(env_source, sizeof(env_source), "SOURCE=%s", source);
+	scnprintf(env_state, sizeof(env_state) ,"STATE=%d", SMB_ERROR);
+	scnprintf(env_message, sizeof(env_message), "MESSAGE=%s", message);
 	kobject_uevent_env(cifs_sysfs_kobj, KOBJ_CHANGE, envp);
 }
 

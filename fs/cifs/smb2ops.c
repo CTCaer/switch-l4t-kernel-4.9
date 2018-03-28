@@ -1572,6 +1572,9 @@ struct smb_version_operations smb20_operations = {
 	.read_data_offset = smb2_read_data_offset,
 	.read_data_length = smb2_read_data_length,
 	.map_error = map_smb2_to_linux_error,
+#ifdef CONFIG_CIFS_SYSFS
+	.report_error = report_smb2_error_to_userspace,
+#endif
 	.find_mid = smb2_find_mid,
 	.check_message = smb2_check_message,
 	.dump_detail = smb2_dump_detail,
@@ -1827,6 +1830,9 @@ struct smb_version_operations smb311_operations = {
 	.read_data_offset = smb2_read_data_offset,
 	.read_data_length = smb2_read_data_length,
 	.map_error = map_smb2_to_linux_error,
+#ifdef CONFIG_CIFS_SYSFS
+	.report_error = report_smb2_error_to_userspace,
+#endif
 	.find_mid = smb2_find_mid,
 	.check_message = smb2_check_message,
 	.dump_detail = smb2_dump_detail,

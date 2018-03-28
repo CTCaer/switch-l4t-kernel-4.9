@@ -23,8 +23,10 @@ typedef enum {
 	DISCONNECTED,
 	RECONNECTING,
 	RECONNECTED,
+	SMB_ERROR
 } cifs_event_type;
 
+void cifs_sysfs_notify_error(const char* source, const char* message);
 void cifs_sysfs_notify_change(const char* source, cifs_event_type type);
 int cifs_sysfs_init(void);
 void cifs_sysfs_exit(void);

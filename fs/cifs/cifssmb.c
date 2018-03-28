@@ -1473,6 +1473,9 @@ cifs_readv_receive(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 	/* Was the SMB read successful? */
 	rdata->result = server->ops->map_error(buf, false);
 	if (rdata->result != 0) {
+#ifdef CONFIG_CIFS_SYSFS
+		server->ops->report_error(server->hostname, buf);
+#endif
 		cifs_dbg(FYI, "%s: server returned error %d\n",
 			 __func__, rdata->result);
 		return cifs_readv_discard(server, mid);

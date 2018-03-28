@@ -38,6 +38,10 @@
 #include "cifs_debug.h"
 #include "nterr.h"
 
+#ifdef CONFIG_CIFS_SYSFS
+#include "sysfs.h"
+#endif
+
 struct smb_to_posix_error {
 	__u16 smb_err;
 	int posix_code;
@@ -823,6 +827,19 @@ ntstatus_to_dos(__u32 ntstatus, __u8 *eclass, __u16 *ecode)
 	*eclass = ERRHRD;
 	*ecode = ERRgeneral;
 }
+
+
+#ifdef CONFIG_CIFS_SYSFS
+void
+report_smb_error_to_userspace(char *hostname, char* buf) {
+	struct smb_hdr *smb = (struct smb_hdr *)buf;
+
+	__u32 err = le32_to_cpu(smb->Status.CifsError);
+	if (err == (NT_STATUS_LOGON_FAILURE)) {
+		cifs_sysfs_notify_error(hostname, "LOGON_FAILURE");
+	}
+}
+#endif
 
 int
 map_smb_to_linux_error(char *buf, bool logErr)
