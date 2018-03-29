@@ -27,6 +27,9 @@
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include "input-compat.h"
+#define CREATE_TRACE_POINTS
+#include <trace/events/atrace.h>
+#define TRACE_INPUT_ID (100)
 
 enum evdev_clock_type {
 	EV_CLK_REAL = 0,
@@ -268,6 +271,8 @@ static void evdev_pass_values(struct evdev_client *client,
 		return;
 
 	event.time = ktime_to_timeval(ev_time[client->clk_type]);
+	trace_async_atrace_begin("nvtrace_input_kernel", TRACE_INPUT_ID,
+		((int) (event.time.tv_sec * 1000) + ((event.time.tv_usec) / 1000)));
 
 	/* Interrupts are disabled, just acquire the lock. */
 	spin_lock(&client->buffer_lock);
