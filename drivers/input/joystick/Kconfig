@@ -277,6 +277,18 @@ config JOYSTICK_JOYDUMP
 	  To compile this driver as a module, choose M here: the
 	  module will be called joydump.
 
+config JOYSTICK_JOYCON
+	tristate "Joy-Con Rails"
+	select SERIAL_DEV_BUS
+	select POWER_SUPPLY
+	select CRC8
+	help
+	  Say Y here if you have a one or more Joy-Con connected over UART
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called joycon.
+
+
 config JOYSTICK_XPAD
 	tristate "X-Box gamepad support"
 	depends on USB_ARCH_HAS_HCD
