@@ -148,4 +148,6 @@ int tegra_super_cdiv_use_therm_controls(bool);
 extern void tegra210_csi_source_from_brick(void);
 extern void tegra210_csi_source_from_plld(void);
 
+extern void tegra210_plld2_configure_ss(bool);
+
 #endif /* __LINUX_CLK_TEGRA_H_ */
