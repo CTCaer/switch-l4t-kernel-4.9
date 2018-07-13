@@ -1,6 +1,9 @@
 #
 # Makefile for misc devices that really don't fit anywhere else.
 #
+ifeq ($(NV_BUILD_CONFIGURATION_IS_COVERAGE),1)
+GCOV_PROFILE_bluedroid_pm.o :=y
+endif
 
 subdir-ccflags-y += -Wno-error
 
