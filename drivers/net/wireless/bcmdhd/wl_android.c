@@ -2603,11 +2603,11 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 buf_size)
 	else if (brcm_strnicmp(command, CMD_HAPD_MAC_FILTER, strlen(CMD_HAPD_MAC_FILTER)) == 0) {
 		int skip = strlen(CMD_HAPD_MAC_FILTER) + 1;
 		wl_android_set_mac_address_filter(net, (const char*)command+skip);
-	}
-	else if (brcm_strnicmp(command, CMD_SETROAMMODE, strlen(CMD_SETROAMMODE)) == 0)
+	} else if (!builtin_roam_disabled && brcm_strnicmp(command, CMD_SETROAMMODE, strlen(CMD_SETROAMMODE)) == 0)
 		bytes_written = wl_android_set_roam_mode(net, command, priv_cmd.total_len);
 #if defined(BCMFW_ROAM_ENABLE)
-	else if (brcm_strnicmp(command, CMD_SET_ROAMPREF, strlen(CMD_SET_ROAMPREF)) == 0) {
+	else if (!builtin_roam_disabled && brcm_strnicmp(command, CMD_SET_ROAMPREF,
+			strlen(CMD_SET_ROAMPREF)) == 0) {
 		bytes_written = wl_android_set_roampref(net, command, priv_cmd.total_len);
 	}
 #endif /* BCMFW_ROAM_ENABLE */

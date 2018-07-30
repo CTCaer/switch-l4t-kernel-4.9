@@ -852,6 +852,9 @@ extern uint dhd_master_mode;
 /* Roaming mode control */
 extern uint dhd_roam_disable;
 
+/* Disable builtin roaming */
+extern bool builtin_roam_disabled;
+
 /* Roaming mode control */
 extern uint dhd_radio_up;
 

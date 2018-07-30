@@ -108,6 +108,8 @@ extern void bcm_bt_unlock(int cookie);
 static int lock_cookie_wifi = 'W' | 'i'<<8 | 'F'<<16 | 'i'<<24;	/* cookie is "WiFi" */
 #endif /* ENABLE_4335BT_WAR */
 
+bool builtin_roam_disabled;
+
 wifi_adapter_info_t* dhd_wifi_platform_get_adapter(uint32 bus_type, uint32 bus_num, uint32 slot_num)
 {
 	int i;
@@ -429,6 +431,7 @@ static int wifi_plat_dev_drv_probe(struct platform_device *pdev)
 		adapter->nv_path = of_get_property(node, "nv_path", NULL);
 		adapter->sdhci_host = of_parse_phandle(node, "sdhci-host", 0);
 		of_property_read_u32(node, "pwr-retry-cnt", &adapter->pwr_retry_cnt);
+		builtin_roam_disabled = device_property_read_bool(&pdev->dev, "builtin-roam-disabled");
 
 		if (is_antenna_tuned())
 			adapter->nv_path = of_get_property(node,
