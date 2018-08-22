@@ -1745,19 +1745,19 @@ static int add_free_nid(struct f2fs_sb_info *sbi, nid_t nid, bool build)
 		 *   - __remove_nid_from_list(ALLOC_NID_LIST)
 		 *                         - __insert_nid_to_list(FREE_NID_LIST)
 		 */
-+		ne = __lookup_nat_cache(nm_i, nid);
-+		if (ne && (!get_nat_flag(ne, IS_CHECKPOINTED) ||
-+				nat_get_blkaddr(ne) != NULL_ADDR))
-+			goto err_out;
-+
-+		e = __lookup_free_nid_list(nm_i, nid);
-+		if (e) {
-+			if (e->state == NID_NEW)
-+				ret = true;
-+			goto err_out;
-+		}
-+	}
-+	ret = true;
+		ne = __lookup_nat_cache(nm_i, nid);
+		if (ne && (!get_nat_flag(ne, IS_CHECKPOINTED) ||
+				nat_get_blkaddr(ne) != NULL_ADDR))
+			goto err_out;
+
+		e = __lookup_free_nid_list(nm_i, nid);
+		if (e) {
+			if (e->state == NID_NEW)
+				ret = true;
+			goto err_out;
+		}
+	}
+	ret = true;
 	if ((err = radix_tree_insert(&nm_i->free_nid_root, i->nid, i))) {
 		goto err_out;
 	}
