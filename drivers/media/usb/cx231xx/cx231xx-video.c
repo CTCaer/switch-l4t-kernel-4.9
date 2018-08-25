@@ -1742,7 +1742,7 @@ static int radio_s_tuner(struct file *file, void *priv, const struct v4l2_tuner 
  */
 static int cx231xx_v4l2_open(struct file *filp)
 {
-	int radio = 0;
+	int radio = 0, errCode = 0;
 	struct video_device *vdev = video_devdata(filp);
 	struct cx231xx *dev = video_drvdata(filp);
 	struct cx231xx_fh *fh;
@@ -1764,7 +1764,7 @@ static int cx231xx_v4l2_open(struct file *filp)
 			 video_device_node_name(vdev), v4l2_type_names[fh_type],
 			 dev->users);
 
-#if 0
+#if 1
 	errCode = cx231xx_set_mode(dev, CX231XX_ANALOG_MODE);
 	if (errCode < 0) {
 		dev_err(dev->dev,
