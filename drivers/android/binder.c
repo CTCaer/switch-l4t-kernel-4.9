@@ -464,9 +464,8 @@ struct binder_ref {
 };
 
 enum binder_deferred_state {
-	BINDER_DEFERRED_PUT_FILES    = 0x01,
-	BINDER_DEFERRED_FLUSH        = 0x02,
-	BINDER_DEFERRED_RELEASE      = 0x04,
+	BINDER_DEFERRED_FLUSH        = 0x01,
+	BINDER_DEFERRED_RELEASE      = 0x02,
 };
 
 /**
@@ -503,9 +502,6 @@ struct binder_priority {
  *                        (invariant after initialized)
  * @tsk                   task_struct for group_leader of process
  *                        (invariant after initialized)
- * @files                 files_struct for process
- *                        (protected by @files_lock)
- * @files_lock            mutex to protect @files
  * @deferred_work_node:   element for binder_deferred_list
  *                        (protected by binder_deferred_lock)
  * @deferred_work:        bitmap of deferred work to perform
@@ -550,8 +546,6 @@ struct binder_proc {
 	struct list_head waiting_threads;
 	int pid;
 	struct task_struct *tsk;
-	struct files_struct *files;
-	struct mutex files_lock;
 	struct hlist_node deferred_work_node;
 	int deferred_work;
 	bool is_dead;
@@ -634,6 +628,23 @@ struct binder_thread {
 	atomic_t tmp_ref;
 	bool is_dead;
 	struct task_struct *task;
+};
+
+/**
+ * struct binder_txn_fd_fixup - transaction fd fixup list element
+ * @fixup_entry:          list entry
+ * @file:                 struct file to be associated with new fd
+ * @offset:               offset in buffer data to this fixup
+ *
+ * List element for fd fixups in a transaction. Since file
+ * descriptors need to be allocated in the context of the
+ * target process, we pass each fd to be processed in this
+ * struct.
+ */
+struct binder_txn_fd_fixup {
+	struct list_head fixup_entry;
+	struct file *file;
+	size_t offset;
 };
 
 struct binder_transaction {
@@ -947,66 +958,6 @@ binder_defer_work(struct binder_proc *proc, enum binder_deferred_state defer);
 static void binder_free_thread(struct binder_thread *thread);
 static void binder_free_proc(struct binder_proc *proc);
 static void binder_inc_node_tmpref_ilocked(struct binder_node *node);
-
-static int task_get_unused_fd_flags(struct binder_proc *proc, int flags)
-{
-	unsigned long rlim_cur;
-	unsigned long irqs;
-	int ret;
-
-	mutex_lock(&proc->files_lock);
-	if (proc->files == NULL) {
-		ret = -ESRCH;
-		goto err;
-	}
-	if (!lock_task_sighand(proc->tsk, &irqs)) {
-		ret = -EMFILE;
-		goto err;
-	}
-	rlim_cur = task_rlimit(proc->tsk, RLIMIT_NOFILE);
-	unlock_task_sighand(proc->tsk, &irqs);
-
-	ret = __alloc_fd(proc->files, 0, rlim_cur, flags);
-err:
-	mutex_unlock(&proc->files_lock);
-	return ret;
-}
-
-/*
- * copied from fd_install
- */
-static void task_fd_install(
-	struct binder_proc *proc, unsigned int fd, struct file *file)
-{
-	mutex_lock(&proc->files_lock);
-	if (proc->files)
-		__fd_install(proc->files, fd, file);
-	mutex_unlock(&proc->files_lock);
-}
-
-/*
- * copied from sys_close
- */
-static long task_close_fd(struct binder_proc *proc, unsigned int fd)
-{
-	int retval;
-
-	mutex_lock(&proc->files_lock);
-	if (proc->files == NULL) {
-		retval = -ESRCH;
-		goto err;
-	}
-	retval = __close_fd(proc->files, fd);
-	/* can't restart close syscall because file table entry was cleared */
-	if (unlikely(retval == -ERESTARTSYS ||
-		     retval == -ERESTARTNOINTR ||
-		     retval == -ERESTARTNOHAND ||
-		     retval == -ERESTART_RESTARTBLOCK))
-		retval = -EINTR;
-err:
-	mutex_unlock(&proc->files_lock);
-	return retval;
-}
 
 static bool binder_has_work_ilocked(struct binder_thread *thread,
 				    bool do_proc_work)
@@ -2116,10 +2067,32 @@ static struct binder_thread *binder_get_txn_from_and_acq_inner(
 	return NULL;
 }
 
+/**
+ * binder_free_txn_fixups() - free unprocessed fd fixups
+ * @t:	binder transaction for t->from
+ *
+ * If the transaction is being torn down prior to being
+ * processed by the target process, free all of the
+ * fd fixups and fput the file structs. It is safe to
+ * call this function after the fixups have been
+ * processed -- in that case, the list will be empty.
+ */
+static void binder_free_txn_fixups(struct binder_transaction *t)
+{
+	struct binder_txn_fd_fixup *fixup, *tmp;
+
+	list_for_each_entry_safe(fixup, tmp, &t->fd_fixups, fixup_entry) {
+		fput(fixup->file);
+		list_del(&fixup->fixup_entry);
+		kfree(fixup);
+	}
+}
+
 static void binder_free_transaction(struct binder_transaction *t)
 {
 	if (t->buffer)
 		t->buffer->transaction = NULL;
+	binder_free_txn_fixups(t);
 	kfree(t);
 	binder_stats_deleted(BINDER_STAT_TRANSACTION);
 }
@@ -2420,12 +2393,17 @@ static void binder_transaction_buffer_release(struct binder_proc *proc,
 		} break;
 
 		case BINDER_TYPE_FD: {
-			struct binder_fd_object *fp = to_binder_fd_object(hdr);
-
-			binder_debug(BINDER_DEBUG_TRANSACTION,
-				     "        fd %d\n", fp->fd);
-			if (failed_at)
-				task_close_fd(proc, fp->fd);
+			/*
+			 * No need to close the file here since user-space
+			 * closes it for for successfully delivered
+			 * transactions. For transactions that weren't
+			 * delivered, the new fd was never allocated so
+			 * there is no need to close and the fput on the
+			 * file is done when the transaction is torn
+			 * down.
+			 */
+			WARN_ON(failed_at &&
+				proc->tsk == current->group_leader);
 		} break;
 		case BINDER_TYPE_PTR:
 			/*
@@ -2440,6 +2418,15 @@ static void binder_transaction_buffer_release(struct binder_proc *proc,
 			u32 *fd_array;
 			size_t fd_index;
 			binder_size_t fd_buf_size;
+
+			if (proc->tsk != current->group_leader) {
+				/*
+				 * Nothing to do if running in sender context
+				 * The fd fixups have not been applied so no
+				 * fds need to be closed.
+				 */
+				continue;
+			}
 
 			fda = to_binder_fd_array_object(hdr);
 			parent = binder_validate_ptr(buffer, fda->parent,
@@ -2473,7 +2460,7 @@ static void binder_transaction_buffer_release(struct binder_proc *proc,
 			}
 			fd_array = (u32 *)(parent_buffer + (uintptr_t)fda->parent_offset);
 			for (fd_index = 0; fd_index < fda->num_fds; fd_index++)
-				task_close_fd(proc, fd_array[fd_index]);
+				ksys_close(fd_array[fd_index]);
 		} break;
 		default:
 			pr_err("transaction release %d bad object type %x\n",
@@ -2605,17 +2592,18 @@ done:
 	return ret;
 }
 
-static int binder_translate_fd(int fd,
+static int binder_translate_fd(u32 *fdp,
 			       struct binder_transaction *t,
 			       struct binder_thread *thread,
 			       struct binder_transaction *in_reply_to)
 {
 	struct binder_proc *proc = thread->proc;
 	struct binder_proc *target_proc = t->to_proc;
-	int target_fd;
+	struct binder_txn_fd_fixup *fixup;
 	struct file *file;
-	int ret;
+	int ret = 0;
 	bool target_allows_fd;
+	int fd = *fdp;
 
 	if (in_reply_to)
 		target_allows_fd = !!(in_reply_to->flags & TF_ACCEPT_FDS);
@@ -2643,19 +2631,24 @@ static int binder_translate_fd(int fd,
 		goto err_security;
 	}
 
-	target_fd = task_get_unused_fd_flags(target_proc, O_CLOEXEC);
-	if (target_fd < 0) {
+	/*
+	 * Add fixup record for this transaction. The allocation
+	 * of the fd in the target needs to be done from a
+	 * target thread.
+	 */
+	fixup = kzalloc(sizeof(*fixup), GFP_KERNEL);
+	if (!fixup) {
 		ret = -ENOMEM;
-		goto err_get_unused_fd;
+		goto err_alloc;
 	}
-	task_fd_install(target_proc, target_fd, file);
-	trace_binder_transaction_fd(t, fd, target_fd);
-	binder_debug(BINDER_DEBUG_TRANSACTION, "        fd %d -> %d\n",
-		     fd, target_fd);
+	fixup->file = file;
+	fixup->offset = (uintptr_t)fdp - (uintptr_t)t->buffer->data;
+	trace_binder_transaction_fd_send(t, fd, fixup->offset);
+	list_add_tail(&fixup->fixup_entry, &t->fd_fixups);
 
-	return target_fd;
+	return ret;
 
-err_get_unused_fd:
+err_alloc:
 err_security:
 	fput(file);
 err_fget:
@@ -2669,8 +2662,7 @@ static int binder_translate_fd_array(struct binder_fd_array_object *fda,
 				     struct binder_thread *thread,
 				     struct binder_transaction *in_reply_to)
 {
-	binder_size_t fdi, fd_buf_size, num_installed_fds;
-	int target_fd;
+	binder_size_t fdi, fd_buf_size;
 	uintptr_t parent_buffer;
 	u32 *fd_array;
 	struct binder_proc *proc = thread->proc;
@@ -2702,23 +2694,12 @@ static int binder_translate_fd_array(struct binder_fd_array_object *fda,
 		return -EINVAL;
 	}
 	for (fdi = 0; fdi < fda->num_fds; fdi++) {
-		target_fd = binder_translate_fd(fd_array[fdi], t, thread,
+		int ret = binder_translate_fd(&fd_array[fdi], t, thread,
 						in_reply_to);
-		if (target_fd < 0)
-			goto err_translate_fd_failed;
-		fd_array[fdi] = target_fd;
+		if (ret < 0)
+			return ret;
 	}
 	return 0;
-
-err_translate_fd_failed:
-	/*
-	 * Failed to allocate fd or security error, free fds
-	 * installed so far.
-	 */
-	num_installed_fds = fdi;
-	for (fdi = 0; fdi < num_installed_fds; fdi++)
-		task_close_fd(target_proc, fd_array[fdi]);
-	return target_fd;
 }
 
 static int binder_fixup_parent(struct binder_transaction *t,
@@ -3077,6 +3058,7 @@ static void binder_transaction(struct binder_proc *proc,
 		return_error_line = __LINE__;
 		goto err_alloc_t_failed;
 	}
+	INIT_LIST_HEAD(&t->fd_fixups);
 	binder_stats_created(BINDER_STAT_TRANSACTION);
 	spin_lock_init(&t->lock);
 
@@ -3290,17 +3272,16 @@ static void binder_transaction(struct binder_proc *proc,
 
 		case BINDER_TYPE_FD: {
 			struct binder_fd_object *fp = to_binder_fd_object(hdr);
-			int target_fd = binder_translate_fd(fp->fd, t, thread,
-							    in_reply_to);
+			int ret = binder_translate_fd(&fp->fd, t, thread,
+						      in_reply_to);
 
-			if (target_fd < 0) {
+			if (ret < 0) {
 				return_error = BR_FAILED_REPLY;
-				return_error_param = target_fd;
+				return_error_param = ret;
 				return_error_line = __LINE__;
 				goto err_translate_failed;
 			}
 			fp->pad_binder = 0;
-			fp->fd = target_fd;
 		} break;
 		case BINDER_TYPE_FDA: {
 			struct binder_fd_array_object *fda =
@@ -3458,6 +3439,7 @@ err_bad_object_type:
 err_bad_offset:
 err_bad_parent:
 err_copy_data_failed:
+	binder_free_txn_fixups(t);
 	trace_binder_transaction_failed_buffer_release(t->buffer);
 	binder_transaction_buffer_release(target_proc, t->buffer, offp);
 	if (target_node)
@@ -3522,6 +3504,47 @@ err_invalid_target_handle:
 		thread->return_error.cmd = return_error;
 		binder_enqueue_thread_work(thread, &thread->return_error.work);
 	}
+}
+
+/**
+ * binder_free_buf() - free the specified buffer
+ * @proc:	binder proc that owns buffer
+ * @buffer:	buffer to be freed
+ *
+ * If buffer for an async transaction, enqueue the next async
+ * transaction from the node.
+ *
+ * Cleanup buffer and free it.
+ */
+void
+binder_free_buf(struct binder_proc *proc, struct binder_buffer *buffer)
+{
+	if (buffer->transaction) {
+		buffer->transaction->buffer = NULL;
+		buffer->transaction = NULL;
+	}
+	if (buffer->async_transaction && buffer->target_node) {
+		struct binder_node *buf_node;
+		struct binder_work *w;
+
+		buf_node = buffer->target_node;
+		binder_node_inner_lock(buf_node);
+		BUG_ON(!buf_node->has_async_transaction);
+		BUG_ON(buf_node->proc != proc);
+		w = binder_dequeue_work_head_ilocked(
+				&buf_node->async_todo);
+		if (!w) {
+			buf_node->has_async_transaction = false;
+		} else {
+			binder_enqueue_work_ilocked(
+					w, &proc->todo);
+			binder_wakeup_proc_ilocked(proc);
+		}
+		binder_node_inner_unlock(buf_node);
+	}
+	trace_binder_transaction_buffer_release(buffer);
+	binder_transaction_buffer_release(proc, buffer, NULL);
+	binder_alloc_free_buf(&proc->alloc, buffer);
 }
 
 static int binder_thread_write(struct binder_proc *proc,
@@ -3714,33 +3737,7 @@ static int binder_thread_write(struct binder_proc *proc,
 				     proc->pid, thread->pid, (u64)data_ptr,
 				     buffer->debug_id,
 				     buffer->transaction ? "active" : "finished");
-
-			if (buffer->transaction) {
-				buffer->transaction->buffer = NULL;
-				buffer->transaction = NULL;
-			}
-			if (buffer->async_transaction && buffer->target_node) {
-				struct binder_node *buf_node;
-				struct binder_work *w;
-
-				buf_node = buffer->target_node;
-				binder_node_inner_lock(buf_node);
-				BUG_ON(!buf_node->has_async_transaction);
-				BUG_ON(buf_node->proc != proc);
-				w = binder_dequeue_work_head_ilocked(
-						&buf_node->async_todo);
-				if (!w) {
-					buf_node->has_async_transaction = false;
-				} else {
-					binder_enqueue_work_ilocked(
-							w, &proc->todo);
-					binder_wakeup_proc_ilocked(proc);
-				}
-				binder_node_inner_unlock(buf_node);
-			}
-			trace_binder_transaction_buffer_release(buffer);
-			binder_transaction_buffer_release(proc, buffer, NULL);
-			binder_alloc_free_buf(&proc->alloc, buffer);
+			binder_free_buf(proc, buffer);
 			break;
 		}
 
@@ -4059,6 +4056,76 @@ static int binder_wait_for_work(struct binder_thread *thread,
 	finish_wait(&thread->wait, &wait);
 	binder_inner_proc_unlock(proc);
 	freezer_count();
+
+	return ret;
+}
+
+/**
+ * binder_apply_fd_fixups() - finish fd translation
+ * @t:	binder transaction with list of fd fixups
+ *
+ * Now that we are in the context of the transaction target
+ * process, we can allocate and install fds. Process the
+ * list of fds to translate and fixup the buffer with the
+ * new fds.
+ *
+ * If we fail to allocate an fd, then free the resources by
+ * fput'ing files that have not been processed and ksys_close'ing
+ * any fds that have already been allocated.
+ */
+static int binder_apply_fd_fixups(struct binder_transaction *t)
+{
+	struct binder_txn_fd_fixup *fixup, *tmp;
+	int ret = 0;
+
+	list_for_each_entry(fixup, &t->fd_fixups, fixup_entry) {
+		int fd = get_unused_fd_flags(O_CLOEXEC);
+		u32 *fdp;
+
+		if (fd < 0) {
+			binder_debug(BINDER_DEBUG_TRANSACTION,
+				     "failed fd fixup txn %d fd %d\n",
+				     t->debug_id, fd);
+			ret = -ENOMEM;
+			break;
+		}
+		binder_debug(BINDER_DEBUG_TRANSACTION,
+			     "fd fixup txn %d fd %d\n",
+			     t->debug_id, fd);
+		trace_binder_transaction_fd_recv(t, fd, fixup->offset);
+		fd_install(fd, fixup->file);
+		fixup->file = NULL;
+		fdp = (u32 *)(t->buffer->data + fixup->offset);
+		/*
+		 * This store can cause problems for CPUs with a
+		 * VIVT cache (eg ARMv5) since the cache cannot
+		 * detect virtual aliases to the same physical cacheline.
+		 * To support VIVT, this address and the user-space VA
+		 * would both need to be flushed. Since this kernel
+		 * VA is not constructed via page_to_virt(), we can't
+		 * use flush_dcache_page() on it, so we'd have to use
+		 * an internal function. If devices with VIVT ever
+		 * need to run Android, we'll either need to go back
+		 * to patching the translated fd from the sender side
+		 * (using the non-standard kernel functions), or rework
+		 * how the kernel uses the buffer to use page_to_virt()
+		 * addresses instead of allocating in our own vm area.
+		 *
+		 * For now, we disable compilation if CONFIG_CPU_CACHE_VIVT.
+		 */
+		*fdp = fd;
+	}
+	list_for_each_entry_safe(fixup, tmp, &t->fd_fixups, fixup_entry) {
+		if (fixup->file) {
+			fput(fixup->file);
+		} else if (ret) {
+			u32 *fdp = (u32 *)(t->buffer->data + fixup->offset);
+
+			ksys_close(*fdp);
+		}
+		list_del(&fixup->fixup_entry);
+		kfree(fixup);
+	}
 
 	return ret;
 }
@@ -4978,7 +5045,6 @@ static void binder_vma_close(struct vm_area_struct *vma)
 		     (vma->vm_end - vma->vm_start) / SZ_1K, vma->vm_flags,
 		     (unsigned long)pgprot_val(vma->vm_page_prot));
 	binder_alloc_vma_close(&proc->alloc);
-	binder_defer_work(proc, BINDER_DEFERRED_PUT_FILES);
 }
 
 static int binder_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
@@ -5024,9 +5090,6 @@ static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 	ret = binder_alloc_mmap_handler(&proc->alloc, vma);
 	if (ret)
 		return ret;
-	mutex_lock(&proc->files_lock);
-	proc->files = get_files_struct(current);
-	mutex_unlock(&proc->files_lock);
 	return 0;
 
 err_bad_arg:
@@ -5050,7 +5113,6 @@ static int binder_open(struct inode *nodp, struct file *filp)
 	spin_lock_init(&proc->outer_lock);
 	get_task_struct(current->group_leader);
 	proc->tsk = current->group_leader;
-	mutex_init(&proc->files_lock);
 	INIT_LIST_HEAD(&proc->todo);
 	if (binder_supported_policy(current->policy)) {
 		proc->default_priority.sched_policy = current->policy;
@@ -5207,8 +5269,6 @@ static void binder_deferred_release(struct binder_proc *proc)
 	struct rb_node *n;
 	int threads, nodes, incoming_refs, outgoing_refs, active_transactions;
 
-	BUG_ON(proc->files);
-
 	mutex_lock(&binder_procs_lock);
 	hlist_del(&proc->proc_node);
 	mutex_unlock(&binder_procs_lock);
@@ -5290,7 +5350,6 @@ static void binder_deferred_release(struct binder_proc *proc)
 static void binder_deferred_func(struct work_struct *work)
 {
 	struct binder_proc *proc;
-	struct files_struct *files;
 
 	int defer;
 
@@ -5308,23 +5367,11 @@ static void binder_deferred_func(struct work_struct *work)
 		}
 		mutex_unlock(&binder_deferred_lock);
 
-		files = NULL;
-		if (defer & BINDER_DEFERRED_PUT_FILES) {
-			mutex_lock(&proc->files_lock);
-			files = proc->files;
-			if (files)
-				proc->files = NULL;
-			mutex_unlock(&proc->files_lock);
-		}
-
 		if (defer & BINDER_DEFERRED_FLUSH)
 			binder_deferred_flush(proc);
 
 		if (defer & BINDER_DEFERRED_RELEASE)
 			binder_deferred_release(proc); /* frees proc */
-
-		if (files)
-			put_files_struct(files);
 	} while (proc);
 }
 static DECLARE_WORK(binder_deferred_work, binder_deferred_func);
