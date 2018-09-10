@@ -205,8 +205,6 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 	int ret;
 
 	pwm_init_state(drvdata->pwm, &pstate);
-	dev_dbg(&rdev->dev, "%s() is called with %d:%d\n",
-				__func__, req_min_uV, req_max_uV);
 
 	/*
 	 * The dutycycle for min_uV might be greater than the one for max_uV.
