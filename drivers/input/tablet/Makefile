@@ -2,6 +2,7 @@
 # Makefile for the tablet drivers
 #
 
+GCOV_PROFILE := n
 
 obj-$(CONFIG_TABLET_USB_ACECAD)	+= acecad.o
 obj-$(CONFIG_TABLET_USB_AIPTEK)	+= aiptek.o

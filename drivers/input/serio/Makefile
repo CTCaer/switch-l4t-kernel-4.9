@@ -2,6 +2,8 @@
 # Makefile for the input core drivers.
 #
 
+GCOV_PROFILE := n
+
 # Each configuration option enables a list of files.
 
 obj-$(CONFIG_SERIO)		+= serio.o

@@ -4,7 +4,7 @@
 
 # Each configuration option enables a list of files.
 
-GCOV_PROFILE := y
+GCOV_PROFILE := n
 
 ccflags-y += -Werror
 wm97xx-ts-y := wm97xx-core.o
