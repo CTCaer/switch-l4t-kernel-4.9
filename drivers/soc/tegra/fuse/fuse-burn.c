@@ -72,6 +72,7 @@ struct fuse_burn_data {
 	u32 reg_offset;
 	bool is_redundant;
 	bool is_big_endian;
+	bool redundant_war;
 	struct device_attribute attr;
 };
 
@@ -344,6 +345,7 @@ static void tegra_fuse_get_fuse(struct fuse_burn_data *data, u32 *macro_buf)
 	int nbits = data->size_bits;
 	int offset = data->start_offset;
 	bool is_redundant = data->is_redundant;
+	bool redundant_war = data->redundant_war;
 	int bit_position = 0;
 	int i, loops;
 	u32 actual_val, redun_val;
@@ -356,7 +358,8 @@ static void tegra_fuse_get_fuse(struct fuse_burn_data *data, u32 *macro_buf)
 		for (i = 0; i < loops; i++) {
 			if (actual_val & (BIT(start_bit + i)))
 				*macro_buf |= BIT(bit_position);
-			if (is_redundant) {
+			/* If redundant WAR enable, skip redun_val */
+			if (is_redundant && !redundant_war) {
 				if (redun_val & (BIT(start_bit + i)))
 					*macro_buf |= BIT(bit_position);
 			}
@@ -535,6 +538,7 @@ static ssize_t tegra_fuse_calc_h2_code(struct device *dev,
 		.reg_offset = c_off,					\
 		.is_redundant = is_red,					\
 		.is_big_endian = is_be,					\
+		.redundant_war = false,					\
 		.attr.show = tegra_fuse_show,				\
 		.attr.store = tegra_fuse_store,				\
 		.attr.attr.name = #fname,				\
@@ -713,6 +717,16 @@ static int tegra_fuse_burn_probe(struct platform_device *pdev)
 	if (!fuse_dev->hw) {
 		dev_err(&pdev->dev, "No hw data provided\n");
 		return -EINVAL;
+	}
+
+	if (of_property_read_bool(np, "nvidia,redundant-aid-war")) {
+		for (i = 0; i < ARRAY_SIZE(fuse_dev->hw->burn_data) &&
+				fuse_dev->hw->burn_data[i].name != NULL; i++)
+			if (!strcmp(fuse_dev->hw->burn_data[i].name, "aid")) {
+				fuse_dev->hw->burn_data[i].is_redundant = true;
+				fuse_dev->hw->burn_data[i].redundant_war =
+					true;
+			}
 	}
 
 	fuse_dev->pgm_clk = devm_clk_get(&pdev->dev, "clk_m");
