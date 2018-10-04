@@ -473,8 +473,6 @@ int tty_ldisc_receive_buf(struct tty_ldisc *ld, const unsigned char *p,
 		if (count && ld->ops->receive_buf)
 			ld->ops->receive_buf(ld->tty, p, f, count);
 	}
-	if (count > 0)
-		memset(p, 0, count);
 	return count;
 }
 EXPORT_SYMBOL_GPL(tty_ldisc_receive_buf);
@@ -508,11 +506,15 @@ receive_buf(struct tty_port *port, struct tty_buffer *head, int count)
 {
 	unsigned char *p = char_buf_ptr(head, head->read);
 	char	      *f = NULL;
+	int n;
 
 	if (~head->flags & TTYB_NORMAL)
 		f = flag_buf_ptr(head, head->read);
 
-	return port->client_ops->receive_buf(port, p, f, count);
+	n = port->client_ops->receive_buf(port, p, f, count);
+	if (n > 0)
+		memset(p, 0, n);
+	return n;
 }
 
 /**
