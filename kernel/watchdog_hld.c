@@ -15,11 +15,11 @@
 #include <linux/module.h>
 #include <asm/irq_regs.h>
 #include <linux/perf_event.h>
+#include "watchdog_hld.h"
 
 static DEFINE_PER_CPU(bool, hard_watchdog_warn);
 static DEFINE_PER_CPU(bool, watchdog_nmi_touch);
 static DEFINE_PER_CPU(struct perf_event *, watchdog_ev);
-static DEFINE_PER_CPU(unsigned long, hrtimer_interrupts);
 static DEFINE_PER_CPU(unsigned long, hrtimer_interrupts_saved);
 
 #ifdef CONFIG_HARDLOCKUP_DETECTOR_OTHER_CPU
@@ -147,9 +147,51 @@ void watchdog_check_hardlockup_other_cpu(void)
 		per_cpu(hard_watchdog_warn, next_cpu) = false;
 	}
 }
-#endif /* CONFIG_HARDLOCKUP_DETECTOR_OTHER_CPU */
 
-#ifdef CONFIG_HARDLOCKUP_DETECTOR_NMI
+int watchdog_nmi_enable(unsigned int cpu)
+{
+	/*
+	 * The new cpu will be marked online before the first hrtimer interrupt
+	 * runs on it.  If another cpu tests for a hardlockup on the new cpu
+	 * before it has run its first hrtimer, it will get a false positive.
+	 * Touch the watchdog on the new cpu to delay the first check for at
+	 * least 3 sampling periods to guarantee one hrtimer has run on the new
+	 * cpu.
+	 */
+	per_cpu(watchdog_nmi_touch, cpu) = true;
+
+	/*
+	 * Ensure watchdog_nmi_touch is updated for a cpu before any other
+	 * cpu sees it is online.
+	 */
+	smp_wmb();
+	cpumask_set_cpu(cpu, &watchdog_cpus);
+	return 0;
+}
+
+void watchdog_nmi_disable(unsigned int cpu)
+{
+	unsigned int next_cpu = watchdog_next_cpu(cpu);
+
+	/*
+	 * Offlining this cpu will cause the cpu before this one to start
+	 * checking the one after this one.  If this cpu just finished checking
+	 * the next cpu and updating hrtimer_interrupts_saved, and then the
+	 * previous cpu checks it within one sample period, it will trigger a
+	 * false positive.  Touch the watchdog on the next cpu to prevent it.
+	 */
+	if (next_cpu < nr_cpu_ids)
+		per_cpu(watchdog_nmi_touch, next_cpu) = true;
+
+	/*
+	 * Ensure watchdog_nmi_touch is updated for a cpu before any other
+	 * cpu sees it is online.
+	 */
+	smp_wmb();
+	cpumask_clear_cpu(cpu, &watchdog_cpus);
+}
+
+#else
 static struct perf_event_attr wd_hw_attr = {
 	.type		= PERF_TYPE_HARDWARE,
 	.config		= PERF_COUNT_HW_CPU_CYCLES,
@@ -322,52 +364,5 @@ void watchdog_nmi_disable(unsigned int cpu)
 		cpu0_err = 0;
 	}
 }
-#else
-#ifdef CONFIG_HARDLOCKUP_DETECTOR_OTHER_CPU
-static int watchdog_nmi_enable(unsigned int cpu)
-{
-	/*
-	 * The new cpu will be marked online before the first hrtimer interrupt
-	 * runs on it.  If another cpu tests for a hardlockup on the new cpu
-	 * before it has run its first hrtimer, it will get a false positive.
-	 * Touch the watchdog on the new cpu to delay the first check for at
-	 * least 3 sampling periods to guarantee one hrtimer has run on the new
-	 * cpu.
-	 */
-	per_cpu(watchdog_nmi_touch, cpu) = true;
 
-	/*
-	 * Ensure watchdog_nmi_touch is updated for a cpu before any other
-	 * cpu sees it is online.
-	 */
-	smp_wmb();
-	cpumask_set_cpu(cpu, &watchdog_cpus);
-	return 0;
-}
-
-static void watchdog_nmi_disable(unsigned int cpu)
-{
-	unsigned int next_cpu = watchdog_next_cpu(cpu);
-
-	/*
-	 * Offlining this cpu will cause the cpu before this one to start
-	 * checking the one after this one.  If this cpu just finished checking
-	 * the next cpu and updating hrtimer_interrupts_saved, and then the
-	 * previous cpu checks it within one sample period, it will trigger a
-	 * false positive.  Touch the watchdog on the next cpu to prevent it.
-	 */
-	if (next_cpu < nr_cpu_ids)
-		per_cpu(watchdog_nmi_touch, next_cpu) = true;
-
-	/*
-	 * Ensure watchdog_nmi_touch is updated for a cpu before any other
-	 * cpu sees it is online.
-	 */
-	smp_wmb();
-	cpumask_clear_cpu(cpu, &watchdog_cpus);
-}
-#else
-static int watchdog_nmi_enable(unsigned int cpu) { return 0; }
-static void watchdog_nmi_disable(unsigned int cpu) { return; }
 #endif /* CONFIG_HARDLOCKUP_DETECTOR_OTHER_CPU */
-#endif /* CONFIG_HARDLOCKUP_DETECTOR_NMI */
