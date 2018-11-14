@@ -136,7 +136,7 @@ EXPORT_SYMBOL_GPL(serdev_device_write_buf);
 
 int serdev_device_write(struct serdev_device *serdev,
 			const unsigned char *buf, size_t count,
-			unsigned long timeout)
+			long timeout)
 {
 	struct serdev_controller *ctrl = serdev->ctrl;
 	int ret;
@@ -155,13 +155,27 @@ int serdev_device_write(struct serdev_device *serdev,
 
 		buf += ret;
 		count -= ret;
+		
+		if (count == 0)
+			break;
 
-	} while (count &&
-		 (timeout = wait_for_completion_timeout(&serdev->write_comp,
-							timeout)));
-	mutex_unlock(&serdev->write_lock);
-	return ret < 0 ? ret : (count ? -ETIMEDOUT : 0);
-}
+		timeout = wait_for_completion_interruptible_timeout(&serdev->write_comp,
+								    timeout);
+	} while (timeout > 0);
+ 	mutex_unlock(&serdev->write_lock);
+ 
+ 	if (ret < 0)
+ 		return ret;
+ 
+	if (timeout <= 0) {
+		if (timeout == -ERESTARTSYS)
+			return -ERESTARTSYS;
+		else
+			return -ETIMEDOUT;
+	}
+ 
+ 	return count;
+ }
 EXPORT_SYMBOL_GPL(serdev_device_write);
 
 void serdev_device_write_flush(struct serdev_device *serdev)
