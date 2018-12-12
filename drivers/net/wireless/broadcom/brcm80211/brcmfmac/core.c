@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2010 Broadcom Corporation
+ * Copyright (C) 2018 NVIDIA Corporation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -42,6 +43,10 @@
 #include "common.h"
 #include "android.h"
 #include "fwsignal.h"
+
+#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
+#include "nv_common.h"
+#endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */
 
 #define MAX_WAIT_FOR_8021X_TX			msecs_to_jiffies(950)
 
@@ -1531,6 +1536,10 @@ int brcmf_set_power(bool on, unsigned long msec)
 				brcmf_err("Cannot disable wifi regulator\n");
 		}
 	}
+
+#ifdef CPTCFG_BRCMFMAC_NV_GPIO
+	toggle_gpio(on, msec);
+#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
 
 	return 0;
 }

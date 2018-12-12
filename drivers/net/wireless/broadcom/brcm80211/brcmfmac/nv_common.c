@@ -21,8 +21,65 @@
 #include <linux/file.h>
 #include <linux/etherdevice.h>
 #include <linux/of.h>
+#include <linux/ieee80211.h>
 
 #include "debug.h"
+#include "core.h"
+#include "common.h"
+
+#ifdef CPTCFG_BRCMFMAC_NV_GPIO
+#include <linux/of_gpio.h>
+#include <linux/of.h>
+#include <linux/of_irq.h>
+#include <linux/of_platform.h>
+#include <linux/gpio.h>
+#include <linux/platform_device.h>
+
+void setup_gpio(struct platform_device *pdev, bool on) {
+	struct device_node *dt_node;
+	struct device_node *node;
+	int ret;
+
+	brcmf_dbg(INFO, "Enter\n");
+	if (on) {
+		dt_node = of_find_compatible_node(NULL, NULL, "brcm,android-fmac");
+		if (dt_node)
+			brcmf_dbg(INFO, "DT entry found\n");
+
+		if (pdev->dev.of_node) {
+			node = pdev->dev.of_node;
+			brcmf_mp_global.wlan_pwr = of_get_named_gpio(node, "wlan-pwr-gpio", 0);
+			brcmf_mp_global.wlan_rst = of_get_named_gpio(node, "wlan-rst-gpio", 0);
+
+			if (gpio_is_valid(brcmf_mp_global.wlan_pwr)) {
+			       ret = devm_gpio_request(&pdev->dev, brcmf_mp_global.wlan_pwr,
+							"wlan_pwr");
+				if(ret)
+					brcmf_err("Failed to request wlan_pwr gpio\n");
+			}
+
+			if (gpio_is_valid(brcmf_mp_global.wlan_rst)) {
+				ret = devm_gpio_request(&pdev->dev, brcmf_mp_global.wlan_rst,
+						"wlan_rst");
+				if(ret)
+					brcmf_err("Failed to request wlan_rst gpio\n");
+			}
+		}
+	}
+
+}
+
+void toggle_gpio(bool on, unsigned long msec) {
+
+	if (gpio_is_valid(brcmf_mp_global.wlan_pwr))
+		gpio_direction_output(brcmf_mp_global.wlan_pwr, on);
+	if (gpio_is_valid(brcmf_mp_global.wlan_rst))
+		gpio_direction_output(brcmf_mp_global.wlan_rst, on);
+
+	if (msec && on)
+		msleep(msec);
+}
+#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
 
 #ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_MAC
 #define WIFI_MAC_ADDR_FILE "/mnt/factory/wifi/wifi_mac.txt"

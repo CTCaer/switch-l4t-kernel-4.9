@@ -14,6 +14,10 @@
  *
 */
 #ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
+#ifdef CPTCFG_BRCMFMAC_NV_GPIO
+void setup_gpio(struct platform_device *pdev, bool on);
+void toggle_gpio(bool on, unsigned long msec);
+#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
 #ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_MAC
 int wifi_get_mac_addr(unsigned char *buf);
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_MAC */

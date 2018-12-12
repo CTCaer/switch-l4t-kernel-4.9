@@ -1,4 +1,5 @@
 /* Copyright (c) 2014 Broadcom Corporation
+ * Copyright (C) 2018 NVIDIA Corporation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -38,6 +39,12 @@ extern const u8 ALLFFMAC[ETH_ALEN];
  */
 struct brcmf_mp_global_t {
 	char	firmware_path[BRCMF_FW_ALTPATH_LEN];
+#ifdef CPTCFG_BRCMFMAC_NV_GPIO
+	int	irq_num;
+	uint	intr_flags;
+	int	wlan_pwr;
+	int	wlan_rst;
+#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
 };
 
 extern struct brcmf_mp_global_t brcmf_mp_global;
