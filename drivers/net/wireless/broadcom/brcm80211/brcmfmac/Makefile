@@ -2,6 +2,7 @@
 # Makefile fragment for Broadcom 802.11n Networking Device Driver
 #
 # Copyright (c) 2010 Broadcom Corporation
+# Copyright (C) 2018 NVIDIA Corporation. All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -56,3 +57,5 @@ brcmfmac-$(CONFIG_OF) += \
 		of.o
 brcmfmac-$(CPTCFG_BRCMFMAC_ANDROID) += \
 		android.o
+brcmfmac-$(CPTCFG_BRCMFMAC_NV_CUSTOM_FILES) +=\
+		nv_common.o
