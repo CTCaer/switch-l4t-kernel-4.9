@@ -1731,6 +1731,9 @@ brcmf_set_country(struct net_device *ndev, char *country)
 	struct brcmf_fil_country_le ccreq;
 	int err;
 
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+	int i;
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 	brcmf_dbg(TRACE, "set country: %s\n", country);
 
 	if (!wdev)
@@ -1742,6 +1745,21 @@ brcmf_set_country(struct net_device *ndev, char *country)
 	if (strlen(country) != 2)
 		return -EINVAL;
 
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+	for (i = 0; i < brcmf_mp_global.n_country; i++) {
+		if (strncmp(country, brcmf_mp_global.country_code_map[i].country_abbrev, 2) == 0) {
+			ccreq.country_abbrev[0] = brcmf_mp_global.country_code_map[i].country_abbrev[0];
+			ccreq.country_abbrev[1] = brcmf_mp_global.country_code_map[i].country_abbrev[1];
+			ccreq.country_abbrev[2] = 0;
+			ccreq.ccode[0] = brcmf_mp_global.country_code_map[i].ccode[0];
+			ccreq.ccode[1] = brcmf_mp_global.country_code_map[i].ccode[1];
+			ccreq.ccode[2] = 0;
+			ccreq.rev = brcmf_mp_global.country_code_map[i].rev;
+			goto set_country;
+		}
+	}
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+
 	ccreq.country_abbrev[0] = country[0];
 	ccreq.country_abbrev[1] = country[1];
 	ccreq.country_abbrev[2] = 0;
@@ -1749,6 +1767,10 @@ brcmf_set_country(struct net_device *ndev, char *country)
 	ccreq.ccode[1] = country[1];
 	ccreq.ccode[2] = 0;
 	ccreq.rev = -1;
+
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+set_country:
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 
 	brcmf_dbg(INFO, "set country: %s\n", country);
 	err = brcmf_fil_iovar_data_set(ifp, "country", &ccreq, sizeof(ccreq));

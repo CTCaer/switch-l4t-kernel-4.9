@@ -615,6 +615,10 @@ static int __init brcmf_common_pd_probe(struct platform_device *pdev)
 	setup_gpio(pdev, true);
 #endif /* CPTCFG_BRCMFMAC_NV_GPIO */
 
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+	if (wifi_platform_get_country_code_map())
+		brcmf_err("platform country code map is not available\n");
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 	return 0;
 }
 
@@ -634,6 +638,10 @@ static int brcmf_common_pd_remove(struct platform_device *pdev)
 #else
 	setup_gpio(pdev, false);
 #endif /* CPTCFG_BRCMFMAC_NV_GPIO */
+
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+	wifi_platform_free_country_code_map();
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 	return 0;
 }
 

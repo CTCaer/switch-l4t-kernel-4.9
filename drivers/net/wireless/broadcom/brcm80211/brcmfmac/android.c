@@ -64,6 +64,10 @@
 #define CMD_P2P_SET_NOA		"P2P_SET_NOA"
 #define CMD_MIRACAST		"MIRACAST"
 
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+#define CMD_NV_COUNTRY		"NV_COUNTRY"
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+
 #define DEFAULT_WIFI_TURNON_DELAY	200
 
 /* miracast related definition */
@@ -154,7 +158,12 @@ static int brcmf_android_set_country(struct net_device *ndev, char *command,
 	struct brcmf_if *ifp =  netdev_priv(ndev);
 	struct brcmf_pub *drvr = ifp->drvr;
 	struct brcmf_android *android = drvr->android;
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+	char *country_code = command + strlen(CMD_NV_COUNTRY) + 1;
+#else
 	char *country_code = command + strlen(CMD_COUNTRY) + 1;
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+
 	int ret = 0;
 
 	ret = brcmf_set_country(ndev, country_code);
@@ -268,9 +277,17 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 		    brcmf_android_set_suspendmode(ndev, command,
 						  priv_cmd.total_len);
 	} else if (strncmp(command, CMD_COUNTRY, strlen(CMD_COUNTRY)) == 0) {
+#ifndef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
 		bytes_written =
 		    brcmf_android_set_country(ndev, command,
 					      priv_cmd.total_len);
+#else
+		bytes_written = 0;
+	} else if (strncmp(command, CMD_NV_COUNTRY, strlen(CMD_NV_COUNTRY)) == 0) {
+		bytes_written =
+			brcmf_android_set_country(ndev, command,
+						priv_cmd.total_len);
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 	} else if (strncmp(command, CMD_BTCOEXMODE,
 		   strlen(CMD_BTCOEXMODE)) == 0) {
 		bytes_written =

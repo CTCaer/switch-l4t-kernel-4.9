@@ -27,9 +27,11 @@
 #include "core.h"
 #include "common.h"
 
+/* DT node used by all the features */
+struct device_node *node;
+
 #ifdef CPTCFG_BRCMFMAC_NV_GPIO
 #include <linux/of_gpio.h>
-#include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/gpio.h>
@@ -37,7 +39,6 @@
 
 void setup_gpio(struct platform_device *pdev, bool on) {
 	struct device_node *dt_node;
-	struct device_node *node;
 	int ret;
 
 	brcmf_dbg(INFO, "Enter\n");
@@ -213,4 +214,88 @@ int wifi_get_mac_addr(unsigned char *buf)
 	return ret;
 }
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_MAC */
+
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+int wifi_platform_get_country_code_map(void)
+{
+	struct device_node *np_country;
+	struct device_node *child;
+	struct brcmf_fil_country_le *country;
+	int n_country;
+	int ret;
+	int i;
+	const char *strptr;
+
+	np_country = of_get_child_by_name(node, "country_code_map");
+	if (!np_country) {
+		brcmf_err("could not get country_code_map\n");
+		return -1;
+	}
+
+	n_country = of_get_child_count(np_country);
+	if (!n_country) {
+		brcmf_err("n_country\n");
+		return -1;
+	}
+
+	country = kmalloc(n_country * sizeof(struct brcmf_fil_country_le), GFP_KERNEL);
+	if (!country) {
+		brcmf_err("fail to allocate memory\n");
+	       return -1;
+	}
+	memset(country, 0, n_country * sizeof(struct brcmf_fil_country_le));
+
+	i = 0;
+	for_each_child_of_node(np_country, child) {
+		ret = of_property_read_string(child, "iso_abbrev", &strptr);
+		if (ret) {
+			brcmf_err("read error iso_abbrev %s\n", child->name);
+			goto fail;
+		} else {
+			strncpy(country[i].country_abbrev, strptr, 3);
+		}
+
+		ret = of_property_read_string(child, "custom_locale", &strptr);
+		if (ret) {
+		brcmf_err("read error iso_abbrev %s\n", child->name);
+			goto fail;
+		} else {
+			strncpy(country[i].country_abbrev, strptr, 3);
+		}
+
+		ret = of_property_read_string(child, "custom_locale", &strptr);
+		if (ret) {
+			brcmf_err("read error custom_locale %s\n", child->name);
+			goto fail;
+		} else {
+			strncpy(country[i].ccode, strptr, 3);
+		}
+
+		ret = of_property_read_u32(child, "custom_locale_rev", &country[i].rev);
+		if (ret) {
+			brcmf_err("read error custom_locale_rev %s\n", child->name);
+			goto fail;
+		}
+		i++;
+	}
+
+	brcmf_mp_global.country_code_map = country;
+	brcmf_mp_global.n_country = n_country;
+	return 0;
+fail:
+	kfree(country);
+	brcmf_mp_global.country_code_map = NULL;
+	brcmf_mp_global.n_country = 0;
+	return -1;
+}
+
+void wifi_platform_free_country_code_map(void)
+{
+	if (brcmf_mp_global.country_code_map) {
+		kfree(brcmf_mp_global.country_code_map);
+		brcmf_mp_global.country_code_map = NULL;
+	}
+	brcmf_mp_global.n_country = 0;
+}
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */

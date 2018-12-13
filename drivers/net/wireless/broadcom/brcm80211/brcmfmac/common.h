@@ -45,6 +45,10 @@ struct brcmf_mp_global_t {
 	int	wlan_pwr;
 	int	wlan_rst;
 #endif /* CPTCFG_BRCMFMAC_NV_GPIO */
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+	int	n_country;
+	struct brcmf_fil_country_le *country_code_map;
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 };
 
 extern struct brcmf_mp_global_t brcmf_mp_global;
