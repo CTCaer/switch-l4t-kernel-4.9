@@ -18,7 +18,11 @@
 
 ccflags-y += \
 	-Idrivers/net/wireless/broadcom/brcm80211/brcmfmac	\
-	-Idrivers/net/wireless/broadcom/brcm80211/include
+	-Idrivers/net/wireless/broadcom/brcm80211/include	\
+	-DCPTCFG_BRCMFMAC_NV_GPIO \
+	-DCPTCFG_BRCMFMAC_NV_CUSTOM_MAC \
+	-DCPTCFG_BRCMFMAC_NV_CUSTOM_FILES \
+	-DCPTCFG_BRCMFMAC_NV_COUNTRY_CODE
 
 obj-$(CONFIG_BRCMFMAC) += brcmfmac.o
 brcmfmac-objs += \
@@ -56,6 +60,5 @@ brcmfmac-$(CONFIG_BRCM_TRACING) += \
 brcmfmac-$(CONFIG_OF) += \
 		of.o
 brcmfmac-$(CPTCFG_BRCMFMAC_ANDROID) += \
-		android.o
-brcmfmac-$(CPTCFG_BRCMFMAC_NV_CUSTOM_FILES) +=\
+		android.o \
 		nv_common.o

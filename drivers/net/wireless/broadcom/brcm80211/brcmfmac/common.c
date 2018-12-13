@@ -269,15 +269,15 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 	u8 msglen;
 	struct brcmf_bus *bus = ifp->drvr->bus_if;
 
-#ifdef CPTCFG_BRCM_NV_CUSTOM_FILES
-#ifdef CPTCFG_BRCM_NV_CUSTOM_MAC
+#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
+#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_MAC
 	/* retrieve mac addresses */
 	err = wifi_get_mac_addr(ifp->mac_addr);
 	if (err) {
 		brcmf_err("wifi_get_mac_addr failed to get macc address\n");
 	}
-#endif /* CPTCFG_BRCM_NV_CUSTOM_MAC */
-#endif /* CPTCFG_BRCM_NV_CUSTOM_FILES */
+#endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_MAC */
+#endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */
 
 	err = brcmf_fil_iovar_data_get(ifp, "cur_etheraddr", ifp->mac_addr,
 				       sizeof(ifp->mac_addr));
