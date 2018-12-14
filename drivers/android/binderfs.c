@@ -29,7 +29,6 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/user_namespace.h>
-// #include <linux/xarray.h>
 #include <linux/mutex.h>
 #include <uapi/asm-generic/errno-base.h>
 #include <uapi/linux/android/binder.h>
@@ -281,7 +280,6 @@ static long binder_ctl_ioctl(struct file *file, unsigned int cmd,
 static void binderfs_evict_inode(struct inode *inode)
 {
 	struct binder_device *device = inode->i_private;
-	struct binderfs_info *info = BINDERFS_I(inode);
 
 	clear_inode(inode);
 
@@ -539,22 +537,6 @@ static int binderfs_fill_super(struct super_block *sb, void *data, int silent)
 		return -ENOMEM;
 
 	return binderfs_binder_ctl_create(sb);
-}
-
-static int binderfs_test_super(struct super_block *sb, void *data)
-{
-	struct binderfs_info *info = sb->s_fs_info;
-
-	if (info)
-		return info->ipc_ns == data;
-
-	return 0;
-}
-
-static int binderfs_set_super(struct super_block *sb, void *data)
-{
-	sb->s_fs_info = data;
-	return set_anon_super(sb, NULL);
 }
 
 #define SB_SILENT	32768
