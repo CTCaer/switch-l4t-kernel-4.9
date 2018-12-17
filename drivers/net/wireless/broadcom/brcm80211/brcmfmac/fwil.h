@@ -72,6 +72,7 @@
 #define BRCMF_C_GET_BSS_INFO			136
 #define BRCMF_C_GET_GET_PKTCNTS			137
 #define BRCMF_C_GET_BANDLIST			140
+#define BRCMF_C_SET_BAND			142
 #define BRCMF_C_SET_SCB_TIMEOUT			158
 #define BRCMF_C_GET_ASSOCLIST			159
 #define BRCMF_C_GET_PHYLIST			180
@@ -86,6 +87,8 @@
 #define BRCMF_C_SET_SCAN_PASSIVE_TIME		258
 #define BRCMF_C_GET_VAR				262
 #define BRCMF_C_SET_VAR				263
+
+#define BRCMF_C_SET_IM_MODE			311
 
 s32 brcmf_fil_cmd_data_set(struct brcmf_if *ifp, u32 cmd, void *data, u32 len);
 s32 brcmf_fil_cmd_data_get(struct brcmf_if *ifp, u32 cmd, void *data, u32 len);

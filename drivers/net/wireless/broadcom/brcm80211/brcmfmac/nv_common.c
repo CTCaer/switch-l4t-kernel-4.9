@@ -30,6 +30,12 @@
 /* DT node used by all the features */
 struct device_node *node;
 
+#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#include <brcmu_wifi.h>
+#include "fwil.h"
+extern bool builtin_roam_disabled;
+#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+
 #ifdef CPTCFG_BRCMFMAC_NV_GPIO
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
@@ -67,6 +73,10 @@ void setup_gpio(struct platform_device *pdev, bool on) {
 			}
 		}
 	}
+
+#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+	builtin_roam_disabled = device_property_read_bool(&pdev->dev, "builtin-roam-disabled");
+#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 
 }
 
@@ -298,4 +308,164 @@ void wifi_platform_free_country_code_map(void)
 	brcmf_mp_global.n_country = 0;
 }
 #endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+
+#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+int brcmf_set_band(struct net_device *ndev, uint band)
+{
+	int error = -1;
+	struct brcmf_if *ifp =	netdev_priv(ndev);
+
+	if ((band == WLC_BAND_AUTO) || (band == WLC_BAND_5G) || (band == WLC_BAND_2G)) {
+	error = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_BAND, band);
+	//if (!error)
+		//dhd_bus_band_set(dev, band);=>wl_update_wiphybands
+	}
+
+	return error;
+}
+
+int nv_brcmf_android_set_im_mode(struct brcmf_pub *drvr,
+		struct net_device *ndev, char *command, u32 cmd_len)
+{
+	int mode = 0;
+	int error = 0;
+	struct brcmf_if *ifp =	netdev_priv(ndev);
+	int ampdu_mpdu;
+	int ampdu_rx_tid = -1;
+	int disable_interference_mitigation = 0;
+	int auto_interference_mitigation = -1;
+	int i;
+#ifdef VSDB_BW_ALLOCATE_ENABLE
+	int mchan_algo;
+	int mchan_bw;
+#endif /* VSDB_BW_ALLOCATE_ENABLE */
+
+	if (sscanf(command, "%*s %d", &mode) != 1) {
+		brcmf_err("Cannot fetch th mode\n");
+		return -1;
+	}
+set_mode:
+	if (mode == 0) {
+		/* Normal mode: restore everything to default */
+#ifdef CUSTOM_AMPDU_MPDU
+		ampdu_mpdu = CUSTOM_AMPDU_MPDU;
+#else
+		ampdu_mpdu = -1;	/* FW default */
+#endif
+#ifdef VSDB_BW_ALLOCATE_ENABLE
+		mchan_algo = 0; /* Default */
+		mchan_bw = 50;	/* 50:50 */
+#endif /* VSDB_BW_ALLOCATE_ENABLE */
+	} else if (mode == 1) {
+		/* Miracast source mode */
+		ampdu_mpdu = 8; /* for tx latency */
+#ifdef VSDB_BW_ALLOCATE_ENABLE
+		mchan_algo = 1; /* BW based */
+		mchan_bw = 25;	/* 25:75 */
+#endif /* VSDB_BW_ALLOCATE_ENABLE */
+	}
+	else if (mode == 2) {
+		/* Miracast sink/PC Gaming mode */
+		ampdu_mpdu = 8; /* FW default */
+#ifdef VSDB_BW_ALLOCATE_ENABLE
+		mchan_algo = 0; /* Default */
+		mchan_bw = 50;	/* 50:50 */
+#endif /* VSDB_BW_ALLOCATE_ENABLE */
+	} else if (mode == 3) {
+		ampdu_rx_tid = 0;
+		mode = 2;
+		goto set_mode;
+	} else if (mode == 4) {
+		ampdu_rx_tid = 0x7f;
+		mode = 0;
+		goto set_mode;
+	} else if (mode == 5) {
+		/* no interference mitigation 0 */
+		error = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_IM_MODE, 0);
+		if (error) {
+			brcmf_err("Failed to set interference_override: mode:%d, error:%d\n",
+					mode, error);
+			return -1;
+		}
+	} else if (mode == 6) {
+		/* auto interference mitigation -1 */
+		error = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_IM_MODE, -1);
+
+		if (error) {
+			brcmf_err("Failed to set interference_override: mode:%d, error:%d\n",
+					mode, error);
+			return -1;
+		}
+	} else {
+
+	}
+
+	error =  brcmf_fil_iovar_int_set(ifp, "ampdu_mpdu", ampdu_mpdu);
+	if (error) {
+		 brcmf_err("Failed to set ampdu_mpdu: mode:%d, error:%d\n",
+			mode, error);
+		return -1;
+	}
+
+	if (ampdu_rx_tid != -1) {
+		/* structure for per-tid ampdu control */
+		struct ampdu_tid_control {
+			u8 tid;			     /* tid */
+			u8 enable;		     /* enable/disable */
+		};
+		struct ampdu_tid_control atc;
+		for (i = 0; i < 8; i++) { /* One bit each for traffic class CS7 - CS0 */
+			atc.tid = i;
+			atc.enable = (ampdu_rx_tid >> i) & 1;
+		}
+		brcmf_fil_iovar_data_set(ifp, "ampdu_rx_tid", &atc,
+				       sizeof(atc));
+	}
+
+#ifdef VSDB_BW_ALLOCATE_ENABLE
+	if (bcmdhd_vsdb_bw_allocate_enable) {
+		error = brcmf_fil_iovar_int_set(ifp, "mchan_algo", mchan_algo);
+		if (error) {
+			brcmf_error("Failed to set mchan_algo: mode:%d, error:%d\n",
+			mode, error);
+			return -1;
+		}
+
+		error = brcmf_fil_iovar_int_set(ifp, "mchan_bw", mchan_bw);
+		if (error) {
+			brcmf_error("Failed to set mchan_bw: mode:%d, error:%d\n",
+			mode, error);
+			return -1;
+		}
+	}
+#endif /* VSDB_BW_ALLOCATE_ENABLE */
+
+	return error;
+}
+
+int nv_set_roam_mode(struct net_device *dev, char *command, int total_len)
+{
+	int error = 0;
+	int mode = 0;
+	struct brcmf_if *ifp =  netdev_priv(dev);
+
+	if (sscanf(command, "%*s %d", &mode) != 1) {
+		brcmf_err("Failed to get Parameter\n");
+		return -1;
+	}
+
+	error = brcmf_fil_iovar_int_set(ifp, "roam_off", mode);
+	if (error) {
+		brcmf_err("Failed to set roaming Mode %d, error = %d\n",
+			mode, error);
+		return -1;
+	}
+	else {
+		/* Log in IDS */
+		brcmf_err("succeeded to set roaming Mode %d, error = %d\n",
+				mode, error);
+	}
+	return 0;
+}
+#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */

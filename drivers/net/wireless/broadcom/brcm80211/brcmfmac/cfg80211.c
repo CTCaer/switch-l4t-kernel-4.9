@@ -256,6 +256,10 @@ static u8 nl80211_band_to_fwil(enum nl80211_band band)
 	return 0;
 }
 
+#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+extern u32  restrict_bw_20;
+#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+
 static u16 chandef_to_chanspec(struct brcmu_d11inf *d11inf,
 			       struct cfg80211_chan_def *ch)
 {
@@ -308,6 +312,14 @@ static u16 chandef_to_chanspec(struct brcmu_d11inf *d11inf,
 	default:
 		WARN_ON_ONCE(1);
 	}
+
+#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+	/* Override channel bw preference if bw is restricted to 20MHz */
+	if (restrict_bw_20) {
+		brcmf_err("setting bw to 20 MHz \n");
+		ch_inf.bw = BRCMU_CHAN_BW_20;
+	}
+#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 	d11inf->encchspec(&ch_inf);
 
 	return ch_inf.chspec;
@@ -5621,6 +5633,78 @@ static s32 brcmf_get_assoc_ies(struct brcmf_cfg80211_info *cfg,
 
 	return err;
 }
+
+#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+int brcmf_get_max_linkspeed(
+        struct net_device *dev, char *command, int total_len)
+{
+	struct brcmf_if *ifp =  netdev_priv(dev);
+	struct brcmf_cfg80211_info *cfg = ifp->drvr->config;
+	struct brcmf_cfg80211_connect_info *conn_info = cfg_to_conn(cfg);
+	int bytes_written = 0;
+	int i;
+
+	s32 err = brcmf_get_assoc_ies(cfg, ifp);
+
+	if (err) {
+		brcmf_err("could not get assoc info\n");
+		return -1;
+	}
+
+	if (conn_info->resp_ie_len) {
+                        int maxRate = 0;
+                        struct dot11IE {
+                                unsigned char ie;
+                                unsigned char len;
+                                unsigned char data[0];
+                        } *dot11IE = (struct dot11IE *)conn_info->resp_ie;
+                        int remaining = conn_info->resp_ie_len;
+
+                        while (1) {
+                                if (remaining < 2)
+                                        break;
+                                if (remaining < dot11IE->len + 2)
+                                        break;
+                                switch (dot11IE->ie) {
+                                case 0x01: /* supported rates */
+                                case 0x32: /* extended supported rates */
+                                        for (i = 0; i < dot11IE->len; i++) {
+                                                int rate = ((dot11IE->data[i] &
+                                                                0x7f) / 2);
+                                                if (rate > maxRate)
+                                                        maxRate = rate;
+                                        }
+                                        break;
+                                case 0x2d: /* HT capabilities */
+                                case 0x3d: /* HT operation */
+                                        /* 11n supported */
+                                        maxRate = 150; /* Just return an 11n
+                                        rate for now. Could implement detailed
+                                        parser later. */
+                                        break;
+                                default:
+                                        break;
+                                }
+				/* next IE */
+                                dot11IE = (struct dot11IE *)
+                                ((unsigned char *)dot11IE + dot11IE->len + 2);
+                                remaining -= (dot11IE->len + 2);
+			}
+			bytes_written += snprintf(&command[bytes_written],
+                                                total_len, "MaxLinkSpeed %d",
+                                                maxRate);
+			goto done;
+
+	} else {
+		brcmf_err("Zero Length assoc resp ies = %d\n",
+                        conn_info->resp_ie_len);
+			return -1;
+
+	}
+	done:
+		return bytes_written;
+}
+#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 
 static s32
 brcmf_bss_roaming_done(struct brcmf_cfg80211_info *cfg,

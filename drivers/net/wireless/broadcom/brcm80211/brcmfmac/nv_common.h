@@ -14,6 +14,14 @@
  *
 */
 #ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
+#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+int brcmf_get_max_linkspeed(struct net_device *dev,
+		char *command, int total_len);
+int brcmf_set_band(struct net_device *ndev, uint band);
+int nv_brcmf_android_set_im_mode(struct brcmf_pub *drvr,
+		struct net_device *ndev, char *command, u32 cmd_len);
+int nv_set_roam_mode(struct net_device *dev, char *command, int total_len);
+#endif /*CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 #ifdef CPTCFG_BRCMFMAC_NV_GPIO
 void setup_gpio(struct platform_device *pdev, bool on);
 void toggle_gpio(bool on, unsigned long msec);
