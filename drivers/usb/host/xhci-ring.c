@@ -3361,7 +3361,7 @@ int xhci_queue_bulk_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 		addr += trb_buff_len;
 		sent_len = trb_buff_len;
 
-		while (sg && sent_len >= block_len) {
+		while (sg && sent_len >= block_len && num_sgs) {
 			/* New sg entry */
 			--num_sgs;
 			sent_len -= block_len;
