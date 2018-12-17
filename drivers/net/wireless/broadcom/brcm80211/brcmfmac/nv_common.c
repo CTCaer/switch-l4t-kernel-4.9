@@ -332,8 +332,6 @@ int nv_brcmf_android_set_im_mode(struct brcmf_pub *drvr,
 	struct brcmf_if *ifp =	netdev_priv(ndev);
 	int ampdu_mpdu;
 	int ampdu_rx_tid = -1;
-	int disable_interference_mitigation = 0;
-	int auto_interference_mitigation = -1;
 	int i;
 #ifdef VSDB_BW_ALLOCATE_ENABLE
 	int mchan_algo;
@@ -447,7 +445,7 @@ int nv_set_roam_mode(struct net_device *dev, char *command, int total_len)
 {
 	int error = 0;
 	int mode = 0;
-	struct brcmf_if *ifp =  netdev_priv(dev);
+	struct brcmf_if *ifp =	netdev_priv(dev);
 
 	if (sscanf(command, "%*s %d", &mode) != 1) {
 		brcmf_err("Failed to get Parameter\n");
@@ -466,6 +464,66 @@ int nv_set_roam_mode(struct net_device *dev, char *command, int total_len)
 				mode, error);
 	}
 	return 0;
+}
+
+int nv_btcoex_set_btcparams(struct net_device *dev, char *command, int total_len)
+{
+	int bytes_written = 0, ret = -1;
+	u32 param = -1, value = -1;
+	struct brcmf_if *ifp =	netdev_priv(dev);
+
+	struct {
+		__le32 addr;
+		__le32 data;
+	} reg_write;
+
+	if (sscanf(command, "%*s %d %d", &param, &value) != 2) {
+		brcmf_err("%s: command error", __func__);
+		return -2;
+	}
+	brcmf_dbg(TRACE, "%s:btcparams param %d, value %d\n", __func__, param, value);
+	memset(command, 0, total_len);
+	/* copy of function brcmf_btcoex_params_write */
+
+	reg_write.addr = cpu_to_le32(param);
+	reg_write.data = cpu_to_le32(value);
+	ret = brcmf_fil_iovar_data_set(ifp, "btc_params",
+					&reg_write, sizeof(reg_write));
+
+	if (ret != 0) {
+		brcmf_err("%s: failed %d\n", __func__, ret);
+		return ret;
+	}
+	bytes_written = snprintf(command, total_len, "OK");
+	return bytes_written;
+}
+
+int nv_btcoex_get_btcparams(struct net_device *dev, char *command, int total_len)
+{
+	int bytes_written = 0, ret = -1;
+	u32 param = 0, value = -1;
+	struct brcmf_if *ifp =	netdev_priv(dev);
+
+	if (sscanf(command, "%*s %d", &param) != 1) {
+	brcmf_err("%s: command error", __func__);
+		return -2;
+	}
+	brcmf_dbg(TRACE, "%s: btcparams value %d\n", __func__, param);
+	/*copy of function brcmf_btcoex_params_read */
+	value = param;
+	brcmf_fil_iovar_int_get(ifp, "btc_params", &value);
+
+	if (ret != 0) {
+		brcmf_err("%s: failed %d\n", __func__, ret);
+		return ret;
+	}
+	memset(command, 0, total_len);
+	bytes_written = snprintf(command, total_len, "%d", value);
+	return bytes_written;
+}
+int nv_android_mkeep_alive(struct net_device *dev, char *command, int total_len)
+{
+	return -EINVAL;
 }
 #endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */

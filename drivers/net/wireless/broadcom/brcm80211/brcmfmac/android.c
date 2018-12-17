@@ -77,6 +77,10 @@
 #define CMD_RESTRICT_BW_20      "RESTRICT_BW_20"
 #define CMD_MAXLINKSPEED	"MAXLINKSPEED"
 #define CMD_SETROAMMODE		"SETROAMMODE"
+#define CMD_AUTOSLEEP		"AUTOSLEEP" /* only for SDIO based chip */
+#define CMD_SETBTCPARAMS	"SETBTCPARAMS"
+#define CMD_GETBTCPARAMS	"GETBTCPARAMS"
+#define CMD_MKEEP_ALIVE		"MKEEP_ALIVE" /* TODO */
 u32 restrict_bw_20;
 bool builtin_roam_disabled;
 #endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
@@ -361,6 +365,14 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 		bytes_written = brcmf_set_band(ndev, band);
 	} else if (!builtin_roam_disabled && strncmp(command, CMD_SETROAMMODE, strlen(CMD_SETROAMMODE)) == 0) {
 		 bytes_written = nv_set_roam_mode(ndev, command, priv_cmd.total_len);
+	} else if (strncmp(command, CMD_SETBTCPARAMS, strlen(CMD_SETBTCPARAMS)) == 0) {
+		bytes_written = nv_btcoex_set_btcparams(ndev, command, priv_cmd.total_len);
+	} else if (strncmp(command, CMD_GETBTCPARAMS, strlen(CMD_GETBTCPARAMS)) == 0) {
+		bytes_written = nv_btcoex_get_btcparams(ndev, command, priv_cmd.total_len);
+	} else if (strncmp(command, CMD_MKEEP_ALIVE,
+		strlen(CMD_MKEEP_ALIVE)) == 0) {
+		brcmf_err("CMD_MKEEP_ALIVE\n");
+		bytes_written = nv_android_mkeep_alive(ndev, command, priv_cmd.total_len);
 #endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 	} else {
 		brcmf_err("unknown PRIVATE command %s - ignored\n", command);
