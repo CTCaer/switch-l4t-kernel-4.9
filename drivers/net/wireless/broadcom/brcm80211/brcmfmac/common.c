@@ -269,35 +269,9 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 	u8 msglen;
 	struct brcmf_bus *bus = ifp->drvr->bus_if;
 
-#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
 #ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_MAC
-	/* retrieve mac addresses */
-	err = wifi_get_mac_addr(ifp->mac_addr);
-	if (err < 0) {
-		brcmf_err("No custom MAC address found, %d\n", err);
-	} else {
-
-		brcmf_err("%s: setting mac %02x:%02x:%02x:%02x:%02x:%02x\n",
-			__FUNCTION__,
-			ifp->mac_addr[0],
-			ifp->mac_addr[1],
-			ifp->mac_addr[2],
-			ifp->mac_addr[3],
-			ifp->mac_addr[4],
-			ifp->mac_addr[5]);
-
-		err = brcmf_fil_iovar_data_set(ifp,
-			"cur_etheraddr", ifp->mac_addr,
-				ETH_ALEN);
-		if (err < 0) {
-			brcmf_err("Setting custom MAC address failed, %d\n", err);
-		} else {
-			brcmf_dbg(TRACE, "updated to %pM\n", ifp->mac_addr);
-			memcpy(ifp->ndev->dev_addr, ifp->mac_addr, ETH_ALEN);
-		}
-	}
+	nv_set_mac_address(ifp->ndev);
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_MAC */
-#endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */
 
 	err = brcmf_fil_iovar_data_get(ifp, "cur_etheraddr", ifp->mac_addr,
 				       sizeof(ifp->mac_addr));

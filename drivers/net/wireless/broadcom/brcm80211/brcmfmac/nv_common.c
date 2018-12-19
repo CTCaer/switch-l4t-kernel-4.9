@@ -208,7 +208,7 @@ err_out:
 	return ret;
 }
 
-int wifi_get_mac_addr(unsigned char *buf)
+static int wifi_get_mac_addr(unsigned char *buf)
 {
 	int ret = -ENODATA;
 
@@ -223,6 +223,43 @@ int wifi_get_mac_addr(unsigned char *buf)
 
 	return ret;
 }
+
+int nv_set_mac_address(struct net_device *ndev) {
+
+	struct brcmf_if *ifp =  netdev_priv(ndev);
+	int err = 0;
+
+	/* retrieve mac addresses */
+	err = wifi_get_mac_addr(ifp->mac_addr);
+	if (err < 0) {
+		brcmf_err("No custom MAC address found, %d\n", err);
+		return err;
+	} else {
+
+		brcmf_err("%s: setting mac %02x:%02x:%02x:%02x:%02x:%02x\n",
+			__FUNCTION__,
+			ifp->mac_addr[0],
+			ifp->mac_addr[1],
+			ifp->mac_addr[2],
+			ifp->mac_addr[3],
+			ifp->mac_addr[4],
+			ifp->mac_addr[5]);
+
+		err = brcmf_fil_iovar_data_set(ifp,
+			"cur_etheraddr", ifp->mac_addr,
+				ETH_ALEN);
+		if (err < 0) {
+			brcmf_err("Setting custom MAC address failed, %d\n", err);
+			return err;
+		} else {
+			brcmf_dbg(TRACE, "updated to %pM\n", ifp->mac_addr);
+			memcpy(ifp->ndev->dev_addr, ifp->mac_addr, ETH_ALEN);
+		}
+	}
+
+	return err;
+}
+
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_MAC */
 
 #ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE

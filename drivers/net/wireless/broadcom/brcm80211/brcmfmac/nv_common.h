@@ -34,6 +34,6 @@ int wifi_platform_get_country_code_map(void);
 void wifi_platform_free_country_code_map(void);
 #endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 #ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_MAC
-int wifi_get_mac_addr(unsigned char *buf);
+int nv_set_mac_address(struct net_device *ndev);
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_MAC */
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */
