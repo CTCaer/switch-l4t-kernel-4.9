@@ -47,6 +47,7 @@ static const u8 JC_CMD_EXTSEND			= 0x91;
 static const u8 JC_CMD_EXTRET			= 0x92;
 static const u8 JC_CMD_INITRET			= 0x94;
 static const u8 JC_CMD_HANDSHAKE		= 0xA5;
+static const u8 JC_CMD_HORIINPUTREPORT  = 0x9A;
 
 /* Used in handshake */
 static const u8 JC_INIT_MAC			= 0x01;
@@ -279,7 +280,6 @@ static const u32 JC_BTN_ZL	= BIT(23);
 
 static const u8 JC_CRC8_POLY	= 0x8D;
 static const u8 JC_CRC8_INIT	= 0x00;
-static u8 joycon_crc_table[CRC8_TABLE_SIZE];
 
 enum joycon_msg_type {
 	JOYCON_MSG_TYPE_NONE,
@@ -366,6 +366,12 @@ struct joycon_ctlr {
 	u8 mac_addr[6];
 	char *mac_addr_str;
 	bool suspending;
+
+	/* third party protocol */
+	bool is_hori;
+
+	/* used for crc8 computation */
+	u8 joycon_crc_table[CRC8_TABLE_SIZE];
 
 	/* Used for processing led brightness sets */
 	struct joycon_led_queue_item led_queue[JC_LED_QUEUE_SIZE];
@@ -531,10 +537,12 @@ static int joycon_send_packet(struct joycon_ctlr *ctlr, u8 command,
 		}
 		memcpy(packet->header_data, hdata, hdata_size);
 	}
-	packet->crc = crc8(joycon_crc_table, &packet->pad,
-			   sizeof(packet->pad) +
-			   sizeof(packet->command) +
-			   sizeof(packet->header_data), JC_CRC8_INIT);
+
+	if (command == JC_CMD_HANDSHAKE) {
+		packet->crc = JC_CRC8_INIT;
+	} else {
+		packet->crc = crc8(ctlr->joycon_crc_table, &packet->pad, sizeof(packet->pad) + sizeof(packet->command) + sizeof(packet->header_data), JC_CRC8_INIT);
+	}
 
 	if (data)
 		memcpy(packet->data, data, data_size);
@@ -826,6 +834,24 @@ static int joycon_request_calibration(struct joycon_ctlr *ctlr)
 		ctlr->stick_cal_y.min = DFLT_STICK_CAL_MIN;
 	}
 
+	if (ctlr->stick_cal_x.center == 0 &&
+		ctlr->stick_cal_x.max == 0 &&
+		ctlr->stick_cal_x.min == 0) {
+		ctlr->stick_cal_x.center = DFLT_STICK_CAL_CEN;
+		ctlr->stick_cal_x.max = DFLT_STICK_CAL_MAX;
+		ctlr->stick_cal_x.min = DFLT_STICK_CAL_MIN;
+		dev_warn(dev, "Boguous stick calibration for x axis, using defaults");
+	}
+
+	if (ctlr->stick_cal_y.center == 0 &&
+		ctlr->stick_cal_y.max == 0 &&
+		ctlr->stick_cal_y.min == 0) {
+		ctlr->stick_cal_y.center = DFLT_STICK_CAL_CEN;
+		ctlr->stick_cal_y.max = DFLT_STICK_CAL_MAX;
+		ctlr->stick_cal_y.min = DFLT_STICK_CAL_MIN;
+		dev_warn(dev, "Boguous stick calibration for y axis, using defaults");
+	}
+
 	dev_dbg(&ctlr->sdev->dev, "calibration:\n"
 				  "x_c=%d x_max=%d x_min=%d\n"
 				  "y_c=%d y_max=%d y_min=%d\n",
@@ -883,9 +909,11 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 	dev_dbg(&ctlr->sdev->dev, "parse_report()\n");
 
 	spin_lock_irqsave(&ctlr->lock, flags);
-	if (IS_ENABLED(CONFIG_JOYCON_SERDEV_FF) && rep->vibrator_report &&
-	    (msecs - ctlr->rumble_msecs) >= JC_RUMBLE_PERIOD_MS)
-		queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
+	if (!ctlr->is_hori) {
+		if (IS_ENABLED(CONFIG_JOYCON_SERDEV_FF) && rep->vibrator_report &&
+			(msecs - ctlr->rumble_msecs) >= JC_RUMBLE_PERIOD_MS)
+			queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
+	}
 
 	ctlr->last_input_report_msecs = jiffies_to_msecs(jiffies);
 
@@ -1032,6 +1060,25 @@ static int joycon_request_input_report(struct joycon_ctlr *ctlr)
 	return ret;
 }
 
+static int hori_request_input_report(struct joycon_ctlr *ctlr)
+{
+	int ret;
+	u8 hdata[] = {0x01};
+	struct device *dev = &ctlr->sdev->dev;
+
+	dev_dbg(dev, "requesting hori input report\n");
+	/*
+	 * Intentionally don't lock the output mutex. We want to send no matter
+	 * what. We don't want to deadlock with other senders which are waiting
+	 * to be woken up from parse_report().
+	 */
+	ret = joycon_send_packet(ctlr, JC_CMD_HORIINPUTREPORT, hdata, sizeof(hdata),
+				 NULL, 0, HZ/4, false);
+	if (ret)
+		dev_err(dev, "Failed to request hori input report; ret=%d\n", ret);
+	return ret;
+}
+
 static void joycon_disconnect(struct joycon_ctlr *ctlr)
 {
 	struct device *dev = &ctlr->sdev->dev;
@@ -1056,39 +1103,41 @@ static void joycon_disconnect(struct joycon_ctlr *ctlr)
 		ctlr->mac_addr_str = NULL;
 	}
 
-	dev_info(dev, "removing LEDs\n");
-	flush_workqueue(ctlr->detection_queue);
-	/* remove LEDS */
-	for (i = 0; i < JC_NUM_LEDS; i++) {
-		struct led_classdev *led = &ctlr->leds[i];
-		struct led_classdev empty = { 0 };
+	if (!ctlr->is_hori) {
+		dev_info(dev, "removing LEDs\n");
+		flush_workqueue(ctlr->detection_queue);
+		/* remove LEDS */
+		for (i = 0; i < JC_NUM_LEDS; i++) {
+			struct led_classdev *led = &ctlr->leds[i];
+			struct led_classdev empty = { 0 };
 
-		devm_led_classdev_unregister(dev, led);
-		ctlr->leds[i] = empty;
-		if (ctlr->led_names[i]) {
-			devm_kfree(dev, ctlr->led_names[i]);
-			ctlr->led_names[i] = NULL;
+			devm_led_classdev_unregister(dev, led);
+			ctlr->leds[i] = empty;
+			if (ctlr->led_names[i]) {
+				devm_kfree(dev, ctlr->led_names[i]);
+				ctlr->led_names[i] = NULL;
+			}
 		}
-	}
-	if (ctlr->ctlr_type == JOYCON_TYPE_RIGHT) {
-		struct led_classdev empty = { 0 };
+		if (ctlr->ctlr_type == JOYCON_TYPE_RIGHT) {
+			struct led_classdev empty = { 0 };
 
-		devm_led_classdev_unregister(dev, &ctlr->home_led);
-		ctlr->home_led = empty;
-		if (ctlr->home_led_name) {
-			devm_kfree(dev, ctlr->home_led_name);
-			ctlr->home_led_name = NULL;
+			devm_led_classdev_unregister(dev, &ctlr->home_led);
+			ctlr->home_led = empty;
+			if (ctlr->home_led_name) {
+				devm_kfree(dev, ctlr->home_led_name);
+				ctlr->home_led_name = NULL;
+			}
 		}
-	}
 
-	dev_info(dev, "removing power supply\n");
-	/* remove power supply */
-	if (ctlr->battery) {
-		power_supply_unregister(ctlr->battery);
-		ctlr->battery = NULL;
-		if (ctlr->battery_desc_name) {
-			devm_kfree(dev, ctlr->battery_desc_name);
-			ctlr->battery_desc_name = NULL;
+		dev_info(dev, "removing power supply\n");
+		/* remove power supply */
+		if (ctlr->battery) {
+			power_supply_unregister(ctlr->battery);
+			ctlr->battery = NULL;
+			if (ctlr->battery_desc_name) {
+				devm_kfree(dev, ctlr->battery_desc_name);
+				ctlr->battery_desc_name = NULL;
+			}
 		}
 	}
 }
@@ -1138,7 +1187,11 @@ static void joycon_input_poller(struct work_struct *work)
 			dev_err(dev, "failed to re-enter detection\n");
 		return;
 	}
-	joycon_request_input_report(ctlr);
+	if (!ctlr->is_hori) {
+		joycon_request_input_report(ctlr);
+	} else {
+		hori_request_input_report(ctlr);
+	}
 	queue_delayed_work(ctlr->input_queue, &ctlr->input_worker,
 			   msecs_to_jiffies(15));
 }
@@ -1721,6 +1774,23 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 		return -EINVAL;
 	}
 
+	/*
+	   regular controller returns 0x01
+	   hori returns 0x22 or 0x21
+	   if that is not enough we can also check:
+		   mac == 00:00:00:00:00:00
+	*/
+
+	if (packet->data[0] == 0x21) {
+		ctlr->ctlr_type = JOYCON_TYPE_LEFT;
+		ctlr->is_hori = true;
+	} else if (packet->data[0] == 0x22) {
+		ctlr->ctlr_type = JOYCON_TYPE_RIGHT;
+		ctlr->is_hori = true;
+	} else {
+		ctlr->is_hori = false;
+	}
+
 	for (i = 5, j = 1; i >= 0; i--, j++)
 		ctlr->mac_addr[i] = packet->data[j];
 
@@ -1859,23 +1929,34 @@ static int joycon_handshake(struct joycon_ctlr *ctlr)
 	if (ret)
 		goto exit;
 
-	ret = joycon_change_baud(ctlr);
-	if (ret)
-		goto exit_restore_baud;
+	if (!ctlr->is_hori) {
+		ret = joycon_change_baud(ctlr);
+		if (ret)
+			goto exit_restore_baud;
 
-	/* send the unknown magic init sequences */
-	ret = joycon_init_unk(ctlr, JC_INIT_UNK1);
-	if (ret)
-		goto exit_restore_baud;
-	ret = joycon_init_unk(ctlr, JC_INIT_UNK2);
-	if (ret)
-		goto exit_restore_baud;
-	ret = joycon_init_unk3(ctlr);
-	if (ret)
-		goto exit_restore_baud;
+		/* send the unknown magic init sequences */
+		ret = joycon_init_unk(ctlr, JC_INIT_UNK1);
+		if (ret)
+			goto exit_restore_baud;
+		ret = joycon_init_unk(ctlr, JC_INIT_UNK2);
+		if (ret)
+			goto exit_restore_baud;
+		ret = joycon_init_unk3(ctlr);
+		if (ret)
+			goto exit_restore_baud;
+		dev_info(dev, "completed handshake\n");
+		goto exit;
+	} else {
+		ctlr->stick_cal_x.center = DFLT_STICK_CAL_CEN;
+		ctlr->stick_cal_x.max = DFLT_STICK_CAL_MAX;
+		ctlr->stick_cal_x.min = DFLT_STICK_CAL_MIN;
 
-	dev_info(dev, "completed handshake\n");
-	goto exit;
+		ctlr->stick_cal_y.center = DFLT_STICK_CAL_CEN;
+		ctlr->stick_cal_y.max = DFLT_STICK_CAL_MAX;
+		ctlr->stick_cal_y.min = DFLT_STICK_CAL_MIN;
+		dev_info(dev, "completed handshake - HORI\n");
+		goto exit;
+	}
 
 exit_restore_baud:
 	dev_info(dev, "returning to low baudrate for detection\n");
@@ -1895,45 +1976,53 @@ static int joycon_post_handshake(struct joycon_ctlr *ctlr)
 	int baudret;
 	struct device *dev = &ctlr->sdev->dev;
 
-	mutex_lock(&ctlr->output_mutex);
+	if (!ctlr->is_hori) {
+		mutex_lock(&ctlr->output_mutex);
+		/* determine which type of controller this is */
+		ret = joycon_get_ctlr_info(ctlr);
+		if (ret) {
+			mutex_unlock(&ctlr->output_mutex);
+			goto error;
+		}
 
-	/* determine which type of controller this is */
-	ret = joycon_get_ctlr_info(ctlr);
-	if (ret) {
+		/* get controller calibration data, and parse it */
+		ret = joycon_request_calibration(ctlr);
+		if (ret) {
+			/*
+			 * We can function with default calibration, but it may be
+			 * inaccurate. Provide a warning, and continue on.
+			 */
+			dev_warn(dev, "Analog stick positions may be inaccurate\n");
+		}
+
+		/* Enable rumble */
+		ret = joycon_enable_rumble(ctlr, true);
 		mutex_unlock(&ctlr->output_mutex);
-		goto error;
-	}
+		if (ret) {
+			dev_err(dev, "Failed to enable rumble; ret=%d\n", ret);
+			goto error;
+		}
 
-	/* get controller calibration data, and parse it */
-	ret = joycon_request_calibration(ctlr);
-	if (ret) {
-		/*
-		 * We can function with default calibration, but it may be
-		 * inaccurate. Provide a warning, and continue on.
-		 */
-		dev_warn(dev, "Analog stick positions may be inaccurate\n");
-	}
+		/* Initialize the leds */
+		ret = joycon_leds_create(ctlr);
+		if (ret) {
+			dev_err(dev, "Failed to create leds; ret=%d\n", ret);
+			goto error;
+		}
 
-	/* Enable rumble */
-	ret = joycon_enable_rumble(ctlr, true);
-	mutex_unlock(&ctlr->output_mutex);
-	if (ret) {
-		dev_err(dev, "Failed to enable rumble; ret=%d\n", ret);
-		goto error;
-	}
-
-	/* Initialize the leds */
-	ret = joycon_leds_create(ctlr);
-	if (ret) {
-		dev_err(dev, "Failed to create leds; ret=%d\n", ret);
-		goto error;
-	}
-
-	/* Initialize the battery power supply */
-	ret = joycon_power_supply_create(ctlr);
-	if (ret) {
-		dev_err(dev, "Failed to create power_supply; ret=%d\n", ret);
-		goto error;
+		/* Initialize the battery power supply */
+		ret = joycon_power_supply_create(ctlr);
+		if (ret) {
+			dev_err(dev, "Failed to create power_supply; ret=%d\n", ret);
+			goto error;
+		}
+	} else {
+		/* hori doesn't have any of:
+			- home, player leds
+			- rumble
+			- battery
+		   and doesn't seem to require calibration.
+		*/
 	}
 
 	ret = joycon_input_create(ctlr);
@@ -1998,8 +2087,14 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 	dev_dbg(dev, "received uart data of size=%lu\n", len);
 	/* check if this is beginning of new packet */
 	if (!ctlr->partial_pkt_len) {
+		/* obirds workaround (they send some zeros in the beginning). */
+		int j = 0;
+		while (buf[j] == 0 && j < len)
+			j++;
+		packet = (struct joycon_uart_packet *) (buf + j);
+
 		/* Have we received the entire packet? */
-		if (len >= 4 && packet->size + 5 <= len) {
+		if (len-j >= 4 && packet->size + 5 <= len-j) {
 			if (packet->magic[0] != JC_UART_MAGIC_RX_0 ||
 			    packet->magic[1] != JC_UART_MAGIC_RX_1 ||
 			    packet->magic[2] != JC_UART_MAGIC_RX_2) {
@@ -2009,10 +2104,14 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 			}
 			/* Proceed to process the packet without buffering */
 			dev_dbg(dev, "received whole uart packet\n");
+		} else if (len-j > JC_MAX_RESP_SIZE) {
+			/* Toss out this packet if malformed */
+			dev_warn(dev, "received pkt is malformed\n");
+			return len;
 		} else {
 			/* This isn't yet the whole packet. */
-			memcpy(ctlr->partial_pkt, buf, len);
-			ctlr->partial_pkt_len = len;
+			memcpy(ctlr->partial_pkt, buf+j, len-j);
+			ctlr->partial_pkt_len = len-j;
 			return len;
 		}
 	} else {
@@ -2046,6 +2145,9 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 			return len;
 		}
 	}
+
+	/* could check package crc here,
+	   calculation is the same as for sending */
 
 	if (unlikely(mutex_is_locked(&ctlr->output_mutex))) {
 		switch (ctlr->msg_type) {
@@ -2091,6 +2193,8 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 			dev_dbg(dev, "JC_CMD_INITRET\n");
 		} else if (packet->command == JC_CMD_HANDSHAKE) {
 			dev_dbg(dev, "JC_CMD_HANDSHAKE\n");
+		} else if(packet->command == JC_CMD_HORIINPUTREPORT) {
+			joycon_parse_report(ctlr, (struct joycon_input_report*)packet->data);
 		} else {
 			dev_dbg(dev, "Unknown uart cmd=%u\n", packet->command);
 		}
@@ -2114,6 +2218,8 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 	ctlr = devm_kzalloc(dev, sizeof(*ctlr), GFP_KERNEL);
 	if (!ctlr)
 		return -ENOMEM;
+
+	crc8_populate_msb(ctlr->joycon_crc_table, JC_CRC8_POLY);
 
 	ctlr->charger_reg = devm_regulator_get_optional(dev, "charger");
 	if (PTR_ERR(ctlr->charger_reg) == -EPROBE_DEFER)
@@ -2270,7 +2376,6 @@ static struct serdev_device_driver joycon_serdev_driver = {
 int __init joycon_serdev_init(void)
 {
 	printk(KERN_INFO "joycon-serdev: init\n");
-	crc8_populate_lsb(joycon_crc_table, JC_CRC8_POLY);
 	return serdev_device_driver_register(&joycon_serdev_driver);
 }
 
