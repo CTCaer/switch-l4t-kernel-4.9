@@ -106,3 +106,10 @@ config NV_CUSTOM_SYSFS_TEGRA
 	default y
 	---help---
 	  Enable custom sysfs for Tegra platform.
+
+config NV_CUSTOM_CAP
+	bool "NvCap support for Tegra platform"
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable custom NvCap support for Tegra platform.

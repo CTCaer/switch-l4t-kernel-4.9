@@ -71,3 +71,12 @@ ccflags-y += \
 	-I$(backport_srctree)/drivers/net/wireless/broadcom/brcm80211/brcmfmac/nv \
 	-DCPTCFG_NV_CUSTOM_SYSFS_TEGRA
 endif
+
+ifneq ($(CPTCFG_NV_CUSTOM_CAP),)
+brcmfmac-$(CPTCFG_NV_CUSTOM_CAP) += \
+	nv/nv_ping.o \
+	nv/nv_rssi.o \
+	nv/nv_tcpdump.o
+ccflags-y += \
+	-DCPTCFG_NV_CUSTOM_CAP
+endif

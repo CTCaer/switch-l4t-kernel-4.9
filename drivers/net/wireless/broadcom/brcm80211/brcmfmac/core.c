@@ -352,6 +352,9 @@ void brcmf_netif_rx(struct brcmf_if *ifp, struct sk_buff *skb)
 		 * the NET_RX_SOFTIRQ.  This is handled by netif_rx_ni().
 		 */
 		netif_rx_ni(skb);
+#ifdef CPTCFG_NV_CUSTOM_CAP
+	tegra_sysfs_histogram_tcpdump_rx(skb, __func__, __LINE__);
+#endif
 }
 
 static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
@@ -1680,6 +1683,9 @@ netdev_tx_t brcmf_android_netdev_start_xmit(struct sk_buff *skb,
 
 	brcmf_android_wake_unlock(ifp->drvr);
 
+#ifdef CPTCFG_NV_CUSTOM_CAP
+	tegra_sysfs_histogram_tcpdump_tx(skb, __func__, __LINE__);
+#endif
 	return ret;
 }
 
