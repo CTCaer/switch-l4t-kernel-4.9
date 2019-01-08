@@ -143,3 +143,10 @@ config NV_NET_DIAG_TEGRA
 	default y
 	---help---
 	  Enable netdiag support
+
+config NV_CUSTOM_RF_TEST
+	bool "RF test support for Tegra platform"
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable RF test support for Tegra platform.

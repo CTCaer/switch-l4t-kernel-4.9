@@ -108,3 +108,10 @@ brcmfmac-$(CPTCFG_NV_NET_DIAG_TEGRA) += \
 ccflags-y += \
 	-DCPTCFG_BRCMFMAC_NV_NET_DIAG_TEGRA
 endif
+
+ifneq ($(CPTCFG_NV_CUSTOM_RF_TEST),)
+brcmfmac-$(CPTCFG_NV_CUSTOM_RF_TEST) += \
+	nv/nv_rf_test.o
+ccflags-y += \
+	-DCPTCFG_NV_CUSTOM_RF_TEST
+endif
