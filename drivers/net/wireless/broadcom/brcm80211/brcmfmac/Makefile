@@ -87,3 +87,10 @@ brcmfmac-$(CPTCFG_BRCMFMAC_NV_IDS) += \
 ccflags-y += \
     -DCPTCFG_BRCMFMAC_NV_IDS
 endif
+
+ifneq ($(CPTCFG_NV_CUSTOM_SCAN),)
+brcmfmac-$(CPTCFG_NV_CUSTOM_SCAN) += \
+	nv/nv_scan.o
+ccflags-y += \
+	-DCPTCFG_NV_CUSTOM_SCAN
+endif
