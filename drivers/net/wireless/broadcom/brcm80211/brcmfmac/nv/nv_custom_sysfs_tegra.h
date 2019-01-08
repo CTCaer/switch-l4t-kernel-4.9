@@ -343,4 +343,7 @@ tegra_sysfs_resume(void);
 #ifdef CPTCFG_NV_CUSTOM_SCAN
 #include "nv_scan.h"
 #endif
+#ifdef CPTCFG_NV_CUSTOM_RF_TEST
+#include "nv_rf_test.h"
+#endif
 #endif  /* _nv_custom_sysfs_tegra_h_ */

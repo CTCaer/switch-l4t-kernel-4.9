@@ -76,6 +76,24 @@ static struct attribute_group tegra_sysfs_group_histogram = {
 	.attrs = tegra_sysfs_entries_histogram,
 };
 
+/* RF test attributes */
+#ifdef CPTCFG_NV_CUSTOM_RF_TEST
+static DEVICE_ATTR(state, S_IRUGO | S_IWUSR,
+	tegra_sysfs_rf_test_state_show,
+	tegra_sysfs_rf_test_state_store);
+
+static struct attribute *tegra_sysfs_entries_rf_test[] = {
+	&dev_attr_state.attr,
+	NULL,
+};
+
+static struct attribute_group tegra_sysfs_group_rf_test = {
+	.name = "rf_test",
+	.attrs = tegra_sysfs_entries_rf_test,
+};
+#endif
+/* End RF test attributes */
+
 static struct dentry *tegra_debugfs_root;
 
 #ifdef CPTCFG_NV_CUSTOM_SCAN
@@ -99,6 +117,15 @@ tegra_sysfs_register(struct device *dev)
 			__func__, tegra_sysfs_group_histogram.name);
 		goto exit;
 	}
+#ifdef CPTCFG_NV_CUSTOM_RF_TEST
+	rf_test_params_init();
+	err = sysfs_create_group(&dev->kobj, &tegra_sysfs_group_rf_test);
+	if (err) {
+		pr_err("%s: failed to create tegra sysfs group %s\n",
+			__func__, tegra_sysfs_group_rf_test.name);
+		goto cleanup;
+	}
+#endif
 
 	/* create debugfs */
 	tegra_debugfs_root = debugfs_create_dir("bcmdhd_histogram", NULL);
@@ -129,6 +156,10 @@ tegra_sysfs_register(struct device *dev)
 #endif
 	goto exit;
 
+#ifdef CPTCFG_NV_CUSTOM_RF_TEST
+cleanup:
+	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_histogram);
+#endif
 exit:
 	return err;
 }
@@ -155,6 +186,9 @@ tegra_sysfs_unregister(struct device *dev)
 	}
 
 	/* remove sysfs */
+#ifdef CPTCFG_NV_CUSTOM_RF_TEST
+	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_rf_test);
+#endif
 	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_histogram);
 
 #ifdef CPTCFG_BRCMFMAC_NV_IDS
