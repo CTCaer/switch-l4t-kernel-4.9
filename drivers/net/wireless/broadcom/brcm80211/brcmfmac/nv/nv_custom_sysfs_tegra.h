@@ -337,4 +337,7 @@ tegra_sysfs_resume(void);
 #ifdef CPTCFG_NV_CUSTOM_CAP
 #include "nv_cap.h"
 #endif
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#include "nv_logger.h"
+#endif
 #endif  /* _nv_custom_sysfs_tegra_h_ */

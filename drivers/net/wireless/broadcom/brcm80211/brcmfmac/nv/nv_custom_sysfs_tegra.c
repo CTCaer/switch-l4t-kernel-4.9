@@ -84,6 +84,9 @@ tegra_sysfs_register(struct device *dev)
 			&tegra_debugfs_histogram_tcpdump_fops);
 #endif
 	}
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+	dhdlog_sysfs_init(dev);
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 
 	/* start sysfs work */
 #ifdef CPTCFG_NV_CUSTOM_CAP
@@ -118,6 +121,9 @@ tegra_sysfs_unregister(struct device *dev)
 	/* remove sysfs */
 	sysfs_remove_group(&dev->kobj, &tegra_sysfs_group_histogram);
 
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+	dhdlog_sysfs_deinit(dev);
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 }
 
 int tegra_sysfs_wifi_on;
@@ -162,12 +168,14 @@ tegra_sysfs_suspend(void)
 		return;
 
 	/* suspend (stop) sysfs work */
-
 #ifdef CPTCFG_NV_CUSTOM_CAP
 	tegra_sysfs_histogram_tcpdump_work_stop();
 	tegra_sysfs_histogram_rssi_work_stop();
 	tegra_sysfs_histogram_ping_work_stop();
 #endif
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+	nvlogger_suspend_work();
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 }
 
 void
@@ -185,7 +193,9 @@ tegra_sysfs_resume(void)
 	tegra_sysfs_histogram_ping_work_start();
 	tegra_sysfs_histogram_rssi_work_start();
 #endif
-
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+        nvlogger_resume_work();
+#endif /*CPTCFG_BRCMFMAC_NV_IDS */
 }
 
 int
