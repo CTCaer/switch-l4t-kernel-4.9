@@ -63,3 +63,11 @@ brcmfmac-$(CONFIG_OF) += \
 brcmfmac-$(CPTCFG_BRCMFMAC_ANDROID) += \
 		android.o \
 		nv_common.o
+
+ifneq ($(CPTCFG_NV_CUSTOM_SYSFS_TEGRA),)
+brcmfmac-$(CPTCFG_NV_CUSTOM_SYSFS_TEGRA) += \
+	nv/nv_custom_sysfs_tegra.o
+ccflags-y += \
+	-I$(backport_srctree)/drivers/net/wireless/broadcom/brcm80211/brcmfmac/nv \
+	-DCPTCFG_NV_CUSTOM_SYSFS_TEGRA
+endif

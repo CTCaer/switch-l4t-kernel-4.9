@@ -99,3 +99,10 @@ config BRCM_INSMOD_NO_FW
 	  If you say Y here, the FMAC driver will not load firmware when
 	  inserting the module, it only create wlan interface. Firmware
 	  will be loaded when wlan interface up.
+
+config NV_CUSTOM_SYSFS_TEGRA
+	bool "Custom sysfs for Tegra platform"
+	depends on BRCMFMAC
+	default y
+	---help---
+	  Enable custom sysfs for Tegra platform.

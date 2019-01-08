@@ -44,6 +44,10 @@
 #include "common.h"
 #include "android.h"
 
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#include "nv_custom_sysfs_tegra.h"
+#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
+
 #define BRCMF_SCAN_IE_LEN_MAX		2048
 
 #define WPA_OUI				"\x00\x50\xF2"	/* WPA OUI */
@@ -3655,6 +3659,9 @@ static s32 brcmf_cfg80211_resume(struct wiphy *wiphy)
 	/* Android doesn't need below setting */
 	if (brcmf_android_is_attached(ifp->drvr))
 		return 0;
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	tegra_sysfs_resume();
+#endif
 
 	if (cfg->wowl.active) {
 		/* wait for bus resumed */
@@ -3804,6 +3811,9 @@ static s32 brcmf_cfg80211_suspend(struct wiphy *wiphy,
 			/* Configure WOWL parameters */
 			brcmf_configure_wowl(cfg, ifp, wowl);
 	}
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	tegra_sysfs_suspend();
+#endif
 
 exit:
 	/* set cfg80211 pm state to cfg80211 suspended state */

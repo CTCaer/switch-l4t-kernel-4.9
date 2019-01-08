@@ -43,6 +43,9 @@
 #include "cfg80211.h"
 #include "android.h"
 
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#include "nv_custom_sysfs_tegra.h"
+#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
 
 enum brcmf_pcie_state {
 	BRCMFMAC_PCIE_STATE_DOWN,
@@ -1880,8 +1883,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 						    BRCMF_FW_REQ_NV_OPTIONAL,
 					  devinfo->fw_name, devinfo->nvram_name,
 					  brcmf_pcie_setup, domain_nr, bus_nr);
-	if (ret == 0)
+	if (ret == 0) {
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+		tegra_sysfs_bus_register(&pdev->dev);
+#endif
 		return 0;
+	}
 fail_bus:
 #ifdef CPTCFG_BRCM_INSMOD_NO_FW
 	kfree(drvr);
@@ -1912,6 +1919,9 @@ brcmf_pcie_remove(struct pci_dev *pdev)
 	bus = dev_get_drvdata(&pdev->dev);
 	if (bus == NULL)
 		return;
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+		tegra_sysfs_bus_unregister(&pdev->dev);
+#endif
 
 	devinfo = bus->bus_priv.pcie->devinfo;
 
@@ -1982,6 +1992,9 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 
 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
 	brcmf_android_wake_lock_waive(bus->drvr, false);
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	tegra_sysfs_suspend();
+#endif
 
 	return 0;
 }
@@ -2000,6 +2013,9 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
 	devinfo = bus->bus_priv.pcie->devinfo;
 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
 
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	tegra_sysfs_resume();
+#endif
 	/* Check if device is still up and running, if so we are ready */
 	if (brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_INTMASK) != 0) {
 		brcmf_dbg(PCIE, "Try to wakeup device....\n");

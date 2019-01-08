@@ -47,6 +47,9 @@
 #ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
 #include "nv_common.h"
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#include "nv_custom_sysfs_tegra.h"
+#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
 
 #define MAX_WAIT_FOR_8021X_TX			msecs_to_jiffies(950)
 
@@ -58,6 +61,10 @@
 #define MAX_WAIT_FOR_BUS_START			msecs_to_jiffies(60000)
 struct brcmf_pub *g_drvr;
 #endif
+
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+extern struct net_device *dhd_custom_sysfs_tegra_histogram_stat_netdev;
+#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
 
 static int brcmf_android_netdev_open(struct net_device *ndev);
 static int brcmf_android_netdev_stop(struct net_device *ndev);
@@ -552,6 +559,14 @@ int brcmf_net_attach(struct brcmf_if *ifp, bool rtnl_locked)
 	}
 
 	brcmf_dbg(INFO, "%s: Broadcom Dongle Host Driver\n", ndev->name);
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	if (ifp->bsscfgidx == 0) {
+		dhd_custom_sysfs_tegra_histogram_stat_netdev = ndev;
+		if (tegra_sysfs_register(&ndev->dev) < 0)
+			brcmf_dbg(INFO, "%s: tegra_sysfs_register() failed\n",
+				__func__);
+	}
+#endif
 	return 0;
 
 fail:
@@ -738,6 +753,9 @@ static void brcmf_del_if(struct brcmf_pub *drvr, s32 bsscfgidx,
 
 	if (ifp->ndev) {
 		if (bsscfgidx == 0) {
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+			tegra_sysfs_unregister(&ifp->ndev->dev);
+#endif
 			if (ifp->ndev->netdev_ops == &brcmf_netdev_ops_pri) {
 				rtnl_lock();
 				brcmf_netdev_stop(ifp->ndev);
