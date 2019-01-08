@@ -334,4 +334,7 @@ tegra_sysfs_suspend(void);
 void
 tegra_sysfs_resume(void);
 
+#ifdef CPTCFG_NV_CUSTOM_CAP
+#include "nv_cap.h"
+#endif
 #endif  /* _nv_custom_sysfs_tegra_h_ */
