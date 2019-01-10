@@ -32,7 +32,7 @@
 #include <linux/mutex.h>
 #include <uapi/asm-generic/errno-base.h>
 #include <uapi/linux/android/binder.h>
-#include <uapi/linux/android/binder_ctl.h>
+#include <uapi/linux/android/binderfs.h>
 
 #include "binder_internal.h"
 
