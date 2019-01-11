@@ -41,6 +41,8 @@
 #define INODE_OFFSET 3
 #define INTSTRLEN 21
 #define BINDERFS_MAX_MINOR (1U << MINORBITS)
+/* Ensure that the initial ipc namespace always has devices available. */
+#define BINDERFS_MAX_MINOR_CAPPED (BINDERFS_MAX_MINOR - 4)
 
 static struct vfsmount *binderfs_mnt;
 
@@ -130,6 +132,7 @@ static int binderfs_binder_device_create(struct inode *ref_inode,
 	struct inode *inode = NULL;
 	struct super_block *sb = ref_inode->i_sb;
 	struct binderfs_info *info = sb->s_fs_info;
+	bool use_reserve = (info->ipc_ns == &init_ipc_ns);
 
 	/* Reserve new minor number for the new device. */
 	mutex_lock(&binderfs_minors_mutex);
@@ -139,7 +142,9 @@ static int binderfs_binder_device_create(struct inode *ref_inode,
 	if (minor < 0)
 =======
 	if (++info->device_count <= info->mount_opts.max)
-		minor = ida_alloc_max(&binderfs_minors, BINDERFS_MAX_MINOR,
+		minor = ida_alloc_max(&binderfs_minors,
+				      use_reserve ? BINDERFS_MAX_MINOR :
+						    BINDERFS_MAX_MINOR_CAPPED,
 				      GFP_KERNEL);
 	else
 		minor = -ENOSPC;
