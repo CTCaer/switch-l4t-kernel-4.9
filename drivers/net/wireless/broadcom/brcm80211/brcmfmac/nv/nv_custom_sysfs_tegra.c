@@ -44,11 +44,20 @@ static struct file_operations tegra_debugfs_histogram_tcpdump_fops = {
 };
 #endif
 
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+static DEVICE_ATTR(scan, S_IRUGO | S_IWUSR,
+	tegra_sysfs_histogram_scan_show,
+	tegra_sysfs_histogram_scan_store);
+#endif
+
 static struct attribute *tegra_sysfs_entries_histogram[] = {
 #ifdef CPTCFG_NV_CUSTOM_CAP
 	&dev_attr_ping.attr,
 	&dev_attr_rssi.attr,
 	&dev_attr_tcpdump.attr,
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	&dev_attr_scan.attr,
+#endif
 #endif
 	NULL,
 };
@@ -59,6 +68,13 @@ static struct attribute_group tegra_sysfs_group_histogram = {
 };
 
 static struct dentry *tegra_debugfs_root;
+
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+static struct file_operations tegra_debugfs_histogram_scan_fops = {
+	.read = tegra_debugfs_histogram_scan_read,
+	.write = tegra_debugfs_histogram_scan_write,
+};
+#endif
 
 int
 tegra_sysfs_register(struct device *dev)
@@ -83,6 +99,11 @@ tegra_sysfs_register(struct device *dev)
 			tegra_debugfs_root, (void *) 0,
 			&tegra_debugfs_histogram_tcpdump_fops);
 #endif
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+		debugfs_create_file("scan", S_IRUGO,
+			tegra_debugfs_root, (void *) 0,
+			&tegra_debugfs_histogram_scan_fops);
+#endif
 	}
 #ifdef CPTCFG_BRCMFMAC_NV_IDS
 	dhdlog_sysfs_init(dev);
@@ -93,6 +114,9 @@ tegra_sysfs_register(struct device *dev)
 	tegra_sysfs_histogram_ping_work_start();
 	tegra_sysfs_histogram_rssi_work_start();
 	tegra_sysfs_histogram_tcpdump_work_start();
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	tegra_sysfs_histogram_scan_work_start();
+#endif
 #endif
 	goto exit;
 
@@ -106,6 +130,9 @@ tegra_sysfs_unregister(struct device *dev)
 	pr_info("%s\n", __func__);
 
 	/* stop sysfs work */
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	tegra_sysfs_histogram_scan_work_stop();
+#endif
 #ifdef CPTCFG_NV_CUSTOM_CAP
 	tegra_sysfs_histogram_tcpdump_work_stop();
 	tegra_sysfs_histogram_rssi_work_stop();
@@ -140,6 +167,9 @@ tegra_sysfs_on(void)
 	tegra_sysfs_histogram_rssi_work_start();
 	tegra_sysfs_histogram_tcpdump_work_start();
 #endif
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	tegra_sysfs_histogram_scan_work_start();
+#endif
 
 }
 
@@ -155,6 +185,9 @@ tegra_sysfs_off(void)
 	tegra_sysfs_histogram_tcpdump_work_stop();
 	tegra_sysfs_histogram_rssi_work_stop();
 #endif
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	tegra_sysfs_histogram_scan_work_stop();
+#endif
 
 }
 
@@ -168,6 +201,10 @@ tegra_sysfs_suspend(void)
 		return;
 
 	/* suspend (stop) sysfs work */
+
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	tegra_sysfs_histogram_scan_work_stop();
+#endif
 #ifdef CPTCFG_NV_CUSTOM_CAP
 	tegra_sysfs_histogram_tcpdump_work_stop();
 	tegra_sysfs_histogram_rssi_work_stop();
@@ -196,6 +233,10 @@ tegra_sysfs_resume(void)
 #ifdef CPTCFG_BRCMFMAC_NV_IDS
         nvlogger_resume_work();
 #endif /*CPTCFG_BRCMFMAC_NV_IDS */
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	tegra_sysfs_histogram_scan_work_start();
+#endif
+
 }
 
 int

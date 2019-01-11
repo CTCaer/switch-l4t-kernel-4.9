@@ -48,6 +48,10 @@
 #include "nv_custom_sysfs_tegra.h"
 #endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
 
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+#include "nv_custom_sysfs_tegra.h"
+#endif /* CPTCFG_NV_CUSTOM_SCAN */
+
 #define BRCMF_SCAN_IE_LEN_MAX		2048
 
 #define WPA_OUI				"\x00\x50\xF2"	/* WPA OUI */
@@ -799,10 +803,15 @@ s32 brcmf_notify_escan_complete(struct brcmf_cfg80211_info *cfg,
 		struct cfg80211_scan_info info = {
 			.aborted = aborted,
 		};
-
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+		TEGRA_SCAN_DONE(scan_request, false)
+#endif
+		cfg80211_scan_done(scan_request, &info);
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+		skip_cfg80211_scan_done:
+#endif
 		brcmf_dbg(SCAN, "ESCAN Completed scan: %s\n",
 			  aborted ? "Aborted" : "Done");
-		cfg80211_scan_done(scan_request, &info);
 	}
 	if (!test_and_clear_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status))
 		brcmf_dbg(SCAN, "Scan complete, probably P2P scan\n");
@@ -1250,6 +1259,24 @@ brcmf_cfg80211_scan(struct wiphy *wiphy, struct cfg80211_scan_request *request)
 	vif = container_of(request->wdev, struct brcmf_cfg80211_vif, wdev);
 	if (!check_vif_up(vif))
 		return -EIO;
+
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	{
+		int status = wifi_scan_request(brcmf_cfg80211_scan,
+			wiphy, request);
+		if (status > 0) {
+			WIFI_SCAN_DEBUG("%s: substituted wifi scan policy"
+				" with %d rule(s)\n",
+				__func__, status);
+			return (0);
+		} else if (status < 0) {
+			WIFI_SCAN_DEBUG("%s: wifi scan policy active\n",
+				__func__);
+			return (status);
+		}
+		/* continue scan request if status is 0 */
+	}
+#endif
 
 	err = brcmf_cfg80211_escan(wiphy, vif, request, NULL);
 
