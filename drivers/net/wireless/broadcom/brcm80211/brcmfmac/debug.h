@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2010 Broadcom Corporation
+ * Copyright (C) 2019 NVIDIA Corporation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,6 +19,9 @@
 #define BRCMFMAC_DEBUG_H
 
 #include <linux/net.h>	/* net_ratelimit() */
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#include "nv_logger.h"
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 
 /* message levels */
 #define BRCMF_TRACE_VAL		0x00000002
@@ -52,6 +56,16 @@ void __brcmf_err(const char *func, const char *fmt, ...);
 /* Macro for error messages. When debugging / tracing the driver all error
  * messages are important to us.
  */
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#define brcmf_err(fmt, ...)						\
+	do {								\
+		if (IS_ENABLED(CONFIG_BRCMDBG) ||			\
+		    IS_ENABLED(CONFIG_BRCM_TRACING) ||			\
+		    net_ratelimit())					\
+			__brcmf_err(__func__, fmt, ##__VA_ARGS__);	\
+		nv_sprintf(fmt, ##__VA_ARGS__);				\
+	} while (0)
+#else
 #define brcmf_err(fmt, ...)						\
 	do {								\
 		if (IS_ENABLED(CONFIG_BRCMDBG) ||			\
@@ -59,6 +73,11 @@ void __brcmf_err(const char *func, const char *fmt, ...);
 		    net_ratelimit())					\
 			__brcmf_err(__func__, fmt, ##__VA_ARGS__);	\
 	} while (0)
+#endif /*CPTCFG_BRCMFMAC_NV_IDS */
+
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#define NV_FILELOG_ON()         (enable_file_logging)
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 
 #if defined(DEBUG) || defined(CONFIG_BRCM_TRACING)
 

@@ -113,3 +113,10 @@ config NV_CUSTOM_CAP
 	default y
 	---help---
 	  Enable custom NvCap support for Tegra platform.
+
+config BRCMFMAC_NV_IDS
+	bool "Nv IDS support for Tegra platform"
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable NV IDS support for Tegra platform.

@@ -2,7 +2,7 @@
 # Makefile fragment for Broadcom 802.11n Networking Device Driver
 #
 # Copyright (c) 2010 Broadcom Corporation
-# Copyright (C) 2018 NVIDIA Corporation. All rights reserved.
+# Copyright (C) 2018-2019 NVIDIA Corporation. All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -18,6 +18,7 @@
 
 ccflags-y += \
 	-Idrivers/net/wireless/broadcom/brcm80211/brcmfmac	\
+	-Idrivers/net/wireless/broadcom/brcm80211/brcmfmac/nv	\
 	-Idrivers/net/wireless/broadcom/brcm80211/include	\
 	-DCPTCFG_BRCMFMAC_NV_GPIO \
 	-DCPTCFG_BRCMFMAC_NV_CUSTOM_MAC \
@@ -68,7 +69,6 @@ ifneq ($(CPTCFG_NV_CUSTOM_SYSFS_TEGRA),)
 brcmfmac-$(CPTCFG_NV_CUSTOM_SYSFS_TEGRA) += \
 	nv/nv_custom_sysfs_tegra.o
 ccflags-y += \
-	-I$(backport_srctree)/drivers/net/wireless/broadcom/brcm80211/brcmfmac/nv \
 	-DCPTCFG_NV_CUSTOM_SYSFS_TEGRA
 endif
 
@@ -79,4 +79,11 @@ brcmfmac-$(CPTCFG_NV_CUSTOM_CAP) += \
 	nv/nv_tcpdump.o
 ccflags-y += \
 	-DCPTCFG_NV_CUSTOM_CAP
+endif
+
+ifneq ($(CPTCFG_BRCMFMAC_NV_IDS),)
+brcmfmac-$(CPTCFG_BRCMFMAC_NV_IDS) += \
+    nv/nv_logger.o
+ccflags-y += \
+    -DCPTCFG_BRCMFMAC_NV_IDS
 endif
