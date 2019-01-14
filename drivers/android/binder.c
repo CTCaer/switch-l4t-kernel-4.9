@@ -654,6 +654,7 @@ struct binder_transaction {
 	struct binder_priority	saved_priority;
 	bool    set_priority_called;
 	kuid_t	sender_euid;
+	struct list_head fd_fixups;
 	binder_uintptr_t security_ctx;
 	/**
 	 * @lock:  protects @from, @to_proc, and @to_thread
@@ -3151,6 +3152,20 @@ static void binder_transaction(struct binder_proc *proc,
 		}
 	}
 
+	if (target_node && target_node->txn_security_ctx) {
+		u32 secid;
+
+		security_task_getsecid(proc->tsk, &secid);
+		ret = security_secid_to_secctx(secid, &secctx, &secctx_sz);
+		if (ret) {
+			return_error = BR_FAILED_REPLY;
+			return_error_param = ret;
+			return_error_line = __LINE__;
+			goto err_get_secctx_failed;
+		}
+		extra_buffers_size += ALIGN(secctx_sz, sizeof(u64));
+	}
+
 	trace_binder_transaction(reply, t, target_node);
 
 	t->buffer = binder_alloc_new_buf(&target_proc->alloc, tr->data_size,
@@ -4330,6 +4345,34 @@ retry:
 			trd->sender_pid = 0;
 		}
 
+		ret = binder_apply_fd_fixups(t);
+		if (ret) {
+			struct binder_buffer *buffer = t->buffer;
+			bool oneway = !!(t->flags & TF_ONE_WAY);
+			int tid = t->debug_id;
+
+			if (t_from)
+				binder_thread_dec_tmpref(t_from);
+			buffer->transaction = NULL;
+			binder_cleanup_transaction(t, "fd fixups failed",
+						   BR_FAILED_REPLY);
+			binder_free_buf(proc, buffer);
+			binder_debug(BINDER_DEBUG_FAILED_TRANSACTION,
+				     "%d:%d %stransaction %d fd fixups failed %d/%d, line %d\n",
+				     proc->pid, thread->pid,
+				     oneway ? "async " :
+					(cmd == BR_REPLY ? "reply " : ""),
+				     tid, BR_FAILED_REPLY, ret, __LINE__);
+			if (cmd == BR_REPLY) {
+				cmd = BR_FAILED_REPLY;
+				if (put_user(cmd, (uint32_t __user *)ptr))
+					return -EFAULT;
+				ptr += sizeof(uint32_t);
+				binder_stat_br(proc, thread, cmd);
+				break;
+			}
+			continue;
+		}
 		trd->data_size = t->buffer->data_size;
 		trd->offsets_size = t->buffer->offsets_size;
 		trd->data.ptr.buffer = (binder_uintptr_t)
