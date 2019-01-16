@@ -14,6 +14,7 @@
  *
 */
 #ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
+#include <linux/platform_device.h>
 #ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
 int brcmf_get_max_linkspeed(struct net_device *dev,
 		char *command, int total_len);

@@ -16,7 +16,16 @@
  *
  */
 
+#include "debug.h"
 #include "nv_custom_sysfs_tegra.h"
+
+#ifdef  CPTCFG_BRCMFMAC_NV_NET_BW_EST_TEGRA
+#include "dhd_custom_net_bw_est_tegra.h"
+#endif
+
+#ifdef  CPTCFG_BRCMFMAC_NV_NET_DIAG_TEGRA
+#include "dhd_custom_net_diag_tegra.h"
+#endif
 
 struct net_device *dhd_custom_sysfs_tegra_histogram_stat_netdev;
 int lp0_logs_enable = 1;
@@ -243,6 +252,22 @@ int
 tegra_sysfs_bus_register(struct device *dev)
 {
 	int err = -1;
+#ifdef  CPTCFG_BRCMFMAC_NV_NET_BW_EST_TEGRA
+	err = tegra_net_bw_est_register(dev);
+	if (err < 0) {
+		brcmf_err("%s: tegra_net_bw_est_register() failed\n", __func__);
+	}
+#endif
+
+#ifdef  CPTCFG_BRCMFMAC_NV_NET_DIAG_TEGRA
+	err = tegra_net_diag_register(dev);
+	if (err < 0) {
+		brcmf_err("%s: tegra_net_diag_register() failed\n", __func__);
+#ifdef  CPTCFG_BRCMFMAC_NV_NET_BW_EST_TEGRA
+		tegra_net_bw_est_unregister(dev);
+#endif
+	}
+#endif
 	/* create bus sysfs here */
 
 	return err;
@@ -252,5 +277,10 @@ void
 tegra_sysfs_bus_unregister(struct device *dev)
 {
 	/* remove bus sysfs here */
-
+#ifdef  CPTCFG_BRCMFMAC_NV_NET_DIAG_TEGRA
+	tegra_net_diag_unregister(dev);
+#endif
+#ifdef  CPTCFG_BRCMFMAC_NV_NET_BW_EST_TEGRA
+	tegra_net_bw_est_unregister(dev);
+#endif
 }
