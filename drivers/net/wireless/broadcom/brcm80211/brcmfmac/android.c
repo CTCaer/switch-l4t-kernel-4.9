@@ -408,6 +408,9 @@ int brcmf_android_attach(struct brcmf_pub *drvr)
 	drvr->android = android;
 	android->drvr = drvr;
 	android->wifi_on = true;
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	tegra_sysfs_on();
+#endif
 	android->wifi_reset = false;
 	android->init_done = false;
 	android->wakelock_counter = 0;

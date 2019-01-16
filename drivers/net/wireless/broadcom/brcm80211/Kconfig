@@ -127,3 +127,19 @@ config NV_CUSTOM_SCAN
 	default y
 	---help---
 	  Enable custom scan optimization support for Tegra platform.
+
+config NV_NET_BW_EST_TEGRA
+	bool "bandwidth estimation support for netdiag"
+	depends on NV_NET_DIAG_TEGRA
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable bandwidth estimation support for netdiag
+
+config NV_NET_DIAG_TEGRA
+	bool "netdiag support"
+	depends on BRCMFMAC_ANDROID
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable netdiag support

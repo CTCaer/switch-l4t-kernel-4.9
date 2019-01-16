@@ -94,3 +94,17 @@ brcmfmac-$(CPTCFG_NV_CUSTOM_SCAN) += \
 ccflags-y += \
 	-DCPTCFG_NV_CUSTOM_SCAN
 endif
+
+ifneq ($(CPTCFG_NV_NET_BW_EST_TEGRA),)
+brcmfmac-$(CPTCFG_NV_NET_BW_EST_TEGRA) += \
+	nv/dhd_custom_net_bw_est_tegra.o
+ccflags-y += \
+	-DCPTCFG_BRCMFMAC_NV_NET_BW_EST_TEGRA
+endif
+
+ifneq ($(CPTCFG_NV_NET_DIAG_TEGRA),)
+brcmfmac-$(CPTCFG_NV_NET_DIAG_TEGRA) += \
+		nv/dhd_custom_net_diag_tegra.o
+ccflags-y += \
+	-DCPTCFG_BRCMFMAC_NV_NET_DIAG_TEGRA
+endif
