@@ -4496,6 +4496,27 @@ exit:
 	return err;
 }
 
+s32 brcmf_cfg80211_set_ap_wps_p2p_ie(struct brcmf_cfg80211_vif *vif,
+				     char *buf, int len, enum brcmf_pktype type)
+{
+	s32 ret = 0;
+	if (!test_bit(BRCMF_VIF_STATUS_AP_CREATED, &vif->sme_state)) {
+		/* Vendor IEs should be set to FW
+		 * after SoftAP interface is brought up
+		 */
+		brcmf_dbg(TRACE, "Skipping set IE since AP is not up\n");
+		goto exit;
+	} else  {
+		brcmf_dbg(TRACE, "AP is up trying to set mgmt ie\n");
+		if (type) {
+			ret = brcmf_vif_set_mgmt_ie(vif,
+						    type, buf, len);
+		}
+	}
+exit:
+	return ret;
+}
+
 s32 brcmf_vif_clear_mgmt_ies(struct brcmf_cfg80211_vif *vif)
 {
 	s32 pktflags[] = {

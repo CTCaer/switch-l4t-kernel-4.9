@@ -32,6 +32,7 @@
 #include <linux/wakelock.h>
 #include <defs.h>
 #include <brcmu_utils.h>
+#include <brcmu_wifi.h>
 #include "core.h"
 #include "android.h"
 #include "cfg80211.h"
@@ -81,6 +82,7 @@
 #define CMD_MAXLINKSPEED	"MAXLINKSPEED"
 #define CMD_SETROAMMODE		"SETROAMMODE"
 #define CMD_AUTOSLEEP		"AUTOSLEEP" /* only for SDIO based chip */
+#define CMD_SET_WPS_P2PIE    	"SET_AP_WPS_P2P_IE"
 #define CMD_SETBTCPARAMS	"SETBTCPARAMS"
 #define CMD_GETBTCPARAMS	"GETBTCPARAMS"
 #define CMD_MKEEP_ALIVE		"MKEEP_ALIVE" /* TODO */
@@ -281,6 +283,10 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 	int bytes_written = 0;
 	struct brcmf_android *android = drvr->android;
 	struct brcmf_android_wifi_priv_cmd priv_cmd;
+	struct brcmf_if *ifp = netdev_priv(ndev);
+	struct wireless_dev *wdev = ndev->ieee80211_ptr;
+	struct wiphy *wiphy = NULL;
+	int skip = 0;
 #ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
 	int val;
 #endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
@@ -296,6 +302,9 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 		brcmf_err("ignore cmd \"%s\" - iface is down\n", command);
 		return 0;
 	}
+	if (!wdev)
+		return -ENODEV;
+	wiphy = wdev->wiphy;
 
 	memset(&priv_cmd, 0, sizeof(struct brcmf_android_wifi_priv_cmd));
 	priv_cmd.total_len = cmd_len;
@@ -345,6 +354,12 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 		bytes_written =
 		    brcmf_android_set_miracast(ndev, command,
 					       priv_cmd.total_len);
+	} else if (strncmp(command, CMD_SET_WPS_P2PIE,
+		   strlen(CMD_SET_WPS_P2PIE)) == 0) {
+		skip = strlen(CMD_SET_WPS_P2PIE) + 3;
+		bytes_written =
+			brcmf_cfg80211_set_ap_wps_p2p_ie(ifp->vif, command + skip,
+						(priv_cmd.total_len - skip), *(command + skip - 2) - '0');
 	} else if (strncmp(command, CMD_BTCOEXSCAN_START,
 		   strlen(CMD_BTCOEXSCAN_START)) == 0) {
 		//TODO: Handle BTCOEXSCAN_START command
@@ -359,7 +374,7 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 						priv_cmd.total_len);
 	} else if (strncmp(command, CMD_UPDATE_CHANNEL_LIST,
 			strlen(CMD_UPDATE_CHANNEL_LIST)) == 0) {
-		//brcmf_setup_wiphybands
+		brcmf_setup_wiphybands(wiphy);
 	} else if (strncmp(command, CMD_RESTRICT_BW_20, strlen(CMD_GETBAND)) == 0) {
 		bytes_written = -1;
 		val = *(command + strlen(CMD_RESTRICT_BW_20) + 1) - '0';
@@ -369,9 +384,6 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 		}
 	} else if (strncmp(command, CMD_MAXLINKSPEED, strlen(CMD_MAXLINKSPEED))== 0) {
 		bytes_written = brcmf_get_max_linkspeed(ndev, command, priv_cmd.total_len);
-	} else if (strncmp(command, CMD_SETBAND, strlen(CMD_SETBAND)) == 0) {
-		uint band = *(command + strlen(CMD_SETBAND) + 1) - '0';
-		bytes_written = brcmf_set_band(ndev, band);
 	} else if (!builtin_roam_disabled && strncmp(command, CMD_SETROAMMODE, strlen(CMD_SETROAMMODE)) == 0) {
 		 bytes_written = nv_set_roam_mode(ndev, command, priv_cmd.total_len);
 	} else if (strncmp(command, CMD_SETBTCPARAMS, strlen(CMD_SETBTCPARAMS)) == 0) {
@@ -380,8 +392,7 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 		bytes_written = nv_btcoex_get_btcparams(ndev, command, priv_cmd.total_len);
 	} else if (strncmp(command, CMD_MKEEP_ALIVE,
 		strlen(CMD_MKEEP_ALIVE)) == 0) {
-		brcmf_err("CMD_MKEEP_ALIVE\n");
-		bytes_written = nv_android_mkeep_alive(ndev, command, priv_cmd.total_len);
+		brcmf_err("CMD_MKEEP_ALIVE not supported\n");
 #endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 	} else {
 		brcmf_err("unknown PRIVATE command %s - ignored\n", command);

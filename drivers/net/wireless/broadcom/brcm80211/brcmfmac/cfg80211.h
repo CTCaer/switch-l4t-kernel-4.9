@@ -178,6 +178,12 @@ enum brcmf_cfg80211_pm_state {
 	BRCMF_CFG80211_PM_STATE_SUSPENDING,
 };
 
+enum brcmf_pktype {
+	BRCMF_PKTTYPE_BEACON_FLAG = 0x1,
+	BRCMF_PKTTYPE_PRBRSP_FLAG = 0x2,
+	BRCMF_PKTTYPE_ASSOCRESP_FLAG = 0x4,
+};
+
 /**
  * struct vif_saved_ie - holds saved IEs for a virtual interface.
  *
@@ -467,4 +473,6 @@ int brcmf_setup_wiphybands(struct wiphy *wiphy);
 #ifdef CPTCFG_BRCM_INSMOD_NO_FW
 int brcmf_cfg80211_register_if(struct brcmf_pub *drvr);
 #endif
+s32 brcmf_cfg80211_set_ap_wps_p2p_ie(struct brcmf_cfg80211_vif *vif,
+				char *buf, int len, enum brcmf_pktype type);
 #endif /* BRCMFMAC_CFG80211_H */

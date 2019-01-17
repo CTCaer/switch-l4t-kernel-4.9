@@ -347,20 +347,6 @@ void wifi_platform_free_country_code_map(void)
 #endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 
 #ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
-int brcmf_set_band(struct net_device *ndev, uint band)
-{
-	int error = -1;
-	struct brcmf_if *ifp =	netdev_priv(ndev);
-
-	if ((band == WLC_BAND_AUTO) || (band == WLC_BAND_5G) || (band == WLC_BAND_2G)) {
-	error = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_BAND, band);
-	//if (!error)
-		//dhd_bus_band_set(dev, band);=>wl_update_wiphybands
-	}
-
-	return error;
-}
-
 int nv_brcmf_android_set_im_mode(struct brcmf_pub *drvr,
 		struct net_device *ndev, char *command, u32 cmd_len)
 {
@@ -542,14 +528,13 @@ int nv_btcoex_get_btcparams(struct net_device *dev, char *command, int total_len
 	struct brcmf_if *ifp =	netdev_priv(dev);
 
 	if (sscanf(command, "%*s %d", &param) != 1) {
-	brcmf_err("%s: command error", __func__);
+		brcmf_err("%s: command error", __func__);
 		return -2;
 	}
 	brcmf_dbg(TRACE, "%s: btcparams value %d\n", __func__, param);
 	/*copy of function brcmf_btcoex_params_read */
 	value = param;
-	brcmf_fil_iovar_int_get(ifp, "btc_params", &value);
-
+	ret = brcmf_fil_iovar_int_get(ifp, "btc_params", &value);
 	if (ret != 0) {
 		brcmf_err("%s: failed %d\n", __func__, ret);
 		return ret;
@@ -557,10 +542,6 @@ int nv_btcoex_get_btcparams(struct net_device *dev, char *command, int total_len
 	memset(command, 0, total_len);
 	bytes_written = snprintf(command, total_len, "%d", value);
 	return bytes_written;
-}
-int nv_android_mkeep_alive(struct net_device *dev, char *command, int total_len)
-{
-	return -EINVAL;
 }
 #endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
 #endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */
