@@ -54,7 +54,7 @@
 /* Keep BRCMF_ESCAN_BUF_SIZE below 64K (65536). Allocing over 64K can be
  * problematic on some systems and should be avoided.
  */
-#define BRCMF_ESCAN_BUF_SIZE		65000
+#define BRCMF_ESCAN_BUF_SIZE		(3 * 64 * 1024)
 #define BRCMF_ESCAN_TIMER_INTERVAL_MS	10000	/* E-Scan timeout */
 
 #define WL_ESCAN_ACTION_START		1
