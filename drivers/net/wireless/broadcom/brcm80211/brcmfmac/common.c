@@ -365,6 +365,18 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 
 	brcmf_c_set_joinpref_default(ifp);
 
+	/* Set the rpt_hitxrate to 1 so that link speed updated by WLC_GET_RATE
+	*  is the maximum transmit rate
+	*  rpt_hitxrate 0 : Here the rate reported is the most used rate in
+	*			the link.
+	*  rpt_hitxrate 1 : Here the rate reported is the highest used rate
+	*			in the link.
+	*/
+	err = brcmf_fil_iovar_int_set(ifp, "rpt_hitxrate", 1);
+	if (err) {
+		brcmf_err("Set rpt_hitxrate failed (%d)\n", err);
+	}
+
 	/* Setup event_msgs, enable E_IF */
 	err = brcmf_fil_iovar_data_get(ifp, "event_msgs", eventmask,
 				       BRCMF_EVENTING_MASK_LEN);
