@@ -513,10 +513,6 @@ static int brcmf_netdev_open(struct net_device *ndev)
 	netif_carrier_off(ndev);
 #endif /* !defined(CPTCFG_BRCMFMAC_ANDROID) */
 
-#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_MAC
-	nv_set_mac_address(ndev);
-#endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_MAC */
-
 	return 0;
 }
 
