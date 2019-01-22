@@ -1621,6 +1621,11 @@ failed:
 	}
 #endif
 	ret = brcmf_netdev_open(ndev);
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	if (ifp->bsscfgidx == 0) {
+		tegra_sysfs_on();
+	}
+#endif
 
 	brcmf_android_wake_unlock(drvr);
 
@@ -1643,6 +1648,11 @@ int brcmf_android_netdev_stop(struct net_device *ndev)
 		brcmf_android_wifi_off(ifp->drvr, ndev);
 		brcmf_android_set_reset(ifp->drvr, true);
 		g_drvr = ifp->drvr;
+	}
+#endif
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	if (ifp->bsscfgidx == 0) {
+		tegra_sysfs_off();
 	}
 #endif
 
