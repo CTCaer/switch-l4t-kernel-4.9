@@ -804,7 +804,7 @@ s32 brcmf_notify_escan_complete(struct brcmf_cfg80211_info *cfg,
 			.aborted = aborted,
 		};
 #ifdef CPTCFG_NV_CUSTOM_SCAN
-		TEGRA_SCAN_DONE(scan_request, false)
+		TEGRA_SCAN_DONE(scan_request, fw_abort)
 #endif
 		cfg80211_scan_done(scan_request, &info);
 #ifdef CPTCFG_NV_CUSTOM_SCAN
@@ -1015,6 +1015,9 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
 	params_le->passive_time = cpu_to_le32(-1);
 	params_le->home_time = cpu_to_le32(-1);
 	memset(&params_le->ssid_le, 0, sizeof(params_le->ssid_le));
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	TEGRA_SCAN_PREPARE(params_le, request)
+#endif
 
 	n_ssids = request->n_ssids;
 	n_channels = request->n_channels;

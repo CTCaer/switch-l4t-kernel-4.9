@@ -29,6 +29,9 @@
 #include "p2p.h"
 #include "cfg80211.h"
 #include "feature.h"
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+#include "nv_custom_sysfs_tegra.h"
+#endif /* CPTCFG_NV_CUSTOM_SCAN */
 
 /* parameters used for p2p escan */
 #define P2PAPI_SCAN_NPROBES 1
@@ -668,7 +671,16 @@ static s32 brcmf_p2p_escan(struct brcmf_p2p_info *p2p, u32 num_chans,
 	memblk = kzalloc(memsize, GFP_KERNEL);
 	if (!memblk)
 		return -ENOMEM;
-
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	if (num_chans > 70) {
+		WIFI_SCAN_DEBUG("%s:"
+			" wifi scan rule substituted too many channels (%lu)"
+			" - fixing by reducing number of scan channels\n",
+			__func__,
+			(unsigned long) num_chans);
+		num_chans = 70;
+	}
+#endif
 	vif = p2p->bss_idx[bss_type].vif;
 	if (vif == NULL) {
 		brcmf_err("no vif for bss type %d\n", bss_type);
@@ -761,6 +773,16 @@ static s32 brcmf_p2p_escan(struct brcmf_p2p_info *p2p, u32 num_chans,
 	p2p_params->eparams.version = cpu_to_le32(BRCMF_ESCAN_REQ_VERSION);
 	p2p_params->eparams.action =  cpu_to_le16(WL_ESCAN_ACTION_START);
 	p2p_params->eparams.sync_id = cpu_to_le16(0x1234);
+#ifdef CPTCFG_NV_CUSTOM_SCAN
+	{
+		struct cfg80211_scan_request *request
+			= p2p->cfg->scan_request;
+		struct brcmf_scan_params_le *params = &p2p_params->eparams.params_le;
+		if (request) {
+			TEGRA_P2P_SCAN_PREPARE(params, request)
+		}
+	}
+#endif
 	/* perform p2p scan on primary device */
 	ret = brcmf_fil_bsscfg_data_set(vif->ifp, "p2p_scan", memblk, memsize);
 	if (!ret)

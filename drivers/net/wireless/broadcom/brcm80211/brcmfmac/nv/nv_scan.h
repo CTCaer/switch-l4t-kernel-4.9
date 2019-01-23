@@ -28,6 +28,8 @@
 #include <asm/uaccess.h>
 
 #include <cfg80211.h>
+#include "core.h"
+#include "fwil.h"
 
 /* p2p defines */
 #define p2p_is_on(cfg) ((cfg)->p2p)
@@ -205,7 +207,7 @@ wifi_scan_request(wl_cfg80211_scan_funcptr_t scan_func,
 	struct cfg80211_scan_request *request);
 
 int
-wifi_scan_request_done(struct cfg80211_scan_request *request);
+wifi_scan_request_done(struct cfg80211_scan_request *request, bool aborted);
 
 #define TEGRA_SCAN_PREPARE(params, request)\
 	{\
@@ -213,6 +215,7 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 			dhd_custom_sysfs_tegra_histogram_stat_netdev;\
 		struct net_device *netdev\
 			= dhd_custom_sysfs_tegra_histogram_stat_netdev;\
+		struct brcmf_if *ifp = netdev_priv(netdev);\
 		struct wifi_scan_work *scan_work\
 			= container_of(request, struct wifi_scan_work,\
 				scan_arg.request_and_channels.request);\
@@ -251,7 +254,7 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 					" home_away_time %hu ms\n",\
 					__func__,\
 					rule->home_away_time);\
-				wldev_iovar_setint(netdev,\
+				brcmf_fil_iovar_int_set(ifp,\
 					"scan_home_away_time",\
 					rule->home_away_time);\
 			}\
@@ -298,6 +301,7 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 			dhd_custom_sysfs_tegra_histogram_stat_netdev;\
 		struct net_device *netdev\
 			= dhd_custom_sysfs_tegra_histogram_stat_netdev;\
+		struct brcmf_if *ifp = netdev_priv(netdev);\
 		struct wifi_scan_work *scan_work\
 			= container_of(request, struct wifi_scan_work,\
 				scan_arg.request_and_channels.request);\
@@ -336,7 +340,7 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 					" home_away_time %hu ms\n",\
 					__func__,\
 					rule->home_away_time);\
-				wldev_iovar_setint(netdev,\
+				brcmf_fil_iovar_int_set(ifp,\
 					"scan_home_away_time",\
 					rule->home_away_time);\
 			}\
@@ -346,7 +350,6 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 					__func__,\
 					rule->nprobes);\
 				params->nprobes = rule->nprobes;\
-				params->nprobes = htod32(params->nprobes);\
 			}\
 			if (rule->active_time) {\
 				WIFI_SCAN_DEBUG("%s: TEGRA_P2P_SCAN_PREPARE:"\
@@ -354,7 +357,6 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 					__func__,\
 					rule->active_time);\
 				params->active_time = rule->active_time;\
-				params->active_time = htod32(params->active_time);\
 			}\
 			if (rule->passive_time) {\
 				WIFI_SCAN_DEBUG("%s: TEGRA_P2P_SCAN_PREPARE:"\
@@ -362,7 +364,6 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 					__func__,\
 					rule->passive_time);\
 				params->passive_time = rule->passive_time;\
-				params->passive_time = htod32(params->passive_time);\
 			}\
 			if (rule->home_time) {\
 				WIFI_SCAN_DEBUG("%s: TEGRA_P2P_SCAN_PREPARE:"\
@@ -370,7 +371,6 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 					__func__,\
 					rule->home_time);\
 				params->home_time = rule->home_time;\
-				params->home_time = htod32(params->home_time);\
 			}\
 			if (rule->channel_num) {\
 				WIFI_SCAN_DEBUG("%s: TEGRA_P2P_SCAN_PREPARE:"\
@@ -402,7 +402,7 @@ wifi_scan_request_done(struct cfg80211_scan_request *request);
 
 #define TEGRA_SCAN_DONE(request, aborted)\
 	{\
-		int err = wifi_scan_request_done(request);\
+		int err = wifi_scan_request_done(request, aborted);\
 		if (err >= 0) {\
 			WIFI_SCAN_DEBUG("%s: TEGRA_SCAN_DONE:"\
 				" scan work #%d"\
@@ -425,6 +425,7 @@ extern int wifi_scan_pno_home_time;
 #define TEGRA_PNO_SCAN_PREPARE(netdev, dhd, request,\
 		pno_time, pno_repeat, pno_freq_expo_max)\
 	{\
+		struct brcmf_if *ifp = netdev_priv(netdev); \
 		if ((wifi_scan_pno_time != 0) &&\
 			(pno_time != wifi_scan_pno_time)) {\
 			WIFI_SCAN_DEBUG("%s: TEGRA_PNO_SCAN_PREPARE:"\
@@ -457,7 +458,7 @@ extern int wifi_scan_pno_home_time;
 				" home_away_time %d ms\n",\
 				__func__,\
 				wifi_scan_pno_home_away_time);\
-			wldev_iovar_setint(netdev,\
+			brcmf_fil_iovar_int_set(ifp,\
 				"scan_home_away_time",\
 				wifi_scan_pno_home_away_time);\
 		}\
