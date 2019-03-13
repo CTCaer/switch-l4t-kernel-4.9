@@ -1351,6 +1351,10 @@ static const struct snd_soc_dapm_widget rt5639_specific_dapm_widgets[] = {
 		rt5639_hpo_mix, ARRAY_SIZE(rt5639_hpo_mix)),
 	SND_SOC_DAPM_MIXER("HPO MIX R", SND_SOC_NOPM, 0, 0,
 		rt5639_hpo_mix, ARRAY_SIZE(rt5639_hpo_mix)),
+	SND_SOC_DAPM_SUPPLY("DAC L2 Power", RT5640_PWR_DIG1,
+		RT5640_PWR_DAC_L2_BIT, 0, NULL, 0),
+	SND_SOC_DAPM_SUPPLY("DAC R2 Power", RT5640_PWR_DIG1,
+		RT5640_PWR_DAC_R2_BIT, 0, NULL, 0),
 };
 
 static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
