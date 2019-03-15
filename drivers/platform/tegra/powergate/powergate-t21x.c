@@ -1399,9 +1399,9 @@ static int tegra210_pg_init_refcount(void)
 		(tegra210_pg_is_powered(TEGRA210_POWER_DOMAIN_DISB) ? 1 : 0) +
 		(tegra210_pg_is_powered(TEGRA210_POWER_DOMAIN_VENC) ? 1 : 0);
 
-	tegra210_pg_powergate_partition(TEGRA210_POWER_DOMAIN_XUSBA);
-	tegra210_pg_powergate_partition(TEGRA210_POWER_DOMAIN_XUSBB);
-	tegra210_pg_powergate_partition(TEGRA210_POWER_DOMAIN_XUSBC);
+	//tegra210_pg_powergate_partition(TEGRA210_POWER_DOMAIN_XUSBA);
+	//tegra210_pg_powergate_partition(TEGRA210_POWER_DOMAIN_XUSBB);
+	//tegra210_pg_powergate_partition(TEGRA210_POWER_DOMAIN_XUSBC);
 
 	return 0;
 }
