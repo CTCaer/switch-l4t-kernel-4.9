@@ -16,7 +16,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+#define DEBUG 1
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/gpio.h>
@@ -72,120 +72,23 @@
 #define DATA_ROLE_DFP   2
 
 #define PD_CHARGING_CURRENT_LIMIT_UA 1200000u
-u8 delay_to_do[] = {0, 1, 1, 1, 1, 1, 3, 1, 1, 2, 1, 2, 3, 1, 1, 1, 3, 2, 3, 2, 1, 1, 1, 2, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 2, 1, 1, 3, 2, 1, 2, 1, 2, 3, 2, 1, 2, 1, 2, 3, 2, 1};
+
 enum bm92t_state_type {
 	INIT_STATE = 0,
 	NEW_PDO,
 	SYS_RDY_SENT,
 	DR_SWAP_SENT,
-	VDM_DISCOVER_IDENT,
-	VDM_RECEIVE_IDENT,
-	VDM_SENT_NINTENDO_ALTMODE,
-	VDM_ACCEPT_NINTENDO_ALTMODE,
-	VDM_SENT_DISC_IDENTITY,
-	VDM_ACCEPT_DISC_IDENTITY,
-	VDM_SENT_DISC_SVID,
-	VDM_ACCEPT_DISC_SVID,
-	VDM_SENT_DISC_DP_MODE,
-	VDM_ACCEPT_DISC_DP_MODE,
-	VDM_SENT_ENTER_DP_MODE,
-	VDM_ACCEPT_ENTER_DP_MODE,
+	VDM_ID_PHASE1_SENT,
+	VDM_ACCEPT_PHASE1_SENT,
+	VDM_ID_PHASE2_SENT,
+	VDM_ACCEPT_PHASE2_SENT,
 	ENTER_DP_MODE,
 	HPD_HANDLED,
 	VDM_QUERY_DEVICE_SENT,
 	VDM_ACCEPT_QUERY_DEVICE_SENT,
-	AA,
-	BB,
-	CC,
-	DD,
-	EE,
-	FF,
-	GG,
-	HH,
-	II,
-	JJ,
-	KK,
-	LL,
-	XX,
-	ZZ,
 	VDM_CHECK_USBHUB_SENT,
 	VDM_ACCEPT_CHECK_USBHUB_SENT
 };
-
-static const char * const states[] = {
-	"INIT_STATE",
-	"NEW_PDO",
-	"SYS_RDY_SENT",
-	"DR_SWAP_SENT",
-	"VDM_DISCOVER_IDENT",
-	"VDM_RECEIVE_IDENT",
-	"VDM_SENT_NINTENDO_ALTMODE",
-	"VDM_ACCEPT_NINTENDO_ALTMODE",
-	"VDM_SENT_DISC_IDENTITY",
-	"VDM_ACCEPT_DISC_IDENTITY",
-	"VDM_SENT_DISC_SVID",
-	"VDM_ACCEPT_DISC_SVID",
-	"VDM_SENT_DISC_DP_MODE",
-	"VDM_ACCEPT_DISC_DP_MODE",
-	"VDM_SENT_ENTER_DP_MODE",
-	"VDM_ACCEPT_ENTER_DP_MODE",
-	"ENTER_DP_MODE",
-	"HPD_HANDLED",
-	"VDM_QUERY_DEVICE_SENT",
-	"VDM_ACCEPT_QUERY_DEVICE_SENT",
-	"AA",
-	"BB",
-	"CC",
-	"DD",
-	"EE",
-	"FF",
-	"GG",
-	"HH",
-	"II",
-	"JJ",
-	"KK",
-	"LL",
-	"XX",
-	"ZZ",
-	"VDM_CHECK_USBHUB_SENT",
-	"VDM_ACCEPT_CHECK_USBHUB_SENT"
-};
-
-struct bm92t_platform_data bm92t_dflt_pdata = {
-	.irq_gpio = -1,
-};
-
-
-unsigned char vdm_id_phase1_msg[6] = {OUTGOING_VDM,
-	0x04, 0x01, 0x80, 0x00, 0xFF};
-unsigned char vdm_id_phase2_msg[6] = {OUTGOING_VDM,
-	0x04, 0x04, 0x81, 0x7E, 0x05};
-unsigned char vdm_disc_ident_msg[6] = {OUTGOING_VDM,
-	0x04, 0x01, 0x80, 0x00, 0xff};
-unsigned char vdm_disc_svid_msg[6] = {OUTGOING_VDM,
-	0x04, 0x02, 0x80, 0x00, 0xff};
-unsigned char vdm_disc_dp_mode_msg[6] = {OUTGOING_VDM,
-	0x04, 0x03, 0x80, 0x01, 0xff};
-unsigned char vdm_enter_dp_mode_msg[6] = {OUTGOING_VDM,
-	0x04, 0x04, 0x81, 0x01, 0xff};
-unsigned char vdm_query_device_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x16, 0x00};
-unsigned char vdm_aa_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x0b, 0x00};
-unsigned char vdm_cc_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7E, 0x05, 0x00, 0x01, 0x18, 0x00};
-unsigned char vdm_led_on_msg[14] = {OUTGOING_VDM,
-	0x0c, 0x00, 0x00, 0x7E, 0x05, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x14, 0x80};
-unsigned char vdm_led_off_msg[14] = {OUTGOING_VDM,
-	0x0c, 0x00, 0x00, 0x7E, 0x05, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
-unsigned char vdm_gg_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x0b, 0x00};
-unsigned char vdm_ii_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x10, 0x00};
-unsigned char vdm_kk_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x18, 0x00};
-unsigned char vdm_check_usbhub_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7e, 0x05, 0x01, 0x01, 0x20, 0x00};
 
 enum bm92t_extcon_cable_type {
 	USB_HOST = 0,
@@ -221,12 +124,42 @@ struct bm92t_info {
 	unsigned int fw_revision;
 };
 
+static const char * const states[] = {
+	"INIT_STATE",
+	"NEW_PDO",
+	"SYS_RDY_SENT",
+	"DR_SWAP_SENT",
+	"VDM_ID_PHASE1_SENT",
+	"VDM_ACCEPT_PHASE1_SENT",
+	"VDM_ID_PHASE2_SENT",
+	"VDM_ACCEPT_PHASE2_SENT",
+	"ENTER_DP_MODE",
+	"HPD_HANDLED",
+	"VDM_QUERY_DEVICE_SENT",
+	"VDM_ACCEPT_QUERY_DEVICE_SENT",
+	"VDM_CHECK_USBHUB_SENT",
+	"VDM_ACCEPT_CHECK_USBHUB_SENT"
+};
+
+struct bm92t_platform_data bm92t_dflt_pdata = {
+	.irq_gpio = -1,
+};
+
 static const unsigned int bm92t_extcon_cable[] = {
 	EXTCON_USB_HOST, /* id */
 	EXTCON_USB, /* vbus */
 	EXTCON_USB_PD, /* usb-pd */
 	EXTCON_NONE,
 };
+
+unsigned char vdm_id_phase1_msg[6] = {OUTGOING_VDM,
+	0x04, 0x01, 0x80, 0x00, 0xFF};
+unsigned char vdm_id_phase2_msg[6] = {OUTGOING_VDM,
+	0x04, 0x04, 0x81, 0x7E, 0x05};
+unsigned char vdm_query_device_msg[10] = {OUTGOING_VDM,
+	0x08, 0x00, 0x00, 0x7E, 0x05, 0x00, 0x01, 0x16, 0x00};
+unsigned char vdm_check_usbhub_msg[10] = {OUTGOING_VDM,
+	0x08, 0x00, 0x00, 0x7E, 0x05, 0x01, 0x01, 0x20, 0x00};
 
 static int bm92t_write_reg(struct bm92t_info *info,
 			   unsigned char *buf, unsigned len)
@@ -611,8 +544,7 @@ static void bm92t_event_handler(struct work_struct *work)
 ret:
 	enable_irq(info->i2c_client->irq);
 }
-int start_morse;
-bool ena_led= true;
+
 static void bm92t_event_handler2(struct work_struct *work)
 {
 	int err;
@@ -721,18 +653,18 @@ static void bm92t_event_handler2(struct work_struct *work)
 			((status1_data & 0xff) == 0x80)) {
 			bm92t_send_vdm(info, vdm_id_phase1_msg,
 				sizeof(vdm_id_phase1_msg));
-			bm92t_state_machine(info, VDM_DISCOVER_IDENT);
+			bm92t_state_machine(info, VDM_ID_PHASE1_SENT);
 		}
 		break;
-	case VDM_DISCOVER_IDENT:
+	case VDM_ID_PHASE1_SENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_RECEIVE_IDENT);
+			bm92t_state_machine(info, VDM_ACCEPT_PHASE1_SENT);
 		} else if (alert_data & ALERT_CMD_DONE)
-			dev_dbg(dev, "cmd done in VDM_DISCOVER_IDENT\n");
+			dev_dbg(dev, "cmd done in VDM_ID_PHASE1_SENT\n");
 		break;
-	case VDM_RECEIVE_IDENT:
+	case VDM_ACCEPT_PHASE1_SENT:
 		if (alert_data & ALERT_CMD_DONE) {
 			/* check incoming VDM */
 			err = bm92t_read_reg(info, INCOMING_VDM,
@@ -745,18 +677,18 @@ static void bm92t_event_handler2(struct work_struct *work)
 			}
 			bm92t_send_vdm(info, vdm_id_phase2_msg,
 				sizeof(vdm_id_phase2_msg));
-			bm92t_state_machine(info, VDM_SENT_NINTENDO_ALTMODE);
+			bm92t_state_machine(info, VDM_ID_PHASE2_SENT);
 		}
 		break;
-	case VDM_SENT_NINTENDO_ALTMODE:
+	case VDM_ID_PHASE2_SENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_NINTENDO_ALTMODE);
+			bm92t_state_machine(info, VDM_ACCEPT_PHASE2_SENT);
 		} else if (alert_data & ALERT_CMD_DONE)
-			dev_dbg(dev, "cmd done in VDM_SENT_NINTENDO_ALTMODE\n");
+			dev_dbg(dev, "cmd done in VDM_ID_PHASE2_SENT\n");
 		break;
-	case VDM_ACCEPT_NINTENDO_ALTMODE:
+	case VDM_ACCEPT_PHASE2_SENT:
 		if (alert_data & ALERT_CMD_DONE) {
 			/* check incoming VDM */
 			err = bm92t_read_reg(info, INCOMING_VDM,
@@ -816,115 +748,6 @@ static void bm92t_event_handler2(struct work_struct *work)
 
 			bm92t_send_vdm(info, vdm_check_usbhub_msg,
 				sizeof(vdm_check_usbhub_msg));
-			bm92t_state_machine(info, AA);
-		}
-		break;
-	case AA:
-		if (alert_data & ALERT_VDM_RECEIVED) {
-			cmd = ACCEPT_VDM_CMD;
-			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, BB);
-		} else if (alert_data & ALERT_CMD_DONE)
-			dev_err(dev, "cmd done in AA\n");
-		break;
-	case XX:
-		if (alert_data & ALERT_VDM_RECEIVED) {
-			cmd = ACCEPT_VDM_CMD;
-			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, BB);
-		} else if (alert_data & ALERT_CMD_DONE)
-			dev_err(dev, "cmd done in XX\n");
-		break;
-	case BB:
-		if (alert_data & ALERT_CMD_DONE) {
-			bm92t_send_vdm(info, vdm_cc_msg, sizeof(vdm_cc_msg));
-			bm92t_state_machine(info, CC);
-		}
-		break;
-	case CC:
-		if (alert_data & ALERT_VDM_RECEIVED) {
-			cmd = ACCEPT_VDM_CMD;
-			err = bm92t_send_cmd(info, &cmd);
-			start_morse = 0;
-			ena_led = true;
-			bm92t_state_machine(info, DD);
-		} else if (alert_data & ALERT_CMD_DONE)
-			dev_err(dev, "cmd done in CC\n");
-		break;
-	case DD:
-		if (alert_data & ALERT_CMD_DONE) {
-			printk("%d", (int)delay_to_do[start_morse]);
-			if (delay_to_do[start_morse])
-				msleep(delay_to_do[start_morse] * 100);
-			if (ena_led)
-				bm92t_send_vdm(info, vdm_led_on_msg, sizeof(vdm_led_on_msg));
-			if (!ena_led)
-				bm92t_send_vdm(info, vdm_led_off_msg, sizeof(vdm_led_off_msg));
-			ena_led = !ena_led;
-			start_morse++;
-			bm92t_state_machine(info, EE);
-		}
-		break;
-	case EE:
-		if (alert_data & ALERT_VDM_RECEIVED) {
-			cmd = ACCEPT_VDM_CMD;
-			err = bm92t_send_cmd(info, &cmd);
-			
-			if (start_morse >= 53)
-				bm92t_state_machine(info, FF);
-			else
-				bm92t_state_machine(info, DD);
-		} else if (alert_data & ALERT_CMD_DONE)
-			dev_err(dev, "cmd done in EE\n");
-		break;
-	case FF:
-		if (alert_data & ALERT_CMD_DONE) {
-			msleep(100);
-			bm92t_send_vdm(info, vdm_gg_msg, sizeof(vdm_gg_msg));
-			bm92t_state_machine(info, GG);
-		}
-		break;
-	case GG:
-		if (alert_data & ALERT_VDM_RECEIVED) {
-			cmd = ACCEPT_VDM_CMD;
-			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, HH);
-		} else if (alert_data & ALERT_CMD_DONE)
-			dev_err(dev, "cmd done in GG\n");
-		break;
-	case HH:
-		if (alert_data & ALERT_CMD_DONE) {
-			msleep(100);
-			bm92t_send_vdm(info, vdm_ii_msg, sizeof(vdm_ii_msg));
-			bm92t_state_machine(info, II);
-		}
-		break;
-	case II:
-		if (alert_data & ALERT_VDM_RECEIVED) {
-			cmd = ACCEPT_VDM_CMD;
-			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, FF);
-		} else if (alert_data & ALERT_CMD_DONE)
-			dev_err(dev, "cmd done in II\n");
-		break;
-	case JJ:
-		if (alert_data & ALERT_CMD_DONE) {
-			bm92t_send_vdm(info, vdm_kk_msg, sizeof(vdm_kk_msg));
-			bm92t_state_machine(info, KK);
-		}
-		break;
-	case KK:
-		if (alert_data & ALERT_VDM_RECEIVED) {
-			cmd = ACCEPT_VDM_CMD;
-			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, LL);
-		} else if (alert_data & ALERT_CMD_DONE)
-			dev_err(dev, "cmd done in KK\n");
-		break;
-	case LL:
-		if (alert_data & ALERT_CMD_DONE) {
-			bm92t_send_vdm(info, vdm_check_usbhub_msg,
-				sizeof(vdm_check_usbhub_msg));
 			bm92t_state_machine(info, VDM_CHECK_USBHUB_SENT);
 		}
 		break;
@@ -934,7 +757,7 @@ static void bm92t_event_handler2(struct work_struct *work)
 			err = bm92t_send_cmd(info, &cmd);
 			bm92t_state_machine(info, VDM_ACCEPT_CHECK_USBHUB_SENT);
 		} else if (alert_data & ALERT_CMD_DONE)
-			dev_err(dev, "cmd done in VDM_CHECK_USBHUB_SENT\n");
+			dev_dbg(dev, "cmd done in VDM_CHECK_USBHUB_SENT\n");
 		break;
 	case VDM_ACCEPT_CHECK_USBHUB_SENT:
 		if (alert_data & ALERT_CMD_DONE) {
@@ -955,6 +778,7 @@ static void bm92t_event_handler2(struct work_struct *work)
 		dev_err(dev, "Invalid state\n");
 		break;
 	}
+
 ret:
 	enable_irq(info->i2c_client->irq);
 }
