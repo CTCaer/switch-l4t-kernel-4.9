@@ -4341,7 +4341,7 @@ static int tegra_xusb_suspend(struct device *dev)
 	int ret;
 	unsigned int j;
 
-	if (!tegra->fw_loaded && !tegra->soc->is_xhci_vf)
+	//if (!tegra->fw_loaded && !tegra->soc->is_xhci_vf)
 		return 0;
 
 	xhci = hcd_to_xhci(tegra->hcd);
@@ -4492,7 +4492,7 @@ static int tegra_xhci_resume(struct device *dev)
 	struct xhci_hcd *xhci;
 	int ret;
 
-	if (!tegra->fw_loaded && !tegra->soc->is_xhci_vf)
+	//if (!tegra->fw_loaded && !tegra->soc->is_xhci_vf)
 		return 0;
 
 	xhci = hcd_to_xhci(tegra->hcd);
