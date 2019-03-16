@@ -27,6 +27,7 @@
 #include <soc/tegra/fuse.h>
 
 #include "tegra210-emc-reg.h"
+#include "switch-emc.h"
 
 #define TEGRA_EMC_TABLE_MAX_SIZE		16
 #define EMC_STATUS_UPDATE_TIMEOUT		1000
@@ -72,8 +73,8 @@
 
 static bool emc_enable = true;
 module_param(emc_enable, bool, 0444);
-static bool emc_force_max_rate;
-module_param(emc_force_max_rate, bool, 0444);
+static bool emc_force_max_rate = true;
+//module_param(emc_force_max_rate, bool, 0444);
 
 enum TEGRA_EMC_SOURCE {
 	TEGRA_EMC_SRC_PLLM,
@@ -1459,6 +1460,7 @@ static inline void emc_get_timing(struct emc_table *timing)
 static void emc_set_clock(struct emc_table *next_timing,
 		struct emc_table *last_timing, int training, u32 clksrc)
 {
+	printk("%s - from %d to %d\n", __func__, last_timing->rate, next_timing->rate);
 	current_clksrc = clksrc;
 	seq->set_clock(next_timing, last_timing, training, clksrc);
 
@@ -1564,8 +1566,8 @@ static int tegra210_emc_set_rate(unsigned long rate)
 	if (i < 0)
 		return i;
 
-	if (rate > 204000000 && !tegra_emc_table[i].trained)
-		return -EINVAL;
+	//if (rate > 204000000 && !tegra_emc_table[i].trained)
+	//	return -EINVAL;
 
 	if (!emc_timing) {
 		emc_get_timing(&start_timing);
@@ -2209,6 +2211,9 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 	int i;
 	unsigned long table_rate;
 	unsigned long current_rate;
+	unsigned int fuse_odm_4;
+	unsigned int sdram_id;
+	struct emc_table *tables;
 
 	emc_clk = devm_clk_get(&pdev->dev, "emc");
 	if (IS_ERR(emc_clk)) {
@@ -2247,8 +2252,34 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 		return -ENODATA;
 	}
 
-	tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
-			&tegra_emc_table_derated, &tegra_emc_table_size);
+	//tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
+	//		&tegra_emc_table_derated, &tegra_emc_table_size);
+
+	tegra_emc_table_normal = devm_kzalloc(&pdev->dev,
+			sizeof(*tables) * 10, GFP_KERNEL);
+	tegra_emc_table_derated = devm_kzalloc(&pdev->dev,
+			sizeof(*tables) * 10, GFP_KERNEL);
+
+	tegra_fuse_control_read(0x1C8 + 16, &fuse_odm_4);
+	sdram_id = (fuse_odm_4 >> 3) & 0x1F;
+	printk("fuse_odm_4 = %d, sdram_id = %d\n", fuse_odm_4, sdram_id);
+	switch (sdram_id)
+	{
+	case 1:
+		memcpy((void *)tegra_emc_table_normal, nx_abca2_2_10NoCfgVersion_V9_8_7_V1_6, 49280);
+		break;
+	case 0:
+	case 2:
+	case 3:
+	case 4:
+	default:
+		memcpy((void *)tegra_emc_table_normal, nx_abca2_0_3_10NoCfgVersion_V9_8_7_V1_6, 49280);
+		break;
+	}
+	printk("Copied mtc tables\n");
+	tegra_emc_table_derated = tegra_emc_table_normal; // TODO: Don't actually do this maybe?
+	tegra_emc_table_size = 10;
+
 	if (!tegra_emc_table_size ||
 	    tegra_emc_table_size > TEGRA_EMC_TABLE_MAX_SIZE) {
 		dev_err(&pdev->dev, "Invalid table size %d\n",
