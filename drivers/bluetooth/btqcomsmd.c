@@ -14,7 +14,9 @@
 
 #include <linux/module.h>
 #include <linux/slab.h>
-#include <linux/soc/qcom/smd.h>
+#include <linux/rpmsg.h>
+#include <linux/of.h>
+
 #include <linux/soc/qcom/wcnss_ctrl.h>
 #include <linux/platform_device.h>
 
@@ -26,8 +28,9 @@
 struct btqcomsmd {
 	struct hci_dev *hdev;
 
-	struct qcom_smd_channel *acl_channel;
-	struct qcom_smd_channel *cmd_channel;
+	bdaddr_t bdaddr;
+	struct rpmsg_endpoint *acl_channel;
+	struct rpmsg_endpoint *cmd_channel;
 };
 
 static int btqcomsmd_recv(struct hci_dev *hdev, unsigned int type,
@@ -43,25 +46,26 @@ static int btqcomsmd_recv(struct hci_dev *hdev, unsigned int type,
 	}
 
 	hci_skb_pkt_type(skb) = type;
-	memcpy(skb_put(skb, count), data, count);
+	skb_put_data(skb, data, count);
 
 	return hci_recv_frame(hdev, skb);
 }
 
-static int btqcomsmd_acl_callback(struct qcom_smd_channel *channel,
-				  const void *data, size_t count)
+static int btqcomsmd_acl_callback(struct rpmsg_device *rpdev, void *data,
+				  int count, void *priv, u32 addr)
 {
-	struct btqcomsmd *btq = qcom_smd_get_drvdata(channel);
+	struct btqcomsmd *btq = priv;
 
 	btq->hdev->stat.byte_rx += count;
 	return btqcomsmd_recv(btq->hdev, HCI_ACLDATA_PKT, data, count);
 }
 
-static int btqcomsmd_cmd_callback(struct qcom_smd_channel *channel,
-				  const void *data, size_t count)
+static int btqcomsmd_cmd_callback(struct rpmsg_device *rpdev, void *data,
+				  int count, void *priv, u32 addr)
 {
-	struct btqcomsmd *btq = qcom_smd_get_drvdata(channel);
+	struct btqcomsmd *btq = priv;
 
+	btq->hdev->stat.byte_rx += count;
 	return btqcomsmd_recv(btq->hdev, HCI_EVENT_PKT, data, count);
 }
 
@@ -72,13 +76,22 @@ static int btqcomsmd_send(struct hci_dev *hdev, struct sk_buff *skb)
 
 	switch (hci_skb_pkt_type(skb)) {
 	case HCI_ACLDATA_PKT:
-		ret = qcom_smd_send(btq->acl_channel, skb->data, skb->len);
+		ret = rpmsg_send(btq->acl_channel, skb->data, skb->len);
+		if (ret) {
+			hdev->stat.err_tx++;
+			break;
+		}
 		hdev->stat.acl_tx++;
 		hdev->stat.byte_tx += skb->len;
 		break;
 	case HCI_COMMAND_PKT:
-		ret = qcom_smd_send(btq->cmd_channel, skb->data, skb->len);
+		ret = rpmsg_send(btq->cmd_channel, skb->data, skb->len);
+		if (ret) {
+			hdev->stat.err_tx++;
+			break;
+		}
 		hdev->stat.cmd_tx++;
+		hdev->stat.byte_tx += skb->len;
 		break;
 	default:
 		ret = -EILSEQ;
@@ -101,6 +114,38 @@ static int btqcomsmd_close(struct hci_dev *hdev)
 	return 0;
 }
 
+static int btqcomsmd_setup(struct hci_dev *hdev)
+{
+	struct btqcomsmd *btq = hci_get_drvdata(hdev);
+	struct sk_buff *skb;
+	int err;
+
+	skb = __hci_cmd_sync(hdev, HCI_OP_RESET, 0, NULL, HCI_INIT_TIMEOUT);
+	if (IS_ERR(skb))
+		return PTR_ERR(skb);
+	kfree_skb(skb);
+
+	/* Devices do not have persistent storage for BD address. If no
+	 * BD address has been retrieved during probe, mark the device
+	 * as having an invalid BD address.
+	 */
+	if (!bacmp(&btq->bdaddr, BDADDR_ANY)) {
+		set_bit(HCI_QUIRK_INVALID_BDADDR, &hdev->quirks);
+		return 0;
+	}
+
+	/* When setting a configured BD address fails, mark the device
+	 * as having an invalid BD address.
+	 */
+	err = qca_set_bdaddr_rome(hdev, &btq->bdaddr);
+	if (err) {
+		set_bit(HCI_QUIRK_INVALID_BDADDR, &hdev->quirks);
+		return 0;
+	}
+
+	return 0;
+}
+
 static int btqcomsmd_probe(struct platform_device *pdev)
 {
 	struct btqcomsmd *btq;
@@ -115,17 +160,23 @@ static int btqcomsmd_probe(struct platform_device *pdev)
 	wcnss = dev_get_drvdata(pdev->dev.parent);
 
 	btq->acl_channel = qcom_wcnss_open_channel(wcnss, "APPS_RIVA_BT_ACL",
-						   btqcomsmd_acl_callback);
+						   btqcomsmd_acl_callback, btq);
 	if (IS_ERR(btq->acl_channel))
 		return PTR_ERR(btq->acl_channel);
 
 	btq->cmd_channel = qcom_wcnss_open_channel(wcnss, "APPS_RIVA_BT_CMD",
-						   btqcomsmd_cmd_callback);
+						   btqcomsmd_cmd_callback, btq);
 	if (IS_ERR(btq->cmd_channel))
 		return PTR_ERR(btq->cmd_channel);
 
-	qcom_smd_set_drvdata(btq->acl_channel, btq);
-	qcom_smd_set_drvdata(btq->cmd_channel, btq);
+	/* The local-bd-address property is usually injected by the
+	 * bootloader which has access to the allocated BD address.
+	 */
+	if (!of_property_read_u8_array(pdev->dev.of_node, "local-bd-address",
+				       (u8 *)&btq->bdaddr, sizeof(bdaddr_t))) {
+		dev_info(&pdev->dev, "BD address %pMR retrieved from device-tree",
+			 &btq->bdaddr);
+	}
 
 	hdev = hci_alloc_dev();
 	if (!hdev)
@@ -139,6 +190,7 @@ static int btqcomsmd_probe(struct platform_device *pdev)
 	hdev->open = btqcomsmd_open;
 	hdev->close = btqcomsmd_close;
 	hdev->send = btqcomsmd_send;
+	hdev->setup = btqcomsmd_setup;
 	hdev->set_bdaddr = qca_set_bdaddr_rome;
 
 	ret = hci_register_dev(hdev);
@@ -159,6 +211,9 @@ static int btqcomsmd_remove(struct platform_device *pdev)
 	hci_unregister_dev(btq->hdev);
 	hci_free_dev(btq->hdev);
 
+	rpmsg_destroy_ept(btq->cmd_channel);
+	rpmsg_destroy_ept(btq->acl_channel);
+
 	return 0;
 }
 
@@ -166,6 +221,7 @@ static const struct of_device_id btqcomsmd_of_match[] = {
 	{ .compatible = "qcom,wcnss-bt", },
 	{ },
 };
+MODULE_DEVICE_TABLE(of, btqcomsmd_of_match);
 
 static struct platform_driver btqcomsmd_driver = {
 	.probe = btqcomsmd_probe,
