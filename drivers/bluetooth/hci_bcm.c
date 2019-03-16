@@ -20,7 +20,7 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-
+#define DEBUG 1
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/skbuff.h>
@@ -114,7 +114,6 @@ struct bcm_device {
 
 	struct clk		*txco_clk;
 	struct clk		*lpo_clk;
-	struct regulator_bulk_data supplies[BCM_NUM_SUPPLIES];
 	bool			res_enabled;
 
 	u32			init_speed;
@@ -227,10 +226,6 @@ static int bcm_gpio_set_power(struct bcm_device *dev, bool powered)
 	int err;
 
 	if (powered && !dev->res_enabled) {
-		err = regulator_bulk_enable(BCM_NUM_SUPPLIES, dev->supplies);
-		if (err)
-			return err;
-
 		/* LPO clock needs to be 32.768 kHz */
 		err = clk_set_rate(dev->lpo_clk, 32768);
 		if (err) {
@@ -258,7 +253,6 @@ static int bcm_gpio_set_power(struct bcm_device *dev, bool powered)
 	if (!powered && dev->res_enabled) {
 		clk_disable_unprepare(dev->txco_clk);
 		clk_disable_unprepare(dev->lpo_clk);
-		regulator_bulk_disable(BCM_NUM_SUPPLIES, dev->supplies);
 	}
 
 	/* wait for device to power on and come out of reset */
@@ -277,8 +271,6 @@ err_lpo_clk_disable:
 	if (powered && !dev->res_enabled)
 		clk_disable_unprepare(dev->lpo_clk);
 err_regulator_disable:
-	if (powered && !dev->res_enabled)
-		regulator_bulk_disable(BCM_NUM_SUPPLIES, dev->supplies);
 	return err;
 }
 
@@ -889,7 +881,6 @@ static struct clk *bcm_get_txco(struct device *dev)
 static int bcm_get_resources(struct bcm_device *dev)
 {
 	const struct dmi_system_id *dmi_id;
-	int err;
 
 	dev->name = dev_name(dev->dev);
 
