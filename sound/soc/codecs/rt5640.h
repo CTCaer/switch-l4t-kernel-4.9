@@ -2054,6 +2054,44 @@ enum {
 #define RT5640_PLL1_S_BCLK2	2
 #define RT5640_PLL1_S_BCLK3	3
 
+/* MIC Over current threshold scale factor (0x15) */
+#define RT5640_MIC_OVCD_SF_MASK			(0x3 << 8)
+#define RT5640_MIC_OVCD_SF_SFT			8
+#define RT5640_MIC_OVCD_SF_0P5			(0x0 << 8)
+#define RT5640_MIC_OVCD_SF_0P75			(0x1 << 8)
+#define RT5640_MIC_OVCD_SF_1P0			(0x2 << 8)
+#define RT5640_MIC_OVCD_SF_1P5			(0x3 << 8)
+#define RT5640_DMIC1_DATA_PIN_NONE	0
+#define RT5640_DMIC1_DATA_PIN_IN1P	1
+#define RT5640_DMIC1_DATA_PIN_GPIO3	2
+
+#define RT5640_DMIC2_DATA_PIN_NONE	0
+#define RT5640_DMIC2_DATA_PIN_IN1N	1
+#define RT5640_DMIC2_DATA_PIN_GPIO4	2
+
+#define RT5640_JD_SRC_GPIO1		1
+#define RT5640_JD_SRC_JD1_IN4P		2
+#define RT5640_JD_SRC_JD2_IN4N		3
+#define RT5640_JD_SRC_GPIO2		4
+#define RT5640_JD_SRC_GPIO3		5
+#define RT5640_JD_SRC_GPIO4		6
+
+#define RT5640_OVCD_SF_0P5		0
+#define RT5640_OVCD_SF_0P75		1
+#define RT5640_OVCD_SF_1P0		2
+#define RT5640_OVCD_SF_1P5		3
+#define RT5640_MB1_OC_STATUS			(0x1 << 3)
+#define RT5640_MB1_OC_STATUS_SFT		3
+#define RT5640_MB2_OC_STATUS			(0x1 << 2)
+#define RT5640_MB2_OC_STATUS_SFT		2
+
+/* GPIO and Internal Status (0xbf) */
+#define RT5640_GPIO1_STATUS			(0x1 << 8)
+#define RT5640_GPIO2_STATUS			(0x1 << 7)
+#define RT5640_JD_STATUS			(0x1 << 4)
+#define RT5640_OVT_STATUS			(0x1 << 3)
+#define RT5640_CLS_D_OVCD_STATUS		(0x1 << 0)
+#define RT5640_BIAS_CUR4			0x15
 
 enum {
 	RT5640_AIF1,
@@ -2107,12 +2145,19 @@ struct rt5640_priv {
 	int lrck[RT5640_AIFS];
 	int bclk[RT5640_AIFS];
 	int master[RT5640_AIFS];
+	int irq;
 
 	int pll_src;
 	int pll_in;
 	int pll_out;
 
-	int sel_jd_source;
+	unsigned int jack_gpio;
+	unsigned int jd_src;
+	struct work_struct jack_work;
+	struct snd_soc_jack *jack;
+	bool jd_inverted;
+	unsigned int ovcd_th;
+	unsigned int ovcd_sf;
 
 	bool hp_mute;
 	bool asrc_en;
@@ -2125,6 +2170,6 @@ int rt5640_sel_asrc_clk_src(struct snd_soc_codec *codec,
 
 int rt5640_irq_jd_reg_init(struct snd_soc_codec *codec);
 
-int rt5640_headset_detect(struct snd_soc_codec *codec,
-	struct snd_soc_jack *jack, int jack_insert);
+int rt5640_set_jack(struct snd_soc_codec *codec,
+			   struct snd_soc_jack *jack);
 #endif
