@@ -174,7 +174,7 @@ static int tegra_usb_cd_update_charging_current(struct tegra_usb_cd *ucd)
 		break;
 	case EXTCON_CHG_USB_CDP:
 		dev_info(ucd->dev, "connected to CDP\n");
-		if (ucd->sdp_cdp_current_limit_ma > 2)
+		if (ucd->sdp_cdp_current_limit_ma == 0)
 			max_ua = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
 		else
 			max_ua = ucd->sdp_cdp_current_limit_ma * 1000;
