@@ -437,7 +437,7 @@ static int bcm_open(struct hci_uart *hu)
 out:
 	if (bcm->dev) {
 		hu->init_speed = bcm->dev->init_speed;
-		hu->oper_speed = bcm->dev->oper_speed;
+		hu->oper_speed = 3000000;
 		err = bcm_gpio_set_power(bcm->dev, true);
 		if (err)
 			goto err_unset_hu;
@@ -552,12 +552,7 @@ static int bcm_setup(struct hci_uart *hu)
 		host_set_baudrate(hu, speed);
 
 	/* Operational speed if any */
-	if (hu->oper_speed)
-		speed = hu->oper_speed;
-	else if (hu->proto->oper_speed)
-		speed = hu->proto->oper_speed;
-	else
-		speed = 0;
+	speed = 3000000;
 
 	if (speed) {
 		err = bcm_set_baudrate(hu, speed);
