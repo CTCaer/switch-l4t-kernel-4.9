@@ -113,6 +113,7 @@ static int last_fb_vc = MAX_NR_CONSOLES - 1;
 static int fbcon_is_default = 1; 
 static int fbcon_has_exited;
 static int primary_device = -1;
+static int primary_node = -1;
 static int fbcon_has_console_bind;
 
 #ifdef CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY
@@ -493,6 +494,14 @@ static int __init fb_console_setup(char *this_opt)
 				initial_rotation = simple_strtoul(options, &options, 0);
 			if (initial_rotation > 3)
 				initial_rotation = 0;
+			continue;
+		}
+		
+		if (!strncmp(options, "primary:", 8)) {
+			options += 8;
+			if (*options) {
+				primary_node = simple_strtoul(options, &options, 10);
+			}
 			continue;
 		}
 	}
@@ -3137,7 +3146,7 @@ static void fbcon_remap_all(int idx)
 static void fbcon_select_primary(struct fb_info *info)
 {
 	if (!map_override && primary_device == -1 &&
-	    fb_is_primary_device(info)) {
+	    primary_node == info->node) {
 		int i;
 
 		printk(KERN_INFO "fbcon: %s (fb%i) is primary device\n",
