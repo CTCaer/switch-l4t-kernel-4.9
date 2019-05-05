@@ -18,7 +18,7 @@
  *
  *   TODO: add a real description
  */
-#define DEBUG 1
+
 #include "hid-ids.h"
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -678,7 +678,7 @@ static int switchcon_hid_event(struct hid_device *hdev,
 }
 
 /* data input must have at least 9 bytes */
-static void switchcon_parse_stick_calibration(u8 *data,
+static void switchcon_parse_left_stick_calibration(u8 *data,
 					struct switchcon_stick_cal *cal) {
 	u16 x_max_above;
 	u16 x_min_below;
@@ -697,6 +697,25 @@ static void switchcon_parse_stick_calibration(u8 *data,
 	cal->y_min	= cal->y_center - y_min_below;
 }
 
+/* data input must have at least 9 bytes */
+static void switchcon_parse_right_stick_calibration(u8 *data,
+					struct switchcon_stick_cal *cal) {
+	u16 x_max_above;
+	u16 x_min_below;
+	u16 y_max_above;
+	u16 y_min_below;
+
+	cal->x_center = ((data[1] << 8) & 0xF00) | data[0];
+	cal->y_center = (data[2] << 4) | (data[1] >> 4);
+	x_min_below	= ((data[7] << 8) & 0xF00) | data[6];
+	y_min_below	= (data[8] << 4) | (data[7] >> 4);
+	x_max_above = ((data[4] << 8) & 0xF00) | data[3];
+	y_max_above	= (data[5] << 4) | (data[4] >> 4);
+	cal->x_max	= cal->x_center + x_max_above;
+	cal->x_min	= cal->x_center - x_min_below;
+	cal->y_max	= cal->y_center + y_max_above;
+	cal->y_min	= cal->y_center - y_min_below;
+}
 /* Common handler for parsing inputs */
 static int switchcon_ctlr_read_handler(struct switchcon_ctlr *ctlr,
 						u8 *data, int size)
@@ -711,10 +730,11 @@ static int switchcon_ctlr_read_handler(struct switchcon_ctlr *ctlr,
 			break;
 
 		/* Parse analog sticks */
-		ctlr->left_stick_x	= data[6] | ((data[7] & 0xF) << 8);
-		ctlr->left_stick_y	= (data[7] >> 4) | (data[8] << 4);
-		ctlr->right_stick_x	= data[9] | ((data[10] & 0xF) << 8);
-		ctlr->right_stick_y	= (data[10] >> 4) | (data[11] << 4);
+		ctlr->left_stick_x = hid_field_extract(ctlr->hdev, (data + 6), 0, 12);
+		ctlr->left_stick_y = ctlr->left_stick_cal.y_min + ctlr->left_stick_cal.y_max - hid_field_extract(ctlr->hdev, (data + 7), 4, 12);
+		ctlr->right_stick_x = hid_field_extract(ctlr->hdev, (data + 9), 0, 12);
+		ctlr->right_stick_y = ctlr->right_stick_cal.y_min + ctlr->right_stick_cal.y_max - hid_field_extract(ctlr->hdev, (data + 10), 4, 12);
+
 
 		/* Parse digital buttons */
 		ctlr->but_y		= 0x01 & data[3];
@@ -803,9 +823,9 @@ static int switchcon_ctlr_general_handle_event(struct switchcon_ctlr *ctlr,
 		if (data[0] != SC_INPUT_SUBCMD_REPLY || size < 38
 		 || data[13] != 0x90 || data[14] != 0x10)
 			break;
-		switchcon_parse_stick_calibration(data + 20,
+		switchcon_parse_left_stick_calibration(data + 20,
 						  &ctlr->left_stick_cal);
-		switchcon_parse_stick_calibration(data + 29,
+		switchcon_parse_right_stick_calibration(data + 29,
 						  &ctlr->right_stick_cal);
 
 		hid_dbg(ctlr->hdev, "l_x_c=%hu l_x_max=%hu l_x_min=%hu\n",
@@ -1073,3 +1093,5 @@ static struct hid_driver switchcon_hid_driver = {
 module_hid_driver(switchcon_hid_driver);
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Daniel J. Ogorchock <djogorchock@gmail.com>");
+MODULE_DESCRIPTION("Driver for Nintendo Switch Controllers");
