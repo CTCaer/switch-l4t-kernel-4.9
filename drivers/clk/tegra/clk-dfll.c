@@ -3007,7 +3007,7 @@ static int dfll_build_i2c_lut(struct tegra_dfll *td, int v_max)
 		if (selector != td->lut[j - 1])
 			td->lut[j++] = selector;
 
-		if (v >= v_max)
+		if (v > v_max)
 			break;
 	}
 	td->lut_size = j;
