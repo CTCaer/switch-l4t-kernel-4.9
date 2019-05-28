@@ -284,6 +284,13 @@
 #define MAX77620_CNFGBBC_RESISTOR_MASK		0xC0
 #define MAX77620_CNFGBBC_RESISTOR_SHIFT		6
 
+#define MAX77620_IRQ_LVL2_ONOFF_MRWRN		BIT(0)
+#define MAX77620_IRQ_LVL2_ONOFF_EN0_1SEC	BIT(1)
+#define MAX77620_IRQ_LVL2_ONOFF_EN0_F		BIT(2)
+#define MAX77620_IRQ_LVL2_ONOFF_EN0_R		BIT(3)
+#define MAX77620_IRQ_LVL2_ONOFF_ACOK_F		BIT(4)
+#define MAX77620_IRQ_LVL2_ONOFF_ACOK_R		BIT(5)
+
 #define MAX77620_FPS_COUNT			3
 
 /* Interrupts */
@@ -344,6 +351,7 @@ struct max77620_chip {
 
 	struct regmap_irq_chip_data *top_irq_data;
 	struct regmap_irq_chip_data *gpio_irq_data;
+	struct regmap_irq_chip_data *onoff_irq_data;
 };
 
 #endif /* _MFD_MAX77620_H_ */
