@@ -673,18 +673,6 @@ cleanup_irq:
 	return err;
 }
 
-static void stmfts_power_off(void *data)
-{
-	struct stmfts_data *sdata = data;
-
-	if (!sdata->client->irq)
-		kthread_stop(sdata->poll_thread);
-	else
-		disable_irq(sdata->client->irq);
-	regulator_bulk_disable(ARRAY_SIZE(sdata->regulators),
-						sdata->regulators);
-}
-
 /* This function is void because I don't want to prevent using the touch key
  * only because the LEDs don't get registered
  */
@@ -877,8 +865,9 @@ static int __maybe_unused stmfts_suspend(struct device *dev)
 {
 	struct stmfts_data *sdata = dev_get_drvdata(dev);
 
-	stmfts_power_off(sdata);
-
+	disable_irq(sdata->client->irq);
+	stmfts_write_register(sdata, sdata->irq_enable_reg, 0);
+	stmfts_input_close(sdata->input);
 	return 0;
 }
 
@@ -886,7 +875,9 @@ static int __maybe_unused stmfts_resume(struct device *dev)
 {
 	struct stmfts_data *sdata = dev_get_drvdata(dev);
 
-	return stmfts_power_on(sdata);
+	enable_irq(sdata->client->irq);
+	stmfts_write_register(sdata, sdata->irq_enable_reg, sdata->irq_enable_data);
+	return stmfts_input_open(sdata->input);
 }
 
 static const struct dev_pm_ops stmfts_pm_ops = {
