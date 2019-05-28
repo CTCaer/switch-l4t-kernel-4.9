@@ -191,6 +191,13 @@ config INPUT_MAX77693_HAPTIC
 	  To compile this driver as module, choose M here: the
 	  module will be called max77693-haptic.
 
+config INPUT_MAX77620_ONOFF
+	tristate "MAX77620 ONOFF support"
+	depends on MFD_MAX77620
+	help
+	  Support the ONOFF block of MAX77620 PMICs as an input device
+	  reporting power button status.
+
 config INPUT_MAX8925_ONKEY
 	tristate "MAX8925 ONKEY support"
 	depends on MFD_MAX8925
