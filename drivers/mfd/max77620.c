@@ -55,6 +55,10 @@ static const struct resource thermal_resources[] = {
 	DEFINE_RES_IRQ(MAX77620_IRQ_LBT_TJALRM2),
 };
 
+static const struct resource onoff_resources[] = {
+	DEFINE_RES_IRQ(MAX77620_IRQ_TOP_ONOFF),
+};
+
 static const struct regmap_irq max77620_top_irqs[] = {
 	REGMAP_IRQ_REG(MAX77620_IRQ_TOP_GLBL, 0, MAX77620_IRQ_TOP_GLBL_MASK),
 	REGMAP_IRQ_REG(MAX77620_IRQ_TOP_SD, 0, MAX77620_IRQ_TOP_SD_MASK),
@@ -89,6 +93,10 @@ static const struct mfd_cell max77620_children[] = {
 		.name = "max77620-thermal",
 		.resources = thermal_resources,
 		.num_resources = ARRAY_SIZE(thermal_resources),
+	}, {
+		.name = "max77620-onoff",
+		.resources = onoff_resources,
+		.num_resources = ARRAY_SIZE(onoff_resources),
 	},
 };
 
