@@ -960,7 +960,7 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 	int in_current_limit;
 	int old_current_limit;
 	unsigned int val;
-	int check_chg_state = 0;
+	int check_chg_state = 1;
 
 	mutex_lock(&bq2419x->mutex);
 	if (bq2419x->shutdown_complete)
@@ -1102,11 +1102,11 @@ sys_stat_read:
 		dev_dbg(bq2419x->dev, "Charging completed\n");
 		bq2419x->chg_status = BATTERY_CHARGING_DONE;
 		bq2419x->cable_connected = 1;
-		in_current_limit = 500;
+		in_current_limit = 0;
 		battery_charger_thermal_stop_monitoring(
 				bq2419x->bc_dev);
 	} else if ((val & BQ2419x_VBUS_STAT) == BQ2419x_VBUS_AC){
-		in_current_limit = 1500;
+		in_current_limit = 1200;
 		bq2419x->cable_connected = 1;
 		bq2419x->chg_status = BATTERY_CHARGING;
 		battery_charger_thermal_start_monitoring(
@@ -1118,7 +1118,7 @@ sys_stat_read:
 			dev_err(bq2419x->dev, "JEITA_VSET update failed: %d\n",
 				ret);
 	} else if ((val & BQ2419x_VBUS_STAT) == BQ2419x_VBUS_USB){
-		in_current_limit = 500;
+		in_current_limit = 1200;
 		bq2419x->cable_connected = 1;
 		bq2419x->chg_status = BATTERY_CHARGING;
 		battery_charger_thermal_start_monitoring(

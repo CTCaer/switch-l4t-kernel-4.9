@@ -71,7 +71,7 @@
 #define DATA_ROLE_UFP   1
 #define DATA_ROLE_DFP   2
 
-#define PD_CHARGING_CURRENT_LIMIT_UA 1200000u
+#define PD_CHARGING_CURRENT_LIMIT_UA 1600000u
 
 enum bm92t_state_type {
 	INIT_STATE = 0,
