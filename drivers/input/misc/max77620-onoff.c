@@ -144,7 +144,7 @@ static int __maybe_unused max77620_onoff_suspend(struct device *dev)
 	struct max77620_onoff *onoff = dev_get_drvdata(dev);
 
 	if (device_may_wakeup(dev)) {
-		return enable_irq_wake(onoff->irq_r);
+		return enable_irq_wake(onoff->irq_f);
 	}
 
 	return 0;
@@ -155,7 +155,7 @@ static int __maybe_unused max77620_onoff_resume(struct device *dev)
 	struct max77620_onoff *onoff = dev_get_drvdata(dev);
 
 	if (device_may_wakeup(dev)) {
-		return disable_irq_wake(onoff->irq_r);
+		return disable_irq_wake(onoff->irq_f);
 	}
 
 	return 0;
