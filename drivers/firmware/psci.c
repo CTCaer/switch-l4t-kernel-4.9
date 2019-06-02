@@ -473,10 +473,10 @@ static void __init psci_init_system_suspend(void)
 	if (!IS_ENABLED(CONFIG_SUSPEND))
 		return;
 
-//	ret = psci_features(PSCI_FN_NATIVE(1_0, SYSTEM_SUSPEND));
+	ret = psci_features(PSCI_FN_NATIVE(1_0, SYSTEM_SUSPEND));
 
-//	if (ret != PSCI_RET_NOT_SUPPORTED)
-//		suspend_set_ops(&psci_suspend_ops);
+	if (ret != PSCI_RET_NOT_SUPPORTED)
+		suspend_set_ops(&psci_suspend_ops);
 }
 
 static void __init psci_init_cpu_suspend(void)
