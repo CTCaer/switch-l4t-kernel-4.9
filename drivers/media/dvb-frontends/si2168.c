@@ -159,6 +159,24 @@ static int si2168_read_status(struct dvb_frontend *fe, enum fe_status *status)
 	}
 
 	ret = si2168_cmd_execute(client, &cmd);
+	if (ret == -EREMOTEIO) {
+		/* In auto-PLP mode it is possible to read 0x8701 while
+		 * the frontend is in switchover transition. This causes
+		 * a status read failure, due to incorrect system. Check
+		 * the other sys if we hit this race condition.
+		 */
+		if (sys == SYS_DVBT) {
+			memcpy(cmd.args, "\x50\x01", 2); /* DVB-T2 */
+			cmd.wlen = 2;
+			cmd.rlen = 14;
+			ret = si2168_cmd_execute(client, &cmd);
+		} else if (sys == SYS_DVBT2) {
+			memcpy(cmd.args, "\xa0\x01", 2); /* DVB-T */
+			cmd.wlen = 2;
+			cmd.rlen = 13;
+			ret = si2168_cmd_execute(client, &cmd);
+		}
+	}
 	if (ret)
 		goto err;
 
