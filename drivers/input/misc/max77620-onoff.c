@@ -95,7 +95,7 @@ static int max77620_onoff_probe(struct platform_device *pdev)
 	if (!onoff)
 		return -ENOMEM;
 
-	onoff->code = KEY_SLEEP;
+	onoff->code = KEY_POWER;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
