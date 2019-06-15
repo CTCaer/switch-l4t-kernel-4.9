@@ -370,6 +370,26 @@ config HID_ICADE
 	To compile this driver as a module, choose M here: the
 	module will be called hid-icade.
 
+config HID_JOYCON
+    tristate "Nintendo JoyCon peripherals"
+    depends on HID
+    ---help---
+    Support for Nintendo Joy-Con Bluetooth peripherals. Supported
+    devices are the JoyCon (L) and JoyCon (R) controllers.
+
+    Driver starts in "combine" mode where both the left and right
+    controller inputs are directed to the left controller.
+    Pressing the MODE/NFC button on the left controller changes
+    it to "indiviual" mode where each controler has its own buttons
+    and layout changes to horizonal (e.g. you press SL/SR instead
+    of L/R). By turning off both controllers, it returns to
+    "combine" mode.
+
+    If unsure, say N.
+
+    To compile this driver as a module, choose M here: the
+    module will be called hid-joycon.
+
 config HID_TWINHAN
 	tristate "Twinhan IR remote control"
 	depends on HID
