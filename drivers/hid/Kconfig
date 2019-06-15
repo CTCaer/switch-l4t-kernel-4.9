@@ -833,20 +833,6 @@ config SMARTJOYPLUS_FF
 	Say Y here if you have a SmartJoy PLUS PS2/USB adapter and want to
 	enable force feedback support for it.
 
-config HID_SWITCHCON
-	tristate "Nintendo Joy-Con and Pro Controller support"
-	depends on HID
-	depends on USB_HID
-	---help---
-	Adds support for the Nintendo Switch Joy-Cons and Pro Controller.
-	All controllers support bluetooth, and the Pro Controller also supports
-	its USB mode.
-
-	If unsure, say N.
-
-	To compile this driver as a module, choose M here: the
-	module will be called hid-switchcon.
-
 config HID_TIVO
 	tristate "TiVo Slide Bluetooth remote control support"
 	depends on HID
