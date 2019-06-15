@@ -158,8 +158,8 @@ static void joycon_init_input(struct joycon_data *jdata) {
     // buttons for "right" side
     set_bit(BTN_Y, jdata->input->keybit);
     set_bit(BTN_X, jdata->input->keybit);
-    set_bit(BTN_A, jdata->input->keybit);
     set_bit(BTN_B, jdata->input->keybit);
+    set_bit(BTN_A, jdata->input->keybit);
     set_bit(BTN_TR, jdata->input->keybit);
     set_bit(BTN_TR2, jdata->input->keybit);
     set_bit(BTN_START, jdata->input->keybit);
@@ -173,6 +173,12 @@ static void joycon_init_input(struct joycon_data *jdata) {
     // "right" stick
     input_set_abs_params(jdata->input, ABS_Z, -512, 512, 0, 0);
     input_set_abs_params(jdata->input, ABS_RZ, -512, 512, 0, 0);
+    
+	input_set_abs_params(jdata->input, ABS_HAT0X, -1, 1, 0, 0);
+    input_set_abs_params(jdata->input, ABS_HAT0Y, -1, 1, 0, 0);
+	
+	input_set_abs_params(jdata->input, ABS_HAT2X, 0, 512, 0, 0);
+    input_set_abs_params(jdata->input, ABS_HAT2Y, 0, 512, 0, 0);
 }
 
 
@@ -192,10 +198,10 @@ static void joycon_handle_input_3f_left(struct joycon_data *jdata, const __u8 *l
     input_report_abs(jdata->input, ABS_X, stick_x);
     input_report_abs(jdata->input, ABS_Y, stick_y);
 
-    input_report_key(jdata->input, BTN_Y, !!(left_payload[1] & 0x08));  // X (Right) (xbox Y)
-    input_report_key(jdata->input, BTN_X, !!(left_payload[1] & 0x04));  // Y (Up) (xbox X)
-    input_report_key(jdata->input, BTN_A, !!(left_payload[1] & 0x01));  // B (Left) (xbox A)
-    input_report_key(jdata->input, BTN_B, !!(left_payload[1] & 0x02));  // A (Down) (xbox B)
+    input_report_key(jdata->input, BTN_X, !!(left_payload[1] & 0x08));  // X (Right) (xbox Y)
+    input_report_key(jdata->input, BTN_Y, !!(left_payload[1] & 0x04));  // Y (Up) (xbox X)
+    input_report_key(jdata->input, BTN_B, !!(left_payload[1] & 0x01));  // B (Left) (xbox A)
+    input_report_key(jdata->input, BTN_A, !!(left_payload[1] & 0x02));  // A (Down) (xbox B)
     input_report_key(jdata->input, BTN_TR, !!(left_payload[1] & 0x20));  // SR
     input_report_key(jdata->input, BTN_TR2, 0);
     input_report_key(jdata->input, BTN_START, !!(left_payload[2] & 0x20));  // MODE
@@ -203,6 +209,11 @@ static void joycon_handle_input_3f_left(struct joycon_data *jdata, const __u8 *l
     input_report_key(jdata->input, BTN_THUMBR, 0);
     input_report_abs(jdata->input, ABS_Z, 0);
     input_report_abs(jdata->input, ABS_RZ, 0);
+	input_report_abs(jdata->input, ABS_HAT0X, 0);
+	input_report_abs(jdata->input, ABS_HAT0Y, 0);
+	input_report_abs(jdata->input, ABS_HAT2X, 0);
+	input_report_abs(jdata->input, ABS_HAT2Y, 0);
+
 
     input_sync(jdata->input);
 }
@@ -223,10 +234,10 @@ static void joycon_handle_input_3f_right(struct joycon_data *jdata, const __u8 *
     input_report_abs(jdata->input, ABS_X, stick_x);
     input_report_abs(jdata->input, ABS_Y, stick_y);
 
-    input_report_key(jdata->input, BTN_Y, !!(right_payload[1] & 0x08));  // Y (UP) (xbox Y)
-    input_report_key(jdata->input, BTN_X, !!(right_payload[1] & 0x04));  // B (LEFT) (xbox X)
-    input_report_key(jdata->input, BTN_A, !!(right_payload[1] & 0x01));  // A (DOWN) (xbox A)
-    input_report_key(jdata->input, BTN_B, !!(right_payload[1] & 0x02));  // X (RIGHT) (xbox B)
+    input_report_key(jdata->input, BTN_X, !!(right_payload[1] & 0x08));  // Y (UP) (xbox Y)
+    input_report_key(jdata->input, BTN_Y, !!(right_payload[1] & 0x04));  // B (LEFT) (xbox X)
+    input_report_key(jdata->input, BTN_B, !!(right_payload[1] & 0x01));  // A (DOWN) (xbox A)
+    input_report_key(jdata->input, BTN_A, !!(right_payload[1] & 0x02));  // X (RIGHT) (xbox B)
     input_report_key(jdata->input, BTN_TR, !!(right_payload[1] & 0x20));  // SR
     input_report_key(jdata->input, BTN_TR2, 0);
     input_report_key(jdata->input, BTN_START, !!(right_payload[2] & 0x02));  // MODE
@@ -234,6 +245,10 @@ static void joycon_handle_input_3f_right(struct joycon_data *jdata, const __u8 *
     input_report_key(jdata->input, BTN_THUMBR, 0);
     input_report_abs(jdata->input, ABS_Z, 0);
     input_report_abs(jdata->input, ABS_RZ, 0);
+	input_report_abs(jdata->input, ABS_HAT0X, 0);
+	input_report_abs(jdata->input, ABS_HAT0Y, 0);
+	input_report_abs(jdata->input, ABS_HAT2X, 0);
+	input_report_abs(jdata->input, ABS_HAT2Y, 0);
 
     input_sync(jdata->input);
 }
@@ -242,22 +257,19 @@ static void joycon_handle_input_3f_combine(struct joycon_data *jdata, const __u8
     int stick_x = 0;
     int stick_y = 0;
 
-    input_report_key(jdata->input, KEY_LEFT, !!(left_payload[1] & 0x01));
-    input_report_key(jdata->input, KEY_DOWN, !!(left_payload[1] & 0x02));
-    input_report_key(jdata->input, KEY_UP, !!(left_payload[1] & 0x04));
-    input_report_key(jdata->input, KEY_RIGHT, !!(left_payload[1] & 0x08));
     input_report_key(jdata->input, BTN_TL, !!(left_payload[2] & 0x40));  // L
     input_report_key(jdata->input, BTN_TL2, !!(left_payload[2] & 0x80));  // LZ
     input_report_key(jdata->input, BTN_SELECT, !!(left_payload[2] & 0x01));  // MINUS
     input_report_key(jdata->input, BTN_THUMBL, !!(left_payload[2] & 0x04));  // MIDDLE JOYSTICK
+    input_report_key(jdata->input, BTN_C, !!(right_payload[2] & 0x10));  // SCRSHOT
     joycon_virtual_stick_clockwise(0x04, left_payload[3], &stick_x, &stick_y);
     input_report_abs(jdata->input, ABS_X, stick_x);
     input_report_abs(jdata->input, ABS_Y, stick_y);
 
-    input_report_key(jdata->input, BTN_Y, !!(right_payload[1] & 0x02));  // X (xbox Y)
-    input_report_key(jdata->input, BTN_X, !!(right_payload[1] & 0x08));  // Y (xbox X)
-    input_report_key(jdata->input, BTN_A, !!(right_payload[1] & 0x04));  // B (xbox A)
-    input_report_key(jdata->input, BTN_B, !!(right_payload[1] & 0x01));  // A (xbox B)
+    input_report_key(jdata->input, BTN_X, !!(right_payload[1] & 0x02));  // X (xbox Y)
+    input_report_key(jdata->input, BTN_Y, !!(right_payload[1] & 0x08));  // Y (xbox X)
+    input_report_key(jdata->input, BTN_B, !!(right_payload[1] & 0x04));  // B (xbox A)
+    input_report_key(jdata->input, BTN_A, !!(right_payload[1] & 0x01));  // A (xbox B)
     input_report_key(jdata->input, BTN_TR, !!(right_payload[2] & 0x40));  // R
     input_report_key(jdata->input, BTN_TR2, !!(right_payload[2] & 0x80));  // RZ
     input_report_key(jdata->input, BTN_START, !!(right_payload[2] & 0x02));  // PLUS
@@ -266,8 +278,14 @@ static void joycon_handle_input_3f_combine(struct joycon_data *jdata, const __u8
     joycon_virtual_stick_clockwise(0x00, right_payload[3], &stick_x, &stick_y);
     input_report_abs(jdata->input, ABS_Z, stick_x);
     input_report_abs(jdata->input, ABS_RZ, stick_y);
-
-    input_sync(jdata->input);
+	input_report_abs(jdata->input, ABS_HAT0Y,
+		(left_payload[1] & 0x02 ? 1 : 0) + (left_payload[1] & 0x04 ? -1 : 0));
+	input_report_abs(jdata->input, ABS_HAT0X,
+		(left_payload[1] & 0x01 ? -1 : 0) + (left_payload[1] & 0x08 ? 1 : 0));
+	input_report_abs(jdata->input, ABS_HAT2X, (left_payload[2] & 0x80 ? 512 : -512));
+	input_report_abs(jdata->input, ABS_HAT2Y, (right_payload[2] & 0x80 ? 512 : -512));
+    
+	input_sync(jdata->input);
 }
 
 static void joycon_load(struct joycon_data *jdata) {
@@ -371,7 +389,7 @@ static void joycon_handle_input_3f(struct joycon_data *jdata, const __u8 *payloa
 
     if (JOYCON_HOLD_COMBINLE_INTO_L == jdata_hold) {
         // MODE on JOYCON (L)
-        if (!!(left_payload[2] & 0x20)) {
+        if ((left_payload[1] & 0x20 && left_payload[1] & 0x10) || (right_payload[1] & 0x20 && right_payload[1] & 0x10)) {
             printk("----------------------\n");
             printk("INDIVIDUAL CONTROLLERS\n");
             jdata_hold = JOYCON_HOLD_INDIVIDUAL;
@@ -432,12 +450,6 @@ static int joycon_hid_event(struct hid_device *hdev, struct hid_report *report,
             break;
     }
     spin_unlock_irqrestore(&jdata_lock, flags);
-
-    printk("joycon input: ");
-    for (i = 0; i < size; i++) {
-        printk("%02x ", raw_data[i]);
-    }
-    printk("\n");
 
     return 0;
 }
