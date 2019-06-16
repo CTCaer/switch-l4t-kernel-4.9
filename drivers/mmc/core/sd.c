@@ -68,6 +68,87 @@ static const unsigned int sd_au_size[] = {
 		__res & __mask;						\
 	})
 
+static int voltage_switch_uhs_failure = 0;
+static ssize_t error_stats_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	int bytes_written = 0;
+	bytes_written += sprintf(buf + bytes_written,
+				"%d\n", voltage_switch_uhs_failure);
+	return bytes_written;
+}
+
+static ssize_t error_stats_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, error_stats = 0;
+
+	ret = sscanf(buf, "%d", &error_stats);
+	if (ret <= 0 || error_stats < 0)
+		return -EINVAL;
+
+	voltage_switch_uhs_failure = error_stats;
+	return count;
+}
+
+static DEVICE_ATTR(error_stats, S_IWUSR | S_IRUGO,
+			error_stats_show,
+			error_stats_store);
+
+
+static ssize_t ios_timing_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	struct mmc_host *host = card->host;
+	struct mmc_ios *ios = &host->ios;
+	const char *str;
+
+	switch (ios->timing) {
+		case MMC_TIMING_LEGACY:
+			str = "legacy";
+			break;
+		case MMC_TIMING_MMC_HS:
+			str = "mmc high-speed";
+			break;
+		case MMC_TIMING_SD_HS:
+			str = "sd high-speed";
+			break;
+		case MMC_TIMING_UHS_SDR12:
+			str = "sd uhs SDR12";
+			break;
+		case MMC_TIMING_UHS_SDR25:
+			str = "sd uhs SDR25";
+			break;
+		case MMC_TIMING_UHS_SDR50:
+			str = "sd uhs SDR50";
+			break;
+		case MMC_TIMING_UHS_SDR104:
+			str = "sd uhs SDR104";
+			break;
+		case MMC_TIMING_UHS_DDR50:
+			str = "sd uhs DDR50";
+			break;
+		case MMC_TIMING_MMC_DDR52:
+			str = "mmc DDR52";
+			break;
+		case MMC_TIMING_MMC_HS200:
+			str = "mmc HS200";
+			break;
+		case MMC_TIMING_MMC_HS400:
+			str = mmc_card_hs400es(host->card) ?
+				"mmc HS400 enhanced strobe" : "mmc HS400";
+			break;
+		default:
+			str = "invalid";
+			break;
+	}
+	return sprintf(buf, "timing spec:\t%u (%s)\n", ios->timing, str);
+}
+
+static DEVICE_ATTR(ios_timing, S_IRUGO,	ios_timing_show, NULL);
+
+
 /*
  * Given the decoded CSD structure, decode the raw CID to our CID structure.
  */
@@ -722,6 +803,8 @@ static struct attribute *sd_std_attrs[] = {
 	&dev_attr_ocr.attr,
 	&dev_attr_dsr.attr,
 	&dev_attr_speed_class.attr,
+	&dev_attr_ios_timing.attr,
+	&dev_attr_error_stats.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(sd_std);
@@ -796,9 +879,11 @@ try_again:
 					pocr);
 		if (err == -EAGAIN) {
 			retries--;
+			voltage_switch_uhs_failure++;
 			goto try_again;
 		} else if (err) {
 			retries = 0;
+			voltage_switch_uhs_failure++;
 			goto try_again;
 		}
 	}
