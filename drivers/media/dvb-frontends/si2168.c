@@ -38,11 +38,17 @@ static int si2168_cmd_execute(struct i2c_client *client, struct si2168_cmd *cmd)
 			ret = -EREMOTEIO;
 			goto err_mutex_unlock;
 		}
+
+		if (cmd->args[0] == 0x85) { /* restart */
+			usleep_range(10000, 11000);
+		} else if (cmd->wlen > 1 && cmd->args[0] == 0xc0 && cmd->args[1] == 0x06) { /* power up */
+			usleep_range(15000,16000);
+		}
 	}
 
 	if (cmd->rlen) {
 		/* wait cmd execution terminate */
-		#define TIMEOUT 70
+		#define TIMEOUT 300
 		timeout = jiffies + msecs_to_jiffies(TIMEOUT);
 		while (!time_after(jiffies, timeout)) {
 			ret = i2c_master_recv(client, cmd->args, cmd->rlen);
@@ -56,6 +62,8 @@ static int si2168_cmd_execute(struct i2c_client *client, struct si2168_cmd *cmd)
 			/* firmware ready? */
 			if ((cmd->args[0] >> 7) & 0x01)
 				break;
+
+			usleep_range(5000,6000);
 		}
 
 		dev_dbg(&client->dev, "cmd execution took %d ms\n",
@@ -72,6 +80,8 @@ static int si2168_cmd_execute(struct i2c_client *client, struct si2168_cmd *cmd)
 			ret = -ETIMEDOUT;
 			goto err_mutex_unlock;
 		}
+
+		usleep_range(2000,3000);
 	}
 
 	mutex_unlock(&dev->i2c_mutex);
