@@ -637,18 +637,6 @@ static int stmfts_power_on(struct stmfts_data *sdata)
 		sdata->no_sleep_support = true;
 	}
 
-	/* optional tuning */
-	err = stmfts_command(sdata, STMFTS_MS_CX_TUNING);
-	if (err)
-		dev_warn(&sdata->client->dev,
-			 "failed to perform mutual auto tune: %d\n", err);
-
-	/* optional tuning */
-	err = stmfts_command(sdata, STMFTS_SS_CX_TUNING);
-	if (err)
-		dev_warn(&sdata->client->dev,
-			 "failed to perform self auto tune: %d\n", err);
-
 	err = stmfts_command(sdata, STMFTS_FULL_FORCE_CALIBRATION);
 	if (err) {
 		dev_err(&sdata->client->dev,
