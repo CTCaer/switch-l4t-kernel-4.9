@@ -6,7 +6,7 @@
  *	2001 - Documented with DocBook
  *	- Brad Douglas <brad@neruo.com>
  *
- * Copyright (c) 2018, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2018-2019, NVIDIA CORPORATION, All rights reserved.
  *
  *  This file is subject to the terms and conditions of the GNU General Public
  *  License. See the file COPYING in the main directory of this archive for
@@ -2241,13 +2241,21 @@ int fb_mode_is_equal(const struct fb_videomode *mode1,
 		return 1;
 
 	/*
-	 *Special case when comparing an RGB or YUV420 mode from set (mode2)
+	 * Special case when comparing an RGB or YUV420 mode from set (mode2)
 	 * to a mode capable of both, YUV420 and RGB (mode1). Neither mode1
 	 * nor mode2 may have the FB_VMODE_Y420_ONLY flag set.
 	 */
 	if (!(mode1->vmode & FB_VMODE_Y420_ONLY) &&
 	    !(mode2->vmode & FB_VMODE_Y420_ONLY) &&
 	     (mode1->vmode & FB_VMODE_Y420))
+		return 1;
+
+	/*
+	 * Don't treat set mode (mode2) as new mode if Y420 flag set and
+	 * list (mode1) is already have Y420_ONLY flag set.
+	 */
+	if ((mode1->vmode & FB_VMODE_Y420_ONLY) &&
+	    (mode2->vmode & FB_VMODE_Y420))
 		return 1;
 
 	/* In any other case, report the modes do not match */
