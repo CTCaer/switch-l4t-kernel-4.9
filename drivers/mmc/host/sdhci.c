@@ -15,6 +15,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/device.h>
 #include <linux/highmem.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -50,6 +51,43 @@ static void sdhci_finish_data(struct sdhci_host *);
 static void sdhci_enable_preset_value(struct sdhci_host *host, bool enable);
 static void sdhci_regulator_config_pre(struct mmc_host *mmc, int vdd,
 						bool flag);
+
+static int error_data_timeout = 0;
+static int error_data_end_bit = 0;
+static int error_data_crc = 0;
+static int error_data_adma = 0;
+static ssize_t
+error_stats_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int bytes_written = 0;
+	bytes_written += sprintf(buf + bytes_written,
+				"%d %d %d %d\n",
+				error_data_timeout,
+				error_data_end_bit,
+				error_data_crc,
+				error_data_adma);
+	return bytes_written;
+}
+
+static ssize_t
+error_stats_store(struct device *dev, struct device_attribute *attr,
+		   const char *buf, size_t count)
+{
+	int ret, error_stats = 0;
+
+	ret = sscanf(buf, "%d", &error_stats);
+	if (ret <= 0 || error_stats != 0)
+		return -EINVAL;
+
+	error_data_timeout = error_stats;
+	error_data_end_bit = error_stats;
+	error_data_crc = error_stats;
+	error_data_adma = error_stats;
+	return count;
+}
+
+static DEVICE_ATTR(error_stats, S_IRUGO | S_IWUSR,
+		   error_stats_show, error_stats_store);
 
 static void sdhci_enable_host_interrupts(struct mmc_host *mmc, bool enable)
 {
@@ -1612,11 +1650,13 @@ static void sdhci_clear_cqe_interrupt(struct mmc_host *mmc, u32 intmask)
 	}
 	if (intmask & SDHCI_INT_DATA_TIMEOUT) {
 		cq_host->data->error = -ETIMEDOUT;
+		error_data_timeout++;
 		pr_err("%s: Data Timeout error, intmask: %x Interface clock = %uHz\n",
 			mmc_hostname(host->mmc), intmask, host->max_clk);
 		sdhci_dumpregs(host);
 	} else if (intmask & SDHCI_INT_DATA_END_BIT) {
 		cq_host->data->error = -EILSEQ;
+		error_data_end_bit++;
 		pr_err("%s: Data END Bit error, intmask: %x Interface clock = %uHz\n",
 			mmc_hostname(host->mmc), intmask, host->max_clk);
 		sdhci_dumpregs(host);
@@ -1624,6 +1664,7 @@ static void sdhci_clear_cqe_interrupt(struct mmc_host *mmc, u32 intmask)
 		SDHCI_GET_CMD(sdhci_readw(host, SDHCI_COMMAND))
 			!= MMC_BUS_TEST_R) {
 		cq_host->data->error = -EILSEQ;
+		error_data_crc++;
 		pr_err("%s: Data CRC error, intmask: %x Interface clock = %uHz\n",
 			mmc_hostname(host->mmc), intmask, host->max_clk);
 		sdhci_dumpregs(host);
@@ -1635,6 +1676,7 @@ static void sdhci_clear_cqe_interrupt(struct mmc_host *mmc, u32 intmask)
 			SDHCI_ADMA_ADDRESS, readl(host->ioaddr +
 			SDHCI_ADMA_ADDRESS));
 		cq_host->data->error = -EIO;
+		error_data_adma++;
 	} else if (intmask & SDHCI_INT_CRC) {
 		pr_err("%s: Command CRC error, intmask: %x Interface clock = %uHz\n",
 			mmc_hostname(host->mmc), intmask, host->max_clk);
@@ -4086,6 +4128,9 @@ int __sdhci_add_host(struct sdhci_host *host)
 
 	sdhci_enable_card_detection(host);
 
+	if (device_create_file(&mmc->class_dev, &dev_attr_error_stats))
+		pr_err("%s: failed to create error stats node.\n",
+				mmc_hostname(mmc));
 	return 0;
 
 unled:
@@ -4171,6 +4216,7 @@ void sdhci_remove_host(struct sdhci_host *host, int dead)
 
 	host->adma_table = NULL;
 	host->align_buffer = NULL;
+	device_remove_file(&mmc->class_dev, &dev_attr_error_stats);
 }
 
 EXPORT_SYMBOL_GPL(sdhci_remove_host);
