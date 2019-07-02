@@ -13,6 +13,7 @@
 
 #include <linux/kernel.h>
 #include <linux/clk-provider.h>
+#include <linux/ioport.h>
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -73,8 +74,8 @@
 
 static bool emc_enable = true;
 module_param(emc_enable, bool, 0444);
-static bool emc_force_max_rate = true;
-//module_param(emc_force_max_rate, bool, 0444);
+static bool emc_force_max_rate = false;
+module_param(emc_force_max_rate, bool, 0444);
 
 enum TEGRA_EMC_SOURCE {
 	TEGRA_EMC_SRC_PLLM,
@@ -2206,14 +2207,75 @@ static int find_matching_input(struct emc_table *table, struct emc_sel *sel)
 	return 0;
 }
 
+#define TEGRA_SIP_EMC_COMMAND_FID 0xC2FFFE01
+#define EMC_TABLE_ADDR      0xaa
+#define EMC_TABLE_SIZE      0xbb
+#define NR_SMC_REGS		6
+
+struct emc_smc_regs {
+	u64 args[NR_SMC_REGS];
+};
+static void send_smc(u32 func, struct emc_smc_regs *regs)
+{
+	u32 ret = func;
+
+	asm volatile(
+		"mov x0, %0\n"
+		"ldp x1, x2, [%1, #16 * 0]\n"
+		"ldp x3, x4, [%1, #16 * 1]\n"
+		"ldp x5, x6, [%1, #16 * 2]\n"
+		"smc #0\n"
+		"mov %0, x0\n"
+		"stp x1, x2, [%1, #16 * 0]\n"
+		: "+r" (ret)
+		: "r" (regs)
+		: "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8",
+		  "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17");
+	if (ret) {
+			pr_err("%s: failed (ret=%d)\n", __func__, ret);
+			WARN_ON(1);
+	}
+}
+
+static struct resource tegra210_init_emc_data_smc(struct platform_device *pdev)
+{
+	u64 size, base;
+	struct resource table;
+	struct emc_smc_regs regs;
+
+	regs.args[0] = EMC_TABLE_ADDR;
+	regs.args[1] = 0;
+	regs.args[2] = 0;
+	regs.args[3] = 0;
+	regs.args[4] = 0;
+	regs.args[5] = 0;
+	send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
+	printk("ERR: EMC: READ: %llx", regs.args[0]);
+	base = regs.args[0];
+
+	regs.args[0] = EMC_TABLE_SIZE;
+	regs.args[1] = 0;
+	regs.args[2] = 0;
+	regs.args[3] = 0;
+	regs.args[4] = 0;
+	regs.args[5] = 0;
+	send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
+	printk("ERR: EMC: WRITE: %llx", regs.args[0]);
+	size = regs.args[0];
+
+	table.start = base;
+	table.end = base + size;
+	table.flags = IORESOURCE_MEM;
+
+	return table;
+}
+
 static int tegra210_init_emc_data(struct platform_device *pdev)
 {
 	int i;
 	unsigned long table_rate;
 	unsigned long current_rate;
-	unsigned int fuse_odm_4;
-	unsigned int sdram_id;
-	struct emc_table *tables;
+	struct resource table_res;
 
 	emc_clk = devm_clk_get(&pdev->dev, "emc");
 	if (IS_ERR(emc_clk)) {
@@ -2254,29 +2316,9 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 
 	//tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
 	//		&tegra_emc_table_derated, &tegra_emc_table_size);
+	table_res = tegra210_init_emc_data_smc(pdev);
 
-	tegra_emc_table_normal = devm_kzalloc(&pdev->dev,
-			sizeof(*tables) * 10, GFP_KERNEL);
-	tegra_emc_table_derated = devm_kzalloc(&pdev->dev,
-			sizeof(*tables) * 10, GFP_KERNEL);
-
-	tegra_fuse_control_read(0x1C8 + 16, &fuse_odm_4);
-	sdram_id = (fuse_odm_4 >> 3) & 0x1F;
-	printk("fuse_odm_4 = %d, sdram_id = %d\n", fuse_odm_4, sdram_id);
-	switch (sdram_id)
-	{
-	case 1:
-		memcpy((void *)tegra_emc_table_normal, nx_abca2_2_10NoCfgVersion_V9_8_7_V1_6, 49280);
-		break;
-	case 0:
-	case 2:
-	case 3:
-	case 4:
-	default:
-		memcpy((void *)tegra_emc_table_normal, nx_abca2_0_3_10NoCfgVersion_V9_8_7_V1_6, 49280);
-		break;
-	}
-	printk("Copied mtc tables\n");
+	tegra_emc_table_normal = devm_ioremap_resource(&pdev->dev, &table_res);
 	tegra_emc_table_derated = tegra_emc_table_normal; // TODO: Don't actually do this maybe?
 	tegra_emc_table_size = 10;
 
