@@ -118,7 +118,7 @@ static bool valid_state(suspend_state_t state)
  * available (if any), and the "freeze" label corresponds to the remaining
  * available sleep state (if there is one).
  */
-static bool relative_states = true;
+static bool relative_states;
 
 void __init pm_states_init(void)
 {
