@@ -1085,8 +1085,13 @@ static int tegra_adma_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	if (of_property_read_u32(node, "dma-channels",
-						&tdma->nr_channels))
+						&tdma->nr_channels)) {
+#if IS_ENABLED(CONFIG_SND_SOC_TEGRA210_ADSP_ALT)
+		tdma->nr_channels = cdata->nr_channels >> 1;
+#else
 		tdma->nr_channels = cdata->nr_channels;
+#endif
+	}
 
 	if (tdma->nr_channels > cdata->nr_channels)
 		tdma->nr_channels = cdata->nr_channels;
@@ -1110,7 +1115,6 @@ static int tegra_adma_probe(struct platform_device *pdev)
 		tdma->is_virt = true;
 	else
 		tdma->is_virt = false;
-
 
 	tdma->dev = &pdev->dev;
 	dma_device = &pdev->dev;
