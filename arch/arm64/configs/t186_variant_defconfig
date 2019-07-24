@@ -1,0 +1,4 @@
+# CONFIG_TRUSTY is not set
+# CONFIG_TRUSTED_LITTLE_KERNEL is not set
+# CONFIG_TEGRA_HDMIHDCP is not set
+#_CONFIG_TEGRA_DPHDCP is not set
