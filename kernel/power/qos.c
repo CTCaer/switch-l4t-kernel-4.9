@@ -201,7 +201,7 @@ static struct pm_qos_constraints gpu_freq_max_constraints = {
 };
 static struct pm_qos_object gpu_freq_max_pm_qos = {
 	.constraints = &gpu_freq_max_constraints,
-	.name = "gpu_freq_max",
+	.name = "gpu_freq_max_ignore",
 };
 
 static struct pm_qos_bounded_constraint cpu_freq_constraint = {
