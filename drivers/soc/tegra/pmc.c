@@ -105,10 +105,12 @@
 #define PMC_SCRATCH0			0x50
 #define  PMC_SCRATCH0_MODE_RECOVERY	(1 << 31)
 #define  PMC_SCRATCH0_MODE_BOOTLOADER	(1 << 30)
+// switch: reboot-to-payload scratch0 bit. "unofficial"
+#define  PMC_SCRATCH0_MODE_PAYLOAD	(1 << 29)
 #define  PMC_SCRATCH0_MODE_RCM		(1 << 1)
 #define  PMC_SCRATCH0_MODE_MASK		(PMC_SCRATCH0_MODE_RECOVERY | \
 					 PMC_SCRATCH0_MODE_BOOTLOADER | \
-					 PMC_SCRATCH0_MODE_RCM)
+					 PMC_SCRATCH0_MODE_RCM | PMC_SCRATCH0_MODE_PAYLOAD)
 
 #define PMC_SCRATCH1			0x54
 
@@ -1024,6 +1026,8 @@ enum tegra_system_reset_level tegra_pmc_get_system_reset_level(void)
 	return tegra_rst_lvl_sts;
 }
 
+extern bool ams_prepare_for_r2p(const char *cmd);
+
 static void tegra_pmc_program_reboot_reason(const char *cmd)
 {
 	u32 value;
@@ -1040,6 +1044,10 @@ static void tegra_pmc_program_reboot_reason(const char *cmd)
 
 		if (strcmp(cmd, "forced-recovery") == 0)
 			value |= PMC_SCRATCH0_MODE_RCM;
+	}
+
+	if (ams_prepare_for_r2p(cmd)) {
+		value |= PMC_SCRATCH0_MODE_PAYLOAD;
 	}
 
 	tegra_pmc_reg_writel(value, TEGRA_PMC_SCRATCH0);
