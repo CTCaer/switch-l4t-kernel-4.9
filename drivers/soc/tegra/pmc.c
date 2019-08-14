@@ -1001,8 +1001,9 @@ static void tegra_pmc_program_reboot_reason(const char *cmd)
 		if (strcmp(cmd, "forced-recovery") == 0)
 			value |= PMC_SCRATCH0_MODE_RCM;
 
-		if (strcmp(cmd, "payload") == 0)
-			value |= PMC_SCRATCH0_MODE_PAYLOAD;
+		// This is handled below.
+		//if (strcmp(cmd, "payload") == 0)
+		//	value |= PMC_SCRATCH0_MODE_PAYLOAD;
 	}
 
 	if(ams_prepare_for_r2p(cmd))

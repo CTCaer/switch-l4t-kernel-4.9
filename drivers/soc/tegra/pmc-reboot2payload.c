@@ -146,9 +146,10 @@ bool ams_prepare_for_r2p(const char *cmd)
 {
 	bool load_default_payload = true;
 	bool do_hekate_config = true;
-
 	reboot_driver_state_t *state;
 	boot_cfg_t hekate_config;
+
+	if(r2p_device == NULL) return false;
 
 	state = dev_get_drvdata(&r2p_device->dev);
 
