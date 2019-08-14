@@ -957,8 +957,10 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 {
 	struct bq2419x_chip *bq2419x = data;
 	int ret;
+	int in_current_limit;
+	int old_current_limit;
 	unsigned int val;
-	int check_chg_state = 0;
+	int check_chg_state = 1;
 
 	mutex_lock(&bq2419x->mutex);
 	if (bq2419x->shutdown_complete)
@@ -1065,7 +1067,81 @@ sys_stat_read:
 		if (bq2419x->disable_suspend_during_charging)
 			battery_charger_release_wake_lock(bq2419x->bc_dev);
 	}
+	
+	bq2419x->chg_status = BATTERY_DISCHARGING;
 
+	if (!bq2419x->is_otg_connected) {
+		ret = bq2419x_charger_enable(bq2419x);
+		if (ret < 0) {
+			dev_err(bq2419x->dev, "Charger enable failed %d", ret);
+			return ret;
+		}
+	}
+
+	ret = regmap_read(bq2419x->regmap, BQ2419X_SYS_STAT_REG, &val);
+	if (ret < 0)
+		dev_err(bq2419x->dev, "SYS_STAT_REG read failed: %d\n", ret);
+
+
+	old_current_limit = bq2419x->in_current_limit;
+	in_current_limit = 0;
+	if ((val & BQ2419x_VBUS_STAT) == BQ2419x_VBUS_UNKNOWN) {
+		in_current_limit = 500;
+		bq2419x->cable_connected = 0;
+		bq2419x->chg_status = BATTERY_DISCHARGING;
+		battery_charger_thermal_stop_monitoring(
+				bq2419x->bc_dev);
+		/* Clear JEITA_VSET bit if cable disconnected */
+		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_MISC_OPER_REG,
+					BQ2419X_JEITA_VSET_MASK, 0);
+		if (ret < 0)
+			dev_err(bq2419x->dev, "JEITA_VSET update failed: %d\n",
+					ret);
+	} else if ((val & BQ2419x_CHRG_STATE_MASK) ==
+				BQ2419x_CHRG_STATE_CHARGE_DONE) {
+		dev_dbg(bq2419x->dev, "Charging completed\n");
+		bq2419x->chg_status = BATTERY_CHARGING_DONE;
+		bq2419x->cable_connected = 1;
+		in_current_limit = 0;
+		battery_charger_thermal_stop_monitoring(
+				bq2419x->bc_dev);
+	} else if ((val & BQ2419x_VBUS_STAT) == BQ2419x_VBUS_AC){
+		in_current_limit = 1200;
+		bq2419x->cable_connected = 1;
+		bq2419x->chg_status = BATTERY_CHARGING;
+		battery_charger_thermal_start_monitoring(
+				bq2419x->bc_dev);
+		/* Set JEITA_VSET bit if charger cable connected */
+		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_MISC_OPER_REG,
+			BQ2419X_JEITA_VSET_MASK, BQ2419X_JEITA_VSET_42V);
+		if (ret < 0)
+			dev_err(bq2419x->dev, "JEITA_VSET update failed: %d\n",
+				ret);
+	} else if ((val & BQ2419x_VBUS_STAT) == BQ2419x_VBUS_USB){
+		in_current_limit = 1200;
+		bq2419x->cable_connected = 1;
+		bq2419x->chg_status = BATTERY_CHARGING;
+		battery_charger_thermal_start_monitoring(
+				bq2419x->bc_dev);
+		/* Set JEITA_VSET bit if charger cable connected */
+		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_MISC_OPER_REG,
+			BQ2419X_JEITA_VSET_MASK, BQ2419X_JEITA_VSET_42V);
+		if (ret < 0)
+			dev_err(bq2419x->dev, "JEITA_VSET update failed: %d\n",
+				ret);
+	}
+	ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
+	if (ret < 0)
+		goto out;
+
+	battery_charging_status_update(bq2419x->bc_dev, bq2419x->chg_status);
+	if (bq2419x->disable_suspend_during_charging) {
+		if (bq2419x->cable_connected && in_current_limit > 500
+			&& (bq2419x->chg_status != BATTERY_CHARGING_DONE))
+			battery_charger_acquire_wake_lock(bq2419x->bc_dev);
+		else if (!bq2419x->cable_connected && old_current_limit > 500)
+			battery_charger_release_wake_lock(bq2419x->bc_dev);
+	}
 out:
 	mutex_unlock(&bq2419x->mutex);
 	return IRQ_HANDLED;
