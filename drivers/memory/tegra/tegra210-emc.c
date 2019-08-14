@@ -28,7 +28,6 @@
 #include <soc/tegra/fuse.h>
 
 #include "tegra210-emc-reg.h"
-#include "switch-emc.h"
 
 #define TEGRA_EMC_TABLE_MAX_SIZE		16
 #define EMC_STATUS_UPDATE_TIMEOUT		1000
@@ -129,10 +128,10 @@ static u32 current_clksrc;
 static u32 timer_period_mr4 = 1000;
 static u32 timer_period_training = 100;
 static bool tegra_emc_init_done;
-static void __iomem *emc_base;
-static void __iomem *emc0_base;
-static void __iomem *emc1_base;
-static void __iomem *mc_base;
+void __iomem *emc_base;
+void __iomem *emc0_base;
+void __iomem *emc1_base;
+void __iomem *mc_base;
 void __iomem *clk_base;
 static unsigned long emc_max_rate;
 #ifdef CONFIG_PM_SLEEP
@@ -176,6 +175,13 @@ static struct supported_sequence supported_seqs[] = {
 		0x7,
 		emc_set_clock_r21021,
 		__do_periodic_emc_compensation_r21021,
+		"21021"
+	},
+	{
+		0x7,
+		emc_set_clock_icosa,
+		__do_periodic_emc_compensation_icosa,
+		"Minerva Training Cell v1.2_lpddr4"
 	},
 	{
 		0,
@@ -277,6 +283,16 @@ inline void emc_writel(u32 val, unsigned long offset)
 inline u32 emc_readl(unsigned long offset)
 {
 	return readl(emc_base + offset);
+}
+
+inline void emc0_writel(u32 val, unsigned long offset)
+{
+	writel(val, emc0_base + offset);
+}
+
+inline u32 emc0_readl(unsigned long offset)
+{
+	return readl(emc0_base + offset);
 }
 
 inline void emc1_writel(u32 val, unsigned long offset)
@@ -1567,8 +1583,8 @@ static int tegra210_emc_set_rate(unsigned long rate)
 	if (i < 0)
 		return i;
 
-	//if (rate > 204000000 && !tegra_emc_table[i].trained)
-	//	return -EINVAL;
+	if (rate > 204000000 && !tegra_emc_table[i].trained)
+		return -EINVAL;
 
 	if (!emc_timing) {
 		emc_get_timing(&start_timing);
@@ -2314,13 +2330,17 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 		return -ENODATA;
 	}
 
-	//tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
-	//		&tegra_emc_table_derated, &tegra_emc_table_size);
-	table_res = tegra210_init_emc_data_smc(pdev);
+	if (of_find_property(pdev->dev.of_node, "nvidia,use-smc-emc-tables", NULL)) {
+		table_res = tegra210_init_emc_data_smc(pdev);
 
-	tegra_emc_table_normal = devm_ioremap_resource(&pdev->dev, &table_res);
-	tegra_emc_table_derated = tegra_emc_table_normal; // TODO: Don't actually do this maybe?
-	tegra_emc_table_size = 10;
+		tegra_emc_table_normal = devm_ioremap_resource(&pdev->dev, &table_res);
+		tegra_emc_table_derated = NULL;
+		tegra_emc_table_size = 10;
+	}
+	else {
+		tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
+			&tegra_emc_table_derated, &tegra_emc_table_size);
+	}
 
 	if (!tegra_emc_table_size ||
 	    tegra_emc_table_size > TEGRA_EMC_TABLE_MAX_SIZE) {
@@ -2344,8 +2364,12 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 
 	seq = supported_seqs;
 	while (seq->table_rev) {
-		if (seq->table_rev == tegra_emc_table[0].rev)
+		if (seq->table_rev == tegra_emc_table[0].rev) {
+			if (of_find_property(pdev->dev.of_node, "nvidia,use-minerva-cc", NULL)
+				&& seq->table_rev == 0x7)
+				seq++;
 			break;
+		}
 		seq++;
 	}
 	if (!seq->set_clock) {
