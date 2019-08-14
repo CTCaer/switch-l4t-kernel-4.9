@@ -809,6 +809,14 @@ config CPULOAD_MONITOR
 	  Publish cpu load measured in sysfs, to be used by user space cpu
 	  frequency controllers.
 
+config BM92TXX
+	bool "Rohm Semiconductor BM92TXX USB Type-C Support"
+	depends on I2C=y
+	help
+	  Say yes here to support for Rohm Semiconductor BM92TXX. This is a USB
+	  Type-C connection IC. This driver provies common support for power
+	  negotiation, USB ID detection and Hot-plug-detection on Display Port.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
