@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2015-2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -13,6 +13,7 @@
 
 #include <linux/kernel.h>
 #include <linux/clk-provider.h>
+#include <linux/ioport.h>
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -27,7 +28,6 @@
 #include <soc/tegra/fuse.h>
 
 #include "tegra210-emc-reg.h"
-#include "switch-emc.h"
 
 #define TEGRA_EMC_TABLE_MAX_SIZE		16
 #define EMC_STATUS_UPDATE_TIMEOUT		1000
@@ -73,8 +73,8 @@
 
 static bool emc_enable = true;
 module_param(emc_enable, bool, 0444);
-static bool emc_force_max_rate = true;
-//module_param(emc_force_max_rate, bool, 0444);
+static bool emc_force_max_rate = false;
+module_param(emc_force_max_rate, bool, 0444);
 
 enum TEGRA_EMC_SOURCE {
 	TEGRA_EMC_SRC_PLLM,
@@ -128,10 +128,10 @@ static u32 current_clksrc;
 static u32 timer_period_mr4 = 1000;
 static u32 timer_period_training = 100;
 static bool tegra_emc_init_done;
-static void __iomem *emc_base;
-static void __iomem *emc0_base;
-static void __iomem *emc1_base;
-static void __iomem *mc_base;
+void __iomem *emc_base;
+void __iomem *emc0_base;
+void __iomem *emc1_base;
+void __iomem *mc_base;
 void __iomem *clk_base;
 static unsigned long emc_max_rate;
 #ifdef CONFIG_PM_SLEEP
@@ -175,6 +175,13 @@ static struct supported_sequence supported_seqs[] = {
 		0x7,
 		emc_set_clock_r21021,
 		__do_periodic_emc_compensation_r21021,
+		"21021"
+	},
+	{
+		0x7,
+		emc_set_clock_icosa,
+		__do_periodic_emc_compensation_icosa,
+		"Minerva Training Cell v1.2_lpddr4"
 	},
 	{
 		0,
@@ -193,6 +200,7 @@ static int dram_temp_override;
 static unsigned long mr4_freq_threshold;
 static atomic_t mr4_temp_poll;
 static atomic_t mr4_force_poll;
+static atomic_t mr4_thresh_poll;
 
 static void emc_mr4_poll(unsigned long nothing);
 static struct timer_list emc_timer_mr4 =
@@ -276,6 +284,16 @@ inline void emc_writel(u32 val, unsigned long offset)
 inline u32 emc_readl(unsigned long offset)
 {
 	return readl(emc_base + offset);
+}
+
+inline void emc0_writel(u32 val, unsigned long offset)
+{
+	writel(val, emc0_base + offset);
+}
+
+inline u32 emc0_readl(unsigned long offset)
+{
+	return readl(emc0_base + offset);
 }
 
 inline void emc1_writel(u32 val, unsigned long offset)
@@ -397,7 +415,8 @@ static void emc_mr4_poll(unsigned long nothing)
 
 reset:
 	if (atomic_read(&mr4_temp_poll) == 0 &&
-	    atomic_read(&mr4_force_poll) == 0)
+	    atomic_read(&mr4_force_poll) == 0 &&
+	    atomic_read(&mr4_thresh_poll) == 0)
 		return;
 
 	if (mod_timer(&emc_timer_mr4,
@@ -421,6 +440,17 @@ static void tegra_emc_mr4_temp_trigger(int do_poll)
 	}
 }
 
+static void tegra_emc_mr4_thresh_trigger(int do_poll)
+{
+	if (do_poll) {
+		atomic_set(&mr4_thresh_poll, 1);
+		mod_timer(&emc_timer_mr4,
+			  jiffies + msecs_to_jiffies(timer_period_mr4));
+	} else {
+		atomic_set(&mr4_thresh_poll, 0);
+	}
+}
+
 /*
  * If the freq is higher than some threshold then poll. Only happens if a
  * threshold is actually defined.
@@ -428,9 +458,9 @@ static void tegra_emc_mr4_temp_trigger(int do_poll)
 static void tegra_emc_mr4_freq_check(unsigned long freq)
 {
 	if (mr4_freq_threshold && freq >= mr4_freq_threshold)
-		tegra_emc_mr4_temp_trigger(1);
+		tegra_emc_mr4_thresh_trigger(1);
 	else
-		tegra_emc_mr4_temp_trigger(0);
+		tegra_emc_mr4_thresh_trigger(0);
 }
 
 void tegra210_emc_mr4_set_freq_thresh(unsigned long thresh)
@@ -1566,8 +1596,8 @@ static int tegra210_emc_set_rate(unsigned long rate)
 	if (i < 0)
 		return i;
 
-	//if (rate > 204000000 && !tegra_emc_table[i].trained)
-	//	return -EINVAL;
+	if (rate > 204000000 && !tegra_emc_table[i].trained)
+		return -EINVAL;
 
 	if (!emc_timing) {
 		emc_get_timing(&start_timing);
@@ -1752,7 +1782,8 @@ static int emc_get_dram_temperature(void)
 
 	spin_lock_irqsave(&emc_access_lock, flags);
 	mr4_0 = emc_read_mrr(0, 4);
-	mr4_1 = emc_read_mrr(1, 4);
+	if (tegra_dram_dev_num == 2)
+		mr4_1 = emc_read_mrr(1, 4);
 	spin_unlock_irqrestore(&emc_access_lock, flags);
 
 	if (mr4_0 < 0)
@@ -1950,6 +1981,33 @@ static const struct file_operations emc_usage_table_fops = {
 	.release	= single_release,
 };
 
+static int emc_dvfs_table_show(struct seq_file *s, void *data)
+{
+	int i;
+
+	seq_puts(s, "Table Version Info (Table version, rev, rate):\n");
+	for (i = 0; i < tegra_emc_table_size; i++) {
+		seq_printf(s, "%s\n%d\n%d\n",
+				tegra_emc_table_normal[i].dvfs_ver,
+				tegra_emc_table_normal[i].rev,
+				tegra_emc_table_normal[i].rate);
+	}
+
+	return 0;
+}
+
+static int emc_dvfs_table_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, emc_dvfs_table_show, inode->i_private);
+}
+
+static const struct file_operations emc_dvfs_table_fops = {
+	.open		= emc_dvfs_table_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static int dram_temp_get(void *data, u64 *val)
 {
 	int temp = 0;
@@ -2064,6 +2122,10 @@ static int tegra_emc_debug_init(void)
 					&timer_period_training))
 			goto err_out;
 	}
+
+	if (!debugfs_create_file("tables_info", S_IRUGO, emc_debugfs_root,
+				 NULL, &emc_dvfs_table_fops))
+		goto err_out;
 
 	return 0;
 
@@ -2206,14 +2268,75 @@ static int find_matching_input(struct emc_table *table, struct emc_sel *sel)
 	return 0;
 }
 
+#define TEGRA_SIP_EMC_COMMAND_FID 0xC2FFFE01
+#define EMC_TABLE_ADDR      0xaa
+#define EMC_TABLE_SIZE      0xbb
+#define NR_SMC_REGS		6
+
+struct emc_smc_regs {
+	u64 args[NR_SMC_REGS];
+};
+static void send_smc(u32 func, struct emc_smc_regs *regs)
+{
+	u32 ret = func;
+
+	asm volatile(
+		"mov x0, %0\n"
+		"ldp x1, x2, [%1, #16 * 0]\n"
+		"ldp x3, x4, [%1, #16 * 1]\n"
+		"ldp x5, x6, [%1, #16 * 2]\n"
+		"smc #0\n"
+		"mov %0, x0\n"
+		"stp x1, x2, [%1, #16 * 0]\n"
+		: "+r" (ret)
+		: "r" (regs)
+		: "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8",
+		  "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17");
+	if (ret) {
+			pr_err("%s: failed (ret=%d)\n", __func__, ret);
+			WARN_ON(1);
+	}
+}
+
+static struct resource tegra210_init_emc_data_smc(struct platform_device *pdev)
+{
+	u64 size, base;
+	struct resource table;
+	struct emc_smc_regs regs;
+
+	regs.args[0] = EMC_TABLE_ADDR;
+	regs.args[1] = 0;
+	regs.args[2] = 0;
+	regs.args[3] = 0;
+	regs.args[4] = 0;
+	regs.args[5] = 0;
+	send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
+	printk("ERR: EMC: READ: %llx", regs.args[0]);
+	base = regs.args[0];
+
+	regs.args[0] = EMC_TABLE_SIZE;
+	regs.args[1] = 0;
+	regs.args[2] = 0;
+	regs.args[3] = 0;
+	regs.args[4] = 0;
+	regs.args[5] = 0;
+	send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
+	printk("ERR: EMC: WRITE: %llx", regs.args[0]);
+	size = regs.args[0];
+
+	table.start = base;
+	table.end = base + size;
+	table.flags = IORESOURCE_MEM;
+
+	return table;
+}
+
 static int tegra210_init_emc_data(struct platform_device *pdev)
 {
 	int i;
 	unsigned long table_rate;
 	unsigned long current_rate;
-	unsigned int fuse_odm_4;
-	unsigned int sdram_id;
-	struct emc_table *tables;
+	struct resource table_res;
 
 	emc_clk = devm_clk_get(&pdev->dev, "emc");
 	if (IS_ERR(emc_clk)) {
@@ -2252,33 +2375,17 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 		return -ENODATA;
 	}
 
-	//tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
-	//		&tegra_emc_table_derated, &tegra_emc_table_size);
+	if (of_find_property(pdev->dev.of_node, "nvidia,use-smc-emc-tables", NULL)) {
+		table_res = tegra210_init_emc_data_smc(pdev);
 
-	tegra_emc_table_normal = devm_kzalloc(&pdev->dev,
-			sizeof(*tables) * 10, GFP_KERNEL);
-	tegra_emc_table_derated = devm_kzalloc(&pdev->dev,
-			sizeof(*tables) * 10, GFP_KERNEL);
-
-	tegra_fuse_control_read(0x1C8 + 16, &fuse_odm_4);
-	sdram_id = (fuse_odm_4 >> 3) & 0x1F;
-	printk("fuse_odm_4 = %d, sdram_id = %d\n", fuse_odm_4, sdram_id);
-	switch (sdram_id)
-	{
-	case 1:
-		memcpy((void *)tegra_emc_table_normal, nx_abca2_2_10NoCfgVersion_V9_8_7_V1_6, 49280);
-		break;
-	case 0:
-	case 2:
-	case 3:
-	case 4:
-	default:
-		memcpy((void *)tegra_emc_table_normal, nx_abca2_0_3_10NoCfgVersion_V9_8_7_V1_6, 49280);
-		break;
+		tegra_emc_table_normal = devm_ioremap_resource(&pdev->dev, &table_res);
+		tegra_emc_table_derated = NULL;
+		tegra_emc_table_size = 10;
 	}
-	printk("Copied mtc tables\n");
-	tegra_emc_table_derated = tegra_emc_table_normal; // TODO: Don't actually do this maybe?
-	tegra_emc_table_size = 10;
+	else {
+		tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
+			&tegra_emc_table_derated, &tegra_emc_table_size);
+	}
 
 	if (!tegra_emc_table_size ||
 	    tegra_emc_table_size > TEGRA_EMC_TABLE_MAX_SIZE) {
@@ -2302,8 +2409,12 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 
 	seq = supported_seqs;
 	while (seq->table_rev) {
-		if (seq->table_rev == tegra_emc_table[0].rev)
+		if (seq->table_rev == tegra_emc_table[0].rev) {
+			if (of_find_property(pdev->dev.of_node, "nvidia,use-minerva-cc", NULL)
+				&& seq->table_rev == 0x7)
+				seq++;
 			break;
+		}
 		seq++;
 	}
 	if (!seq->set_clock) {
@@ -2463,7 +2574,7 @@ static int tegra210_emc_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops tegra210_emc_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(tegra210_emc_suspend, tegra210_emc_resume)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(tegra210_emc_suspend, tegra210_emc_resume)
 };
 
 static struct of_device_id tegra210_emc_of_match[] = {
