@@ -5,6 +5,7 @@
 #include <linux/firmware.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
+#include <linux/moduleparam.h>
 
 #define NR_SMC_REGS		6
 
@@ -46,6 +47,14 @@ typedef struct __attribute__((__packed__)) _boot_cfg_t
         u8 xt_str[0x80];
     };
 } boot_cfg_t;
+
+static char* reboot_action = NULL;
+static char* default_payload = NULL;
+static char* hekate_config_id = NULL;
+
+module_param(reboot_action, charp, 0660);
+module_param(default_payload, charp, 0660);
+module_param(hekate_config_id, charp, 0660);
 
 typedef struct reboot_driver_state
 {
@@ -266,7 +275,7 @@ ATTRIBUTE_GROUPS(reboot_sysfs);
 
 static int reboot_to_payload_driver_probe(struct platform_device *pdev)
 {
-	const char *hekate_id;
+	const char *dt_hekate_id = NULL;
 	reboot_driver_state_t *state;
 	struct device_node *node = pdev->dev.of_node;
 	int len;
@@ -275,15 +284,40 @@ static int reboot_to_payload_driver_probe(struct platform_device *pdev)
 
 	state = vmalloc(sizeof(reboot_driver_state_t));
 	memset(state, 0, sizeof(reboot_driver_state_t));
-	state->default_reboot_payload_name = of_get_property(node, "default-payload", &len);
-	state->reboot_action = of_get_property(node, "normal-reboot-action", &len);
+
+	if(default_payload) // from cmdline
+	{
+		state->default_reboot_payload_name = default_payload;
+	}
+	else
+	{
+		state->default_reboot_payload_name = of_get_property(node, "default-payload", &len);
+	}
+
+	if(reboot_action) // from cmdline
+	{
+		state->reboot_action = reboot_action;
+	}
+	else
+	{
+		state->reboot_action = of_get_property(node, "normal-reboot-action", &len);
+	}
 
 	// This should be 7 chars (or less). Null terminated.
-	hekate_id = of_get_property(node, "hekate-config-id", &len);
-	if(hekate_id)
+
+	if(hekate_config_id) // from cmdline
 	{
-		strncpy(state->hekate_id, hekate_id, 7);
+		strncpy(state->hekate_id, hekate_config_id, 7);
 		state->hekate_id[7] = 0;
+	}
+	else
+	{
+		dt_hekate_id = of_get_property(node, "hekate-config-id", &len);
+		if(dt_hekate_id)
+		{
+			strncpy(state->hekate_id, dt_hekate_id, 7);
+			state->hekate_id[7] = 0;
+		}
 	}
 
 	dev_set_drvdata(&pdev->dev, state);
