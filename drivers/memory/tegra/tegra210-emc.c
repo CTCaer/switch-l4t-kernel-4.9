@@ -2320,7 +2320,7 @@ static struct resource tegra210_init_emc_data_smc(struct platform_device *pdev)
 	regs.args[3] = 0;
 	regs.args[4] = 0;
 	regs.args[5] = 0;
-	send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
+	pmc_send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
 	base = regs.args[0];
 
 	regs.args[0] = EMC_TABLE_SIZE;
@@ -2329,7 +2329,7 @@ static struct resource tegra210_init_emc_data_smc(struct platform_device *pdev)
 	regs.args[3] = 0;
 	regs.args[4] = 0;
 	regs.args[5] = 0;
-	send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
+	pmc_send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
 	size = regs.args[0];
 
 	table.start = base;
