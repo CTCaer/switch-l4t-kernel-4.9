@@ -2286,11 +2286,74 @@ static int find_matching_input(struct emc_table *table, struct emc_sel *sel)
 	return 0;
 }
 
+#define TEGRA_SIP_EMC_COMMAND_FID 0xC2FFFE01
+#define EMC_TABLE_ADDR      0xaa
+#define EMC_TABLE_SIZE      0xbb
+#define NR_SMC_REGS		6
+
+struct emc_smc_regs {
+	u64 args[NR_SMC_REGS];
+};
+
+static void send_smc(u32 func, struct emc_smc_regs *regs)
+{
+	u32 ret = func;
+
+	asm volatile(
+		"mov x0, %0\n"
+		"ldp x1, x2, [%1, #16 * 0]\n"
+		"ldp x3, x4, [%1, #16 * 1]\n"
+		"ldp x5, x6, [%1, #16 * 2]\n"
+		"smc #0\n"
+		"mov %0, x0\n"
+		"stp x1, x2, [%1, #16 * 0]\n"
+		: "+r" (ret)
+		: "r" (regs)
+		: "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8",
+		  "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17");
+	if (ret) {
+			pr_err("%s: failed (ret=%d)\n", __func__, ret);
+			WARN_ON(1);
+	}
+}
+
+static struct resource tegra210_init_emc_data_smc(struct platform_device *pdev)
+{
+	struct resource table;
+	struct emc_smc_regs regs;
+	u64 size, base;
+
+	regs.args[0] = EMC_TABLE_ADDR;
+	regs.args[1] = 0;
+	regs.args[2] = 0;
+	regs.args[3] = 0;
+	regs.args[4] = 0;
+	regs.args[5] = 0;
+	send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
+	base = regs.args[0];
+
+	regs.args[0] = EMC_TABLE_SIZE;
+	regs.args[1] = 0;
+	regs.args[2] = 0;
+	regs.args[3] = 0;
+	regs.args[4] = 0;
+	regs.args[5] = 0;
+	send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
+	size = regs.args[0];
+
+	table.start = base;
+	table.end = base + size;
+	table.flags = IORESOURCE_MEM;
+
+	return table;
+}
+
 static int tegra210_init_emc_data(struct platform_device *pdev)
 {
 	int i;
 	unsigned long table_rate;
 	unsigned long current_rate;
+	struct resource table_res;
 
 	emc_clk = devm_clk_get(&pdev->dev, "emc");
 	if (IS_ERR(emc_clk)) {
@@ -2329,8 +2392,17 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 		return -ENODATA;
 	}
 
-	tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
+	if (of_find_property(pdev->dev.of_node, "nvidia,use-smc-emc-tables", NULL)) {
+		table_res = tegra210_init_emc_data_smc(pdev);
+
+		tegra_emc_table_normal = devm_ioremap_resource(&pdev->dev, &table_res);
+		tegra_emc_table_derated = NULL;
+		tegra_emc_table_size = 10;
+	} else {
+		tegra_emc_dt_parse_pdata(pdev, &tegra_emc_table_normal,
 			&tegra_emc_table_derated, &tegra_emc_table_size);
+	}
+
 	if (!tegra_emc_table_size ||
 	    tegra_emc_table_size > TEGRA_EMC_TABLE_MAX_SIZE) {
 		dev_err(&pdev->dev, "Invalid table size %d\n",
