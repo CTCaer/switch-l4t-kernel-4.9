@@ -205,8 +205,8 @@ static void stmfts_report_contact_event(struct stmfts_data *sdata,
 	input_report_abs(sdata->input, ABS_MT_PRESSURE, area);
 	input_report_abs(sdata->input, ABS_MT_ORIENTATION, orientation);
 
-	input_mt_sync_frame(sdata->input);
 	input_sync(sdata->input);
+	input_mt_sync(sdata->input);
 }
 
 static void stmfts_report_contact_release(struct stmfts_data *sdata,
@@ -217,8 +217,8 @@ static void stmfts_report_contact_release(struct stmfts_data *sdata,
 	input_mt_slot(sdata->input, slot_id);
 	input_mt_report_slot_state(sdata->input, MT_TOOL_FINGER, false);
 
-	input_mt_sync_frame(sdata->input);
 	input_sync(sdata->input);
+	input_mt_sync(sdata->input);
 }
 
 static void stmfts_report_hover_event(struct stmfts_data *sdata,
@@ -636,6 +636,18 @@ static int stmfts_power_on(struct stmfts_data *sdata)
 			 "failed to perform sleep_out: %d\n", err);
 		sdata->no_sleep_support = true;
 	}
+
+	/* optional tuning */
+	err = stmfts_command(sdata, STMFTS_MS_CX_TUNING);
+	if (err)
+		dev_warn(&sdata->client->dev,
+			 "failed to perform mutual auto tune: %d\n", err);
+
+	/* optional tuning */
+	err = stmfts_command(sdata, STMFTS_SS_CX_TUNING);
+	if (err)
+		dev_warn(&sdata->client->dev,
+			 "failed to perform self auto tune: %d\n", err);
 
 	err = stmfts_command(sdata, STMFTS_FULL_FORCE_CALIBRATION);
 	if (err) {
