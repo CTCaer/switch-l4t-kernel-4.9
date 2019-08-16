@@ -134,6 +134,7 @@
 #define EMC_CLK_EMC_2X_CLK_DIVISOR_MASK				\
 	(0xff << EMC_CLK_EMC_2X_CLK_DIVISOR_SHIFT)
 
+#define CLK_RST_CONTROLLER_CLK_OUT_ENB_X				0x280
 #define CLK_RST_CONTROLLER_CLK_OUT_ENB_X_SET			0x284
 #define CLK_RST_CONTROLLER_CLK_OUT_ENB_X_CLR			0x288
 
@@ -1950,6 +1951,10 @@ enum {
 	EMC_CFG5_QUSE_MODE_DIRECT_QUSE,
 };
 
+extern void __iomem *emc_base;
+extern void __iomem *emc0_base;
+extern void __iomem *emc1_base;
+extern void __iomem *mc_base;
 extern void __iomem *clk_base;
 extern unsigned long dram_over_temp_state;
 
@@ -2022,6 +2027,10 @@ void emc_set_clock_r21021(struct emc_table *next_timing,
 			  struct emc_table *last_timing,
 			  int training, u32 clksrc);
 u32  __do_periodic_emc_compensation_r21021(struct emc_table *current_timing);
+void emc_set_clock_icosa(struct emc_table *next_timing,
+			  struct emc_table *last_timing,
+			  int training, u32 clksrc);
+u32  __do_periodic_emc_compensation_icosa(struct emc_table *current_timing);
 int tegra_emc_dt_parse_pdata(struct platform_device *pdev,
 			     struct emc_table **tables,
 			     struct emc_table **derated_tables,
