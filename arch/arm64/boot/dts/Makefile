@@ -133,7 +133,7 @@ $(DTBO_NEW_RULE_LIST):
 	$(call if_changed_dep,dtc)
 
 dtbs: $(DTB_OBJS) $(DTBO_OBJS) FORCE
-	cp -u $(DTB_OBJS) $(DTBO_OBJS) arch/arm64/boot/dts/
+	cp $(DTB_OBJS) $(DTBO_OBJS) arch/arm64/boot/dts/
 
 clean-files := dts/*.dtb *.dtb *.dtbo
 clean-dirs := dts/_ddot_
