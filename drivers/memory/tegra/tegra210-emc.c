@@ -72,7 +72,7 @@
 
 static bool emc_enable = true;
 module_param(emc_enable, bool, 0444);
-static bool emc_force_max_rate;
+static bool emc_force_max_rate = true;
 module_param(emc_force_max_rate, bool, 0444);
 
 enum TEGRA_EMC_SOURCE {
