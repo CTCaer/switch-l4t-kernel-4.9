@@ -1,8 +1,6 @@
 
 # Makefile for external connector class (extcon) devices
 #
-subdir-ccflags-y += -Werror
-
 
 obj-$(CONFIG_EXTCON)		+= extcon-core.o
 extcon-core-objs		+= extcon.o devres.o

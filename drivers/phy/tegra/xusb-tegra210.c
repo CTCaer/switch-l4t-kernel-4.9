@@ -3183,7 +3183,7 @@ tegra210_usb3_lane_find_port_index(struct tegra_xusb_lane *lane,
 				const struct tegra_xusb_lane_map *map,
 				const char *function)
 {
-	for (map = map; map->type; map++) {
+	for (; map->type; map++) {
 		if (map->index == lane->index &&
 			strcmp(map->type, lane->pad->soc->name) == 0) {
 			dev_dbg(lane->pad->padctl->dev,

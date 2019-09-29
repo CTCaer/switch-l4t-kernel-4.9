@@ -607,7 +607,7 @@ static bool is_host_mode_phy(struct tegra_xusb *tegra,
 	if (!tegra->typed_phys[type][index])
 		return false;
 
-	if ((type == HSIC_PHY))
+	if (type == HSIC_PHY)
 		return true;
 
 	otg_port = find_otg_port(tegra, type, index);

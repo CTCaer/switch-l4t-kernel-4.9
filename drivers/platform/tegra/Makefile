@@ -5,7 +5,6 @@
 
 GCOV_PROFILE := y
 
-subdir-ccflags-y += -Werror
 
 ifeq ($(CONFIG_TEGRA_PTM),y)
 obj-$(CONFIG_ARCH_TEGRA_21x_SOC)	+= tegra_ptm_t210.o
