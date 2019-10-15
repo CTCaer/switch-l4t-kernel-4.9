@@ -1600,13 +1600,12 @@ int iio_device_register(struct iio_dev *indio_dev)
 	if (ret) {
 		dev_err(indio_dev->dev.parent,
 			"Failed to create link for iio_device %d\n", ret);
-		goto error_del_device;
+		// Happens if any driver creates more than 1 iio interface so dont treat as error
+		return 0;
 	}
 
 	return 0;
 
-error_del_device:
-	device_del(&indio_dev->dev);
 error_cdev_del:
 	cdev_del(&indio_dev->chrdev);
 error_unreg_eventset:
