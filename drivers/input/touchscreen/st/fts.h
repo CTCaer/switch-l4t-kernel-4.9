@@ -20,6 +20,7 @@
 #include "fts_lib/ftsSoftware.h"
 #include "fts_lib/ftsHardware.h"
 
+#define FTS_USE_POLLING_MODE
 #define FTS_POWER_ON	 1
 #define FTS_POWER_OFF	0
 
@@ -37,18 +38,6 @@
 #endif
 
 #define DRIVER_TEST
-
-#define FW_H_FILE
-#ifdef FW_H_FILE
-#define FW_SIZE_NAME myArray_size
-#define FW_ARRAY_NAME myArray
-#endif
-
-#define LIMITS_H_FILE
-#ifdef LIMITS_H_FILE
-#define LIMITS_SIZE_NAME myArray2_size
-#define LIMITS_ARRAY_NAME myArray2
-#endif
 
 #define FTS_TS_DRV_NAME					 "fts"
 #define FTS_TS_DRV_VERSION				  "4.1.0"

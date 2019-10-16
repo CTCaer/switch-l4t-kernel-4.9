@@ -13,8 +13,6 @@
 
 */
 
-#define FTM3_CHIP
-
 /* DUMMY BYTES DATA */
 #define DUMMY_HW_REG		1
 #define DUMMY_FRAMEBUFFER	1
@@ -132,7 +130,6 @@
 
 /* SIZES FW, CODE, CONFIG, MEMH */
 #ifdef FTM3_CHIP
-#define FW_HEADER_SIZE			32
 #define FW_SIZE				(int)(128*1024)
 #define FW_CODE_SIZE		(int)(122*1024)
 #define FW_CONFIG_SIZE		(int)(2*1024)
@@ -144,12 +141,21 @@
 #define FW_BIN_VER_OFFSET			4
 #define FW_BIN_CONFIG_VER_OFFSET		(FW_HEADER_SIZE+FW_CODE_SIZE+1)
 #else
-#define FW_HEADER_SIZE			64
+
+#define FW_CODE_SIZE		(int)(0x3f020) //Where cfg starts
+#define FW_CONFIG_SIZE		(int)(2*1024)
+#define FW_HEADER_SIZE			32
+#define FW_SIZE				(int)(0x3F000)
+#define FW_CX_SIZE			(int)(FW_SIZE-FW_CODE_SIZE-FW_CONFIG_SIZE)
 #define FW_HEADER_SIGNATURE		0xAA55AA55
 #define FW_FTB_VER			0x00000001
+#define FW_VER_MEMH_BYTE1	193
+#define FW_VER_MEMH_BYTE0	192
+#define FW_OFF_CONFID_MEMH_BYTE1	2
+#define FW_OFF_CONFID_MEMH_BYTE0	1
+#define FW_BIN_VER_OFFSET			4
+#define FW_BIN_CONFIG_VER_OFFSET		(FW_HEADER_SIZE+FW_CODE_SIZE+1)
 #define FW_BYTES_ALIGN			4
-#define FW_BIN_VER_OFFSET			16
-#define FW_BIN_CONFIG_VER_OFFSET		20
 #endif
 
 /* FIFO */

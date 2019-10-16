@@ -52,7 +52,7 @@
 /* #include <linux/sec_sysfs.h> */
 
 #ifdef FW_H_FILE
-#include <../fts_fw.h>
+#include "../fts_fw.h"
 #endif
 
 /* static char tag[8] = "[ FTS ]\0"; */
@@ -278,13 +278,13 @@ int parseBinFile(const char *pathToFile, u8 **data, int *length, int dimension)
 	fw_size = FW_SIZE_NAME;
 	fw_data = (u8 *) FW_ARRAY_NAME;
 #endif
-		if (fw_size - FW_HEADER_SIZE != FW_SIZE) {
+//		if (fw_size - FW_HEADER_SIZE != FW_SIZE) {
 			logError(1, "%s parseBinFile: Read only %d instead of %d... ERROR %02X\n", tag, fw_size, FW_SIZE, ERROR_FILE_PARSE);
 #ifndef FW_H_FILE
-			release_firmware(fw);
+//			release_firmware(fw);
 #endif
-			return ERROR_FILE_PARSE;
-		}
+//			return ERROR_FILE_PARSE;
+//		}
 		*data = (u8 *) kmalloc(dimension * sizeof (u8), GFP_KERNEL);
 		if (*data == NULL) {
 			logError(1, "%s parseBinFile: ERROR %02X\n", tag, ERROR_ALLOC);
@@ -312,7 +312,7 @@ int readFwFile(const char *path, Firmware *fw, int keep_cx)
 	int res;
 	int size;
 
-	if (keep_cx) {
+	if (0) {
 		size = FW_SIZE - FW_CX_SIZE;
 		logError(1, "%s readFwFile: Selected 124k Configuration!\n", tag);
 	} else {
@@ -579,14 +579,12 @@ int fts_warm_boot(void)
 	return OK;
 }
 
-int parseBinFile(const char *pathToFile, Firmware *fwData, int keep_cx)
+int parseBinFile(const char *pathToFile, u8 **data, int *length, int dimension)
 {
 
 	int fd = -1;
-	int dimension, index = 0;
-	u32 temp;
-	u8 *data;
-	int res, i, fw_size;
+	int fw_size = 0;
+	u8 *fw_data = NULL;
 
 #ifndef FW_H_FILE
 	const struct firmware *fw = NULL;
@@ -599,150 +597,76 @@ int parseBinFile(const char *pathToFile, Firmware *fwData, int keep_cx)
 		logError(1, "%s parseBinFile: No device found! ERROR %02X\n", ERROR_FILE_PARSE);
 		return ERROR_FILE_PARSE;
 	}
+#else
+	fd = 0;
+#endif
 
+	if (fd == 0) {
+#ifndef FW_H_FILE
 	fw_size = fw->size;
+	fw_data = (u8 *) (fw->data);
 #else
-fd = 0;
-fw_size = SIZE_NAME;
+	fw_size = FW_SIZE_NAME;
+	fw_data = (u8 *) FW_ARRAY_NAME;
 #endif
-
-	if (fd == 0 && fw_size > 0) {		/* the file should contain at least the header plus the content_crc */
-		if (fw_size < FW_HEADER_SIZE+FW_BYTES_ALIGN) {
-			logError(1, "%s parseBinFile: Read only %d instead of %d... ERROR %02X\n", tag, fw_size, FW_HEADER_SIZE+FW_BYTES_ALIGN, ERROR_FILE_PARSE);
-		res = ERROR_FILE_PARSE;
-		goto END;
-		} else {
-		/* start parsing of bytes */
+//		if (fw_size - FW_HEADER_SIZE != FW_SIZE) {
+			logError(1, "%s parseBinFile: Read only %d instead of %d... ERROR %02X\n", tag, fw_size, FW_SIZE, ERROR_FILE_PARSE);
 #ifndef FW_H_FILE
-		data = (u8 *) (fw->data);
-#else
-		data = (u8 *) (ARRAY_NAME);
+//			release_firmware(fw);
 #endif
-		u8ToU32(&data[index], &temp);
-		if (temp != FW_HEADER_SIGNATURE) {
-		logError(1, "%s parseBinFile: Wrong Signature %08X ... ERROR %02X\n", tag, temp, ERROR_FILE_PARSE);
-		 res = ERROR_FILE_PARSE;
-			goto END;
-		}
-		logError(0, "%s parseBinFile: Fw Signature OK!\n", tag);
-		index += FW_BYTES_ALIGN;
-		u8ToU32(&data[index], &temp);
-		if (temp != FW_FTB_VER) {
-		logError(1, "%s parseBinFile: Wrong ftb_version %08X ... ERROR %02X\n", tag, temp, ERROR_FILE_PARSE);
-		 res = ERROR_FILE_PARSE;
-			goto END;
-		}
-		logError(0, "%s parseBinFile: ftb_version OK!\n", tag);
-		index += FW_BYTES_ALIGN;
-		if (data[index] != DCHIP_ID_0 || data[index+1] != DCHIP_ID_1) {
-		logError(1, "%s parseBinFile: Wrong target %02X != %02X  %02X != %02X ... ERROR %08X\n", tag, data[index], DCHIP_ID_0, data[index+1], DCHIP_ID_1, ERROR_FILE_PARSE);
-		res = ERROR_FILE_PARSE;
-			goto END;
-		}
-		index += FW_BYTES_ALIGN;
-		u8ToU32(&data[index], &temp);
-		logError(1, "%s parseBinFile: Fw ID = %08X\n", tag, temp);
-
-		index += FW_BYTES_ALIGN;
-		u8ToU32(&data[index], &temp);
-		fwData->fw_ver = temp;
-		logError(1, "%s parseBinFile: FILE Fw Version = %04X\n", tag, fwData->fw_ver);
-
-		index += FW_BYTES_ALIGN;
-		u8ToU32(&data[index], &temp);
-		fwData->config_id = temp;
-		logError(1, "%s parseBinFile: FILE Config ID = %08X\n", tag, temp);
-
-		index += FW_BYTES_ALIGN;
-		u8ToU32(&data[index], &temp);
-		logError(1, "%s parseBinFile: Config Version = %08X\n", tag, temp);
-
-		index += FW_BYTES_ALIGN*2;			/* skip reserved data */
-
-		index += FW_BYTES_ALIGN;
-		logError(1, "%s parseBinFile: File External Release =  ", tag);
-		for (i = 0; i < EXTERNAL_RELEASE_INFO_SIZE; i++) {
-			fwData->externalRelease[i] = data[index++];
-			logError(1, "%02X ", fwData->externalRelease[i]);
-		}
-		logError(1, "\n");
-
-		/* index += FW_BYTES_ALIGN; */
-		u8ToU32(&data[index], &temp);
-		fwData->sec0_size = temp;
-		logError(1, "%s parseBinFile:  sec0_size = %08X (%d bytes)\n", tag, fwData->sec0_size, fwData->sec0_size);
-
-		index += FW_BYTES_ALIGN;
-		u8ToU32(&data[index], &temp);
-		fwData->sec1_size = temp;
-		logError(1, "%s parseBinFile:  sec1_size = %08X (%d bytes)\n", tag, fwData->sec1_size, fwData->sec1_size);
-
-		index += FW_BYTES_ALIGN;
-		u8ToU32(&data[index], &temp);
-		fwData->sec2_size = temp;
-		logError(1, "%s parseBinFile:  sec2_size = %08X (%d bytes)\n", tag, fwData->sec2_size, fwData->sec2_size);
-
-		index += FW_BYTES_ALIGN;
-		u8ToU32(&data[index], &temp);
-		fwData->sec3_size = temp;
-		logError(1, "%s parseBinFile:  sec3_size = %08X (%d bytes)\n", tag, fwData->sec3_size, fwData->sec3_size);
-
-		index += FW_BYTES_ALIGN;		/* skip header crc */
-
-		if (!keep_cx) {
-				dimension = fwData->sec0_size + fwData->sec1_size + fwData->sec2_size + fwData->sec3_size;
-		temp = fw_size;
-		} else {
-		dimension = fwData->sec0_size + fwData->sec1_size;					/* sec2 may contain cx data (future implementation) sec3 atm not used */
-		temp = fw_size - fwData->sec2_size - fwData->sec3_size;
-		}
-
-		if (dimension+FW_HEADER_SIZE+FW_BYTES_ALIGN != temp) {
-		logError(1, "%s parseBinFile: Read only %d instead of %d... ERROR %02X\n", tag, fw_size, dimension+FW_HEADER_SIZE+FW_BYTES_ALIGN, ERROR_FILE_PARSE);
-			res = ERROR_FILE_PARSE;
-			goto END;
-		}
-
-			fwData->data = (u8 *) kmalloc(dimension * sizeof (u8), GFP_KERNEL);
-			if (fwData->data == NULL) {
-				logError(1, "%s parseBinFile: ERROR %02X\n", tag, ERROR_ALLOC);
-				res = ERROR_ALLOC;
-		goto END;
-			}
-
-		index += FW_BYTES_ALIGN;
-			memcpy(fwData->data, &data[index], dimension);
-			fwData->data_size = dimension;
-
-			logError(0, "%s READ FW DONE %d bytes!\n", tag, fwData->data_size);
-			res = OK;
-		goto END;
-		}
-	} else {
-		logError(1, "%s parseBinFile: File Not Found! ERROR %02X\n", tag, ERROR_FILE_NOT_FOUND);
-		return ERROR_FILE_NOT_FOUND;
-	}
-
-END:
+//			return ERROR_FILE_PARSE;
+//		}
+		*data = (u8 *) kmalloc(dimension * sizeof (u8), GFP_KERNEL);
+		if (*data == NULL) {
+			logError(1, "%s parseBinFile: ERROR %02X\n", tag, ERROR_ALLOC);
 #ifndef FW_H_FILE
-	release_firmware(fw);
+			release_firmware(fw);
 #endif
-		return res;
+			return ERROR_ALLOC;
+		}
+
+		memcpy(*data, ((u8 *) (fw_data) + FW_HEADER_SIZE), dimension);
+		*length = dimension;
+
+		logError(0, "%s READ FW DONE %d bytes!\n", tag, *length);
+#ifndef FW_H_FILE
+		release_firmware(fw);
+#endif
+		return OK;
+		}
+	logError(1, "%s parseBinFile: File Not Found! ERROR %02X\n", tag, ERROR_FILE_NOT_FOUND);
+	return ERROR_FILE_NOT_FOUND;
 }
 
 int readFwFile(const char *path, Firmware *fw, int keep_cx)
 {
 	int res;
+	int size;
 
-	res = parseBinFile(path, fw, keep_cx);
+	if (0) {
+		size = FW_SIZE - FW_CX_SIZE;
+		logError(1, "%s readFwFile: Selected 124k Configuration!\n", tag);
+	} else {
+		size = FW_SIZE;
+		logError(1, "%s readFwFile: Selected 128k Configuration!\n", tag);
+	}
+
+	/* res = parseMemhFile(path, &(fw->data), &(fw->data_size), size); */
+	res = parseBinFile(path, &(fw->data), &(fw->data_size), size);
 	if (res < OK) {
 		logError(1, "%s readFwFile: ERROR %02X\n", tag, ERROR_MEMH_READ);
 		return (res | ERROR_MEMH_READ);
 	}
 
+	fw->fw_ver = (u16) (((fw->data[FW_VER_MEMH_BYTE1] & 0x00FF) << 8) + (fw->data[FW_VER_MEMH_BYTE0] & 0x00FF));
+	fw->config_id = (u16) (((fw->data[(FW_CODE_SIZE) + FW_OFF_CONFID_MEMH_BYTE1] & 0x00FF) << 8) + (fw->data[(FW_CODE_SIZE) + FW_OFF_CONFID_MEMH_BYTE0] & 0x00FF));
+
+	logError(0, "%s FW VERS File = %04X\n", tag, fw->fw_ver);
+	logError(0, "%s CONFIG ID File = %04X\n", tag, fw->config_id);
 	return OK;
 
 }
+
 
 int flash_unlock(void)
 {
@@ -996,13 +920,13 @@ start:
 
 	/* msleep(FLASH_WAIT_TIME); */
 	logError(0, "%s 6) LOAD PROGRAM:\n", tag);
-	res = fillFlash(FLASH_ADDR_CODE, &fw.data[0], fw.sec0_size);
+	res = fillFlash(FLASH_ADDR_CODE, &fw.data[0], fw.data_size);
 	if (res < OK) {
 		logError(1, "%s   load program ERROR %02X\n", tag, ERROR_FLASH_BURN_FAILED);
 		return (res | ERROR_FLASH_BURN_FAILED);
 	}
 	logError(1, "%s   load program DONE!\n", tag);
-
+/*
 	logError(0, "%s 7) LOAD CONFIG:\n", tag);
 	res = fillFlash(FLASH_ADDR_CONFIG, &(fw.data[fw.sec0_size]), fw.sec1_size);
 	if (res < OK) {
@@ -1010,7 +934,7 @@ start:
 		return (res | ERROR_FLASH_BURN_FAILED);
 	}
 	 logError(1, "%s   load config DONE!\n", tag);
-
+*/
 	logError(0, "%s   Flash burn COMPLETED!\n\n", tag);
 
 	logError(0, "%s 8) SYSTEM RESET:\n", tag);

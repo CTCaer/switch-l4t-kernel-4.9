@@ -33,7 +33,7 @@
 #ifdef FTM3_CHIP
 #define PATH_FILE_FW			"st_fts.bin"
 #else
-#define PATH_FILE_FW			"st_fts.ftb"		/* new bin file structure */
+#define PATH_FILE_FW			"odin.bin"		/* new bin file structure */
 #endif
 
 #ifndef FTM3_CHIP
@@ -64,7 +64,7 @@ int parseBinFile(const char *pathToFile, u8 **data, int *length, int dimension);
 #else
 int wait_for_flash_ready(u8 type);
 int fts_warm_boot(void);
-int parseBinFile(const char *pathToFile, Firmware *fw, int keep_cx);
+int parseBinFile(const char *pathToFile, u8 **data, int *length, int dimension);
 int flash_erase_unlock(void);
 int flash_full_erase(void);
 int start_flash_dma(void);

@@ -57,7 +57,7 @@
  * Uncomment to use polling mode instead of interrupt mode.
  *
  */
-/* #define FTS_USE_POLLING_MODE */
+#define FTS_USE_POLLING_MODE
 
 /*
  * Event installer helpers
@@ -472,11 +472,11 @@ static ssize_t stm_fts_cmd_show(struct device *dev, struct device_attribute *att
 			goto END;
 		}
 
-	res = fb_unregister_client(&info->notifier);
-		if (res < 0) {
-			logError(1,  "%s ERROR: unregister notifier failed!\n", tag);
-				goto END;
-		}
+//	res = fb_unregister_client(&info->notifier);
+//		if (res < 0) {
+//			logError(1,  "%s ERROR: unregister notifier failed!\n", tag);
+//				goto END;
+//		}
 
 		switch (typeOfComand[0]) {
 			/*ITO TEST*/
@@ -600,9 +600,9 @@ static ssize_t stm_fts_cmd_show(struct device *dev, struct device_attribute *att
 
 	}
 
-		if (fb_register_client(&info->notifier) < 0) {
-			logError(1,  "%s ERROR: register notifier failed!\n", tag);
-		}
+//		if (fb_register_client(&info->notifier) < 0) {
+//			logError(1,  "%s ERROR: register notifier failed!\n", tag);
+//		}
 
 END: /* here start the reporting phase, assembling the data to send in the file node */
 	all_strbuff = (u8 *) kmalloc(size, GFP_KERNEL);
@@ -1903,12 +1903,6 @@ static int fts_set_gpio(struct fts_ts_info *rmi4_data)
 	const struct fts_i2c_platform_data *bdata =
 			rmi4_data->bdata;
 
-	retval = fts_gpio_setup(bdata->irq_gpio, true, 0, 0);
-	if (retval < 0) {
-		logError(1,  "%s %s: Failed to configure irq GPIO\n", tag, __func__);
-		goto err_gpio_irq;
-	}
-
 	if (bdata->reset_gpio >= 0) {
 		retval = fts_gpio_setup(bdata->reset_gpio, true, 1, 0);
 		if (retval < 0) {
@@ -1926,7 +1920,6 @@ static int fts_set_gpio(struct fts_ts_info *rmi4_data)
 	return OK;
 
 err_gpio_reset:
-	fts_gpio_setup(bdata->irq_gpio, false, 0, 0);
 	setResetGpio(GPIO_NOT_DEFINED);
 err_gpio_irq:
 	return retval;
@@ -1937,11 +1930,6 @@ static int parse_dt(struct device *dev, struct fts_i2c_platform_data *bdata)
 	int retval;
 	const char *name;
 	struct device_node *np = dev->of_node;
-
-	bdata->irq_gpio = of_get_named_gpio_flags(np,
-			"st,irq-gpio", 0, NULL);
-
-	logError(0, "%s irq_gpio = %d\n", tag, bdata->irq_gpio);
 
 	retval = of_property_read_string(np, "st,regulator_dvdd", &name);
 	if (retval == -EINVAL)
@@ -1959,9 +1947,9 @@ static int parse_dt(struct device *dev, struct fts_i2c_platform_data *bdata)
 	bdata->bus_reg_name = name;
 	logError(0, "%s bus_reg_name = %s\n", tag, name);
 
-	if (of_property_read_bool(np, "st, reset-gpio")) {
+	if (of_property_read_bool(np, "st,reset-gpio")) {
 		bdata->reset_gpio = of_get_named_gpio_flags(np,
-				"st, reset-gpio", 0, NULL);
+				"st,reset-gpio", 0, NULL);
 		logError(0, "%s reset_gpio =%d\n", tag, bdata->reset_gpio);
 	} else {
 		bdata->reset_gpio = GPIO_NOT_DEFINED;
@@ -2029,7 +2017,6 @@ static int fts_probe(struct i2c_client *client,
 		logError(1,  "%s %s: ERROR Failed to set up GPIO's\n", tag, __func__);
 		goto ProbeErrorExit_2;
 	}
-	info->client->irq = gpio_to_irq(info->bdata->irq_gpio);
 
 	logError(1,  "%s SET Auto Fw Update:\n", tag);
 	info->fwu_workqueue = create_singlethread_workqueue("fts-fwu-queue");
@@ -2152,12 +2139,12 @@ static int fts_probe(struct i2c_client *client,
 	info->glove_enabled = 0;
 	info->resume_bit = 1;
 	info->notifier = fts_noti_block;
-	error = fb_register_client(&info->notifier);
+/*	error = fb_register_client(&info->notifier);
 	if (error) {
 		logError(1,  "%s ERROR: register notifier failed!\n", tag);
 		goto ProbeErrorExit_6;
 	}
-
+*/
 	logError(1,  "%s SET Device File Nodes:\n", tag);
 	/* sysfs stuff */
 	info->attrs.attrs = fts_attr_group;
@@ -2236,7 +2223,7 @@ ProbeErrorExit_8:
 #endif
 
 ProbeErrorExit_7:
-	fb_unregister_client(&info->notifier);
+//	fb_unregister_client(&info->notifier);
 
 ProbeErrorExit_6:
 	input_unregister_device(info->input_dev);
@@ -2291,7 +2278,7 @@ static int fts_remove(struct i2c_client *client)
 	/* remove interrupt and event handlers */
 	fts_interrupt_uninstall(info);
 
-	fb_unregister_client(&info->notifier);
+//	fb_unregister_client(&info->notifier);
 
 	/* unregister the device */
 	input_unregister_device(info->input_dev);
