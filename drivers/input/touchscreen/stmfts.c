@@ -39,7 +39,6 @@
 
 /* events */
 #define STMFTS_EV_NO_EVENT			0x00
-#define STMFTS_EV_MULTI_TOUCH_DETECTED		0x02
 #define STMFTS_EV_MULTI_TOUCH_ENTER		0x03
 #define STMFTS_EV_MULTI_TOUCH_LEAVE		0x04
 #define STMFTS_EV_MULTI_TOUCH_MOTION		0x05
@@ -186,14 +185,20 @@ static void stmfts_report_contact_event(struct stmfts_data *sdata,
 	u8 area = event[7];
 #else
 	u8 slot_id = (event[0] & STMFTS_MASK_TOUCH_ID) >> 4;
-	u16 x = (event[1] << 4) | ((event[3] & 0xf0) >> 4);
+	u16 x = (event[1] << 4) | ((event[3]) >> 4);
 	u16 y = (event[2] << 4) | (event[3] & 0x0f);
-
-	u8 maj = event[4] | (event[5] << 8);
-	u8 min = maj;
+	u16 aa =  ((event[6] & 0x3f) + 0x3f);
+	u8 min = 0;
+	u8 area =  (u8)(unsigned int)*(unsigned short *)(event + 4);;
+	if (aa != 0) {
+		min = (int)(area * (event[6] & 0x3f) / aa);
+	}
+	u8 maj = 0;
+	if (aa != 0) {
+		maj = (int)(area * 0x3f) / aa;
+	}
 	// these two are not quite right but meh
-	u8 orientation = event[6];
-	u8 area = event[7];
+	u8 orientation = 0x2d;
 #endif
 	input_mt_slot(sdata->input, slot_id);
 
@@ -291,12 +296,6 @@ static void stmfts_parse_events(struct stmfts_data *sdata)
 			stmfts_report_contact_release(sdata, event);
 			break;
 
-		case STMFTS_EV_HOVER_ENTER:
-		case STMFTS_EV_HOVER_LEAVE:
-		case STMFTS_EV_HOVER_MOTION:
-			stmfts_report_hover_event(sdata, event);
-			break;
-
 		case STMFTS_EV_KEY_STATUS:
 			stmfts_report_key_event(sdata, event);
 			break;
@@ -385,16 +384,14 @@ static int stmfts_input_open(struct input_dev *dev)
 	if (err)
 		return err;
 
+	err = i2c_smbus_write_byte(sdata->client, STMFTS_CLEAR_EVENT_STACK);
+	if (err)
+		return err;
+
+
 	mutex_lock(&sdata->mutex);
 	sdata->running = true;
 
-	if (sdata->hover_enabled) {
-		err = i2c_smbus_write_byte(sdata->client,
-					   STMFTS_SS_HOVER_SENSE_ON);
-		if (err)
-			dev_warn(&sdata->client->dev,
-				 "failed to enable hover\n");
-	}
 	mutex_unlock(&sdata->mutex);
 
 	if (sdata->use_key) {
@@ -423,13 +420,6 @@ static void stmfts_input_close(struct input_dev *dev)
 
 	sdata->running = false;
 
-	if (sdata->hover_enabled) {
-		err = i2c_smbus_write_byte(sdata->client,
-					   STMFTS_SS_HOVER_SENSE_OFF);
-		if (err)
-			dev_warn(&sdata->client->dev,
-				 "failed to disable hover: %d\n", err);
-	}
 	mutex_unlock(&sdata->mutex);
 
 	if (sdata->use_key) {
@@ -576,6 +566,9 @@ static int stmfts_power_on(struct stmfts_data *sdata)
 	 */
 	msleep(20);
 
+//	err = stmfts_write_register(sdata, 0x28,0x80);
+//	if (err < 0)
+//		return err;
 	err = i2c_smbus_read_i2c_block_data(sdata->client, STMFTS_READ_INFO,
 					    sizeof(reg), reg);
 	if (err < 0)
@@ -630,12 +623,7 @@ static int stmfts_power_on(struct stmfts_data *sdata)
 		goto cleanup_irq;
 	}
 
-	err = stmfts_command(sdata, STMFTS_SLEEP_OUT);
-	if (err) {
-		dev_warn(&sdata->client->dev,
-			 "failed to perform sleep_out: %d\n", err);
-		sdata->no_sleep_support = true;
-	}
+	sdata->no_sleep_support = true;
 
 	err = stmfts_command(sdata, STMFTS_FULL_FORCE_CALIBRATION);
 	if (err) {
@@ -648,8 +636,6 @@ static int stmfts_power_on(struct stmfts_data *sdata)
 	 * At this point no one is using the touchscreen
 	 * and I don't really care about the return value
 	 */
-	if (!sdata->no_sleep_support)
-		(void) i2c_smbus_write_byte(sdata->client, STMFTS_SLEEP_IN);
 
 	return 0;
 
