@@ -2185,7 +2185,7 @@ static void run_autotune(void *device_data)
 		info->fts_command(info, FLUSHBUFFER);
 
 		info->fts_release_all_finger(info);
-		fts_execute_autotune(info);
+		fts_execute_autotune(info, true);
 
 		info->fts_command(info, SENSEON);
 

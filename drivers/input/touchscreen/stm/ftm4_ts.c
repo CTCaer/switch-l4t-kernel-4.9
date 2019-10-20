@@ -844,6 +844,7 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 
 			z = data[4 + EventNum * FTS_EVENT_SIZE];
 			
+			// Should fix in calibration in future. Workaround for touch starting too early
 			if (z >= 53)
 				z -= 53;
 			else
