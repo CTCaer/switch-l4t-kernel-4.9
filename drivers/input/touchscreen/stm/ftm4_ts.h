@@ -568,7 +568,7 @@ int fts_cmd_completion_check(struct fts_ts_info *info, uint8_t event1, uint8_t e
 int fts_fw_verify_update(struct fts_ts_info *info);
 int fts_get_version_info(struct fts_ts_info *info);
 void fts_get_afe_info(struct fts_ts_info *info);
-void fts_execute_autotune(struct fts_ts_info *info);
+void fts_execute_autotune(struct fts_ts_info *info, bool save_cfg);
 int fts_fw_wait_for_event(struct fts_ts_info *info, unsigned char eid1, unsigned char eid2);
 int fts_systemreset(struct fts_ts_info *info);
 int fts_wait_for_ready(struct fts_ts_info *info);

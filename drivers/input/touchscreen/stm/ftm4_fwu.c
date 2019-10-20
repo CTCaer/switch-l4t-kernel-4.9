@@ -218,7 +218,7 @@ int fts_fw_wait_for_event(struct fts_ts_info *info, unsigned char eid0,
 	return rc;
 }
 
-void fts_execute_autotune(struct fts_ts_info *info)
+void fts_execute_autotune(struct fts_ts_info *info, bool save_cfg)
 {
 	int ret = 0;
 	unsigned char regData[4]; /* {0xC1, 0x0E}; */
@@ -264,16 +264,18 @@ void fts_execute_autotune(struct fts_ts_info *info)
 				STATUS_EVENT_PURE_AUTOTUNE_FLAG_CLEAR_FINISH,
 				0x00);
 		}
-
+		
 		info->fts_command(info, FTS_CMD_SAVE_CX_TUNING);
 		fts_delay(230);
 		fts_fw_wait_for_event(info,
 				STATUS_EVENT_FLASH_WRITE_CXTUNE_VALUE, 0x00);
 
-		info->fts_command(info, FTS_CMD_SAVE_FWCONFIG);
-		fts_delay(230);
-		fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CONFIG,
-				0x00);
+		if (save_cfg) {
+			info->fts_command(info, FTS_CMD_SAVE_FWCONFIG);
+			fts_delay(230);
+			fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CONFIG,
+					0x00);
+		}
 
 		/* Reset FTS */
 		info->fts_systemreset(info);
@@ -784,14 +786,14 @@ void fts_fw_init(struct fts_ts_info *info)
 	tsp_debug_info(info->dev, "%s\n", __func__);
 
 	info->fts_command(info, FTS_CMD_TRIM_LOW_POWER_OSCILLATOR);
-	fts_delay(200);
-	info->fts_command(info, FTS_CMD_SAVE_CX_TUNING);
-	fts_delay(230);
-	fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CXTUNE_VALUE, 0x00);
+//	fts_delay(200);
+//	info->fts_command(info, FTS_CMD_SAVE_CX_TUNING);
+//	fts_delay(230);
+//	fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CXTUNE_VALUE, 0x00);
 
 	fts_get_afe_info(info);
 
-	fts_execute_autotune(info);
+	fts_execute_autotune(info, false);
 
 	info->fts_command(info, SENSEON);
 
@@ -946,7 +948,9 @@ int fts_fw_verify_update(struct fts_ts_info *info)
 	int retry = 0;
 
 	info->fts_irq_enable(info, false);
+//  Autotune
 	fts_fw_init(info);
+//  Skip over update
 //	while (retry++ < FTS_FW_UPDATE_RETRY) {
 //		tsp_debug_info(info->dev,
 //			"[fw_update] try:%d\n", retry);
