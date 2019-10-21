@@ -1,4 +1,5 @@
 /* Copyright (c) 2014 Broadcom Corporation
+ * Copyright (C) 2018 NVIDIA Corporation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -38,10 +39,20 @@ extern const u8 ALLFFMAC[ETH_ALEN];
  */
 struct brcmf_mp_global_t {
 	char	firmware_path[BRCMF_FW_ALTPATH_LEN];
+#ifdef CPTCFG_BRCMFMAC_NV_GPIO
+	int	irq_num;
+	uint	intr_flags;
+	int	wlan_pwr;
+	int	wlan_rst;
+#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
+#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+	int	n_country;
+	struct brcmf_fil_country_le *country_code_map;
+#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
 };
 
 extern struct brcmf_mp_global_t brcmf_mp_global;
-
+extern struct regulator *wifi_regulator;
 /**
  * struct brcmf_mp_device - Device module paramaters.
  *
@@ -49,6 +60,10 @@ extern struct brcmf_mp_global_t brcmf_mp_global;
  * @feature_disable: Feature_disable bitmask.
  * @fcmode: FWS flow control.
  * @roamoff: Firmware roaming off?
+ * @eap_restrict: Not allow data tx/rx until 802.1X auth succeeds
+ * @sdio_wq_highpri: Tasks submitted to SDIO workqueue will run immediately.
+ * @frameburst: Firmware frame burst mode.
+ * @default_pm: default power management (PM) mode.
  * @ignore_probe_fail: Ignore probe failure.
  * @country_codes: If available, pointer to struct for translating country codes
  * @bus: Bus specific platform data. Only SDIO at the mmoment.
@@ -58,12 +73,19 @@ struct brcmf_mp_device {
 	unsigned int	feature_disable;
 	int		fcmode;
 	bool		roamoff;
+	bool		eap_restrict;
+	int		sdio_dpc_prio;
+	bool		sdio_wq_highpri;
+	bool		frameburst;
+	int		default_pm;
 	bool		ignore_probe_fail;
 	struct brcmfmac_pd_cc *country_codes;
 	union {
 		struct brcmfmac_sdio_pd sdio;
 	} bus;
 };
+
+void brcmf_c_set_joinpref_default(struct brcmf_if *ifp);
 
 struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
 					       enum brcmf_bus_type bus_type,
@@ -72,5 +94,9 @@ void brcmf_release_module_param(struct brcmf_mp_device *module_param);
 
 /* Sets dongle media info (drv_version, mac address). */
 int brcmf_c_preinit_dcmds(struct brcmf_if *ifp);
+
+u8 brcmf_map_prio_to_prec(void *cfg, u8 prio);
+
+u8 brcmf_map_prio_to_aci(void *cfg, u8 prio);
 
 #endif /* BRCMFMAC_COMMON_H */

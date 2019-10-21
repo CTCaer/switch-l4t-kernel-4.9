@@ -15,7 +15,7 @@
 #ifndef BRCMFMAC_MSGBUF_H
 #define BRCMFMAC_MSGBUF_H
 
-#ifdef CONFIG_BRCMFMAC_PROTO_MSGBUF
+#ifdef CPTCFG_BRCMFMAC_PROTO_MSGBUF
 
 #define BRCMF_H2D_MSGRING_CONTROL_SUBMIT_MAX_ITEM	64
 #define BRCMF_H2D_MSGRING_RXPOST_SUBMIT_MAX_ITEM	512
@@ -31,6 +31,10 @@
 #define BRCMF_D2H_MSGRING_RX_COMPLETE_ITEMSIZE		32
 #define BRCMF_H2D_TXFLOWRING_ITEMSIZE			48
 
+struct msgbuf_buf_addr {
+	__le32		low_addr;
+	__le32		high_addr;
+};
 
 int brcmf_proto_msgbuf_rx_trigger(struct device *dev);
 void brcmf_msgbuf_delete_flowring(struct brcmf_pub *drvr, u16 flowid);

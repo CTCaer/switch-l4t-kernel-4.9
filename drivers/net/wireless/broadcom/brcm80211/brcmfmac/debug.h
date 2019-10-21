@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2010 Broadcom Corporation
+ * Copyright (C) 2019 NVIDIA Corporation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,6 +19,9 @@
 #define BRCMFMAC_DEBUG_H
 
 #include <linux/net.h>	/* net_ratelimit() */
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#include "nv_logger.h"
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 
 /* message levels */
 #define BRCMF_TRACE_VAL		0x00000002
@@ -40,33 +44,46 @@
 #define BRCMF_MSGBUF_VAL	0x00040000
 #define BRCMF_PCIE_VAL		0x00080000
 #define BRCMF_FWCON_VAL		0x00100000
+#define BRCMF_ULP_VAL		0x00200000
+#define BRCMF_ANDROID_VAL	0x01000000
 
 /* set default print format */
 #undef pr_fmt
 #define pr_fmt(fmt)		KBUILD_MODNAME ": " fmt
 
-/* Macro for error messages. net_ratelimit() is used when driver
- * debugging is not selected. When debugging the driver error
- * messages are as important as other tracing or even more so.
+__printf(2, 3)
+void __brcmf_err(const char *func, const char *fmt, ...);
+/* Macro for error messages. When debugging / tracing the driver all error
+ * messages are important to us.
  */
-#ifndef CONFIG_BRCM_TRACING
-#ifdef CONFIG_BRCMDBG
-#define brcmf_err(fmt, ...)	pr_err("%s: " fmt, __func__, ##__VA_ARGS__)
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#define brcmf_err(fmt, ...)						\
+	do {								\
+		if (IS_ENABLED(CPTCFG_BRCMDBG) ||			\
+		    IS_ENABLED(CPTCFG_BRCM_TRACING) ||			\
+		    net_ratelimit())					\
+			__brcmf_err(__func__, fmt, ##__VA_ARGS__);	\
+		nv_sprintf(fmt, ##__VA_ARGS__);				\
+	} while (0)
 #else
 #define brcmf_err(fmt, ...)						\
 	do {								\
-		if (net_ratelimit())					\
-			pr_err("%s: " fmt, __func__, ##__VA_ARGS__);	\
+		if (IS_ENABLED(CPTCFG_BRCMDBG) ||			\
+		    IS_ENABLED(CPTCFG_BRCM_TRACING) ||			\
+		    net_ratelimit())					\
+			__brcmf_err(__func__, fmt, ##__VA_ARGS__);	\
 	} while (0)
-#endif
-#else
-__printf(2, 3)
-void __brcmf_err(const char *func, const char *fmt, ...);
-#define brcmf_err(fmt, ...) \
-	__brcmf_err(__func__, fmt, ##__VA_ARGS__)
-#endif
+#endif /*CPTCFG_BRCMFMAC_NV_IDS */
 
-#if defined(DEBUG) || defined(CONFIG_BRCM_TRACING)
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#define NV_FILELOG_ON()         (enable_file_logging)
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+
+#if defined(DEBUG) || defined(CPTCFG_BRCM_TRACING)
+
+/* For debug/tracing purposes treat info messages as errors */
+#define brcmf_info brcmf_err
+
 __printf(3, 4)
 void __brcmf_dbg(u32 level, const char *func, const char *fmt, ...);
 #define brcmf_dbg(level, fmt, ...)				\
@@ -82,8 +99,14 @@ do {								\
 #define BRCMF_EVENT_ON()	(brcmf_msg_level & BRCMF_EVENT_VAL)
 #define BRCMF_FIL_ON()		(brcmf_msg_level & BRCMF_FIL_VAL)
 #define BRCMF_FWCON_ON()	(brcmf_msg_level & BRCMF_FWCON_VAL)
+#define BRCMF_SCAN_ON()		(brcmf_msg_level & BRCMF_SCAN_VAL)
 
-#else /* defined(DEBUG) || defined(CONFIG_BRCM_TRACING) */
+#else /* defined(DEBUG) || defined(CPTCFG_BRCM_TRACING) */
+
+#define brcmf_info(fmt, ...)						\
+	do {								\
+		pr_info("%s: " fmt, __func__, ##__VA_ARGS__);		\
+	} while (0)
 
 #define brcmf_dbg(level, fmt, ...) no_printk(fmt, ##__VA_ARGS__)
 
@@ -95,8 +118,9 @@ do {								\
 #define BRCMF_EVENT_ON()	0
 #define BRCMF_FIL_ON()		0
 #define BRCMF_FWCON_ON()	0
+#define BRCMF_SCAN_ON()		0
 
-#endif /* defined(DEBUG) || defined(CONFIG_BRCM_TRACING) */
+#endif /* defined(DEBUG) || defined(CPTCFG_BRCM_TRACING) */
 
 #define brcmf_dbg_hex_dump(test, data, len, fmt, ...)			\
 do {									\
@@ -107,6 +131,7 @@ do {									\
 
 extern int brcmf_msg_level;
 
+struct brcmf_bus;
 struct brcmf_pub;
 #ifdef DEBUG
 void brcmf_debugfs_init(void);
@@ -116,6 +141,8 @@ void brcmf_debug_detach(struct brcmf_pub *drvr);
 struct dentry *brcmf_debugfs_get_devdir(struct brcmf_pub *drvr);
 int brcmf_debugfs_add_entry(struct brcmf_pub *drvr, const char *fn,
 			    int (*read_fn)(struct seq_file *seq, void *data));
+int brcmf_debug_create_memdump(struct brcmf_bus *bus, const void *data,
+			       size_t len);
 #else
 static inline void brcmf_debugfs_init(void)
 {
@@ -133,6 +160,12 @@ static inline void brcmf_debug_detach(struct brcmf_pub *drvr)
 static inline
 int brcmf_debugfs_add_entry(struct brcmf_pub *drvr, const char *fn,
 			    int (*read_fn)(struct seq_file *seq, void *data))
+{
+	return 0;
+}
+static inline
+int brcmf_debug_create_memdump(struct brcmf_bus *bus, const void *data,
+			       size_t len)
 {
 	return 0;
 }

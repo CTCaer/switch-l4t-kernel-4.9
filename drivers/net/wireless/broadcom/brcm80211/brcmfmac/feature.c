@@ -27,6 +27,7 @@
 #include "feature.h"
 #include "common.h"
 
+#define BRCMF_FW_UNSUPPORTED	23
 
 /*
  * expand feature list to array of feature strings.
@@ -45,8 +46,9 @@ struct brcmf_feat_fwcap {
 
 static const struct brcmf_feat_fwcap brcmf_fwcap_map[] = {
 	{ BRCMF_FEAT_MBSS, "mbss" },
-	{ BRCMF_FEAT_MCHAN, "mchan" },
+//	{ BRCMF_FEAT_MCHAN, "mchan" },
 	{ BRCMF_FEAT_P2P, "p2p" },
+	{ BRCMF_FEAT_SAE, "sae" },
 };
 
 #ifdef DEBUG
@@ -113,13 +115,34 @@ static void brcmf_feat_iovar_int_get(struct brcmf_if *ifp,
 	}
 }
 
+static void brcmf_feat_iovar_data_set(struct brcmf_if *ifp,
+				      enum brcmf_feat_id id, char *name,
+				      const void *data, size_t len)
+{
+	int err;
+
+	err = brcmf_fil_iovar_data_set(ifp, name, data, len);
+	if (err != -BRCMF_FW_UNSUPPORTED) {
+		brcmf_dbg(INFO, "enabling feature: %s\n", brcmf_feat_names[id]);
+		ifp->drvr->feat_flags |= BIT(id);
+	} else {
+		brcmf_dbg(TRACE, "%s feature check failed: %d\n",
+			  brcmf_feat_names[id], err);
+	}
+}
+
 static void brcmf_feat_firmware_capabilities(struct brcmf_if *ifp)
 {
-	char caps[256];
+	char caps[512];
 	enum brcmf_feat_id id;
-	int i;
+	int i, err;
 
-	brcmf_fil_iovar_data_get(ifp, "cap", caps, sizeof(caps));
+	err = brcmf_fil_iovar_data_get(ifp, "cap", caps, sizeof(caps));
+	if (err) {
+		brcmf_err("could not get firmware cap (%d)\n", err);
+		return;
+	}
+
 	brcmf_dbg(INFO, "[ %s]\n", caps);
 
 	for (i = 0; i < ARRAY_SIZE(brcmf_fwcap_map); i++) {
@@ -136,11 +159,17 @@ void brcmf_feat_attach(struct brcmf_pub *drvr)
 {
 	struct brcmf_if *ifp = brcmf_get_ifp(drvr, 0);
 	struct brcmf_pno_macaddr_le pfn_mac;
+	struct brcmf_gscan_config gscan_cfg;
 	u32 wowl_cap;
 	s32 err;
 
 	brcmf_feat_firmware_capabilities(ifp);
-
+	memset(&gscan_cfg, 0, sizeof(gscan_cfg));
+	if (drvr->bus_if->chip != BRCM_CC_43430_CHIP_ID &&
+	    drvr->bus_if->chip != BRCM_CC_4345_CHIP_ID)
+		brcmf_feat_iovar_data_set(ifp, BRCMF_FEAT_GSCAN,
+					  "pfn_gscan_cfg",
+					  &gscan_cfg, sizeof(gscan_cfg));
 	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_PNO, "pfn");
 	if (drvr->bus_if->wowl_supported)
 		brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_WOWL, "wowl");
@@ -175,6 +204,7 @@ void brcmf_feat_attach(struct brcmf_pub *drvr)
 			  drvr->settings->feature_disable);
 		ifp->drvr->feat_flags &= ~drvr->settings->feature_disable;
 	}
+	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_FWSUP, "sup_wpa");
 
 	/* set chip related quirks */
 	switch (drvr->bus_if->chip) {

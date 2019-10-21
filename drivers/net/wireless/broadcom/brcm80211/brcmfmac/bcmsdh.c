@@ -21,6 +21,7 @@
 #include <linux/pci_ids.h>
 #include <linux/sched.h>
 #include <linux/completion.h>
+#include <linux/interrupt.h>
 #include <linux/scatterlist.h>
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/core.h>
@@ -32,6 +33,8 @@
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/acpi.h>
+#include <linux/regulator/consumer.h>
+#include <linux/wakelock.h>
 #include <net/cfg80211.h>
 
 #include <defs.h>
@@ -46,6 +49,7 @@
 #include "sdio.h"
 #include "core.h"
 #include "common.h"
+#include "android.h"
 
 #define SDIOH_API_ACCESS_RETRY_LIMIT	2
 
@@ -53,6 +57,7 @@
 
 #define SDIO_FUNC1_BLOCKSIZE		64
 #define SDIO_FUNC2_BLOCKSIZE		512
+#define SDIO_4373_FUNC2_BLOCKSIZE	256
 /* Maximum milliseconds to wait for F2 to come up */
 #define SDIO_WAIT_F2RDY	3000
 
@@ -107,12 +112,14 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 	int ret = 0;
 	u8 data;
 	u32 addr, gpiocontrol;
-	unsigned long flags;
 
 	pdata = &sdiodev->settings->bus.sdio;
 	if (pdata->oob_irq_supported) {
 		brcmf_dbg(SDIO, "Enter, register OOB IRQ %d\n",
 			  pdata->oob_irq_nr);
+		spin_lock_init(&sdiodev->irq_en_lock);
+		sdiodev->irq_en = true;
+
 		ret = request_irq(pdata->oob_irq_nr, brcmf_sdiod_oob_irqhandler,
 				  pdata->oob_irq_flags, "brcmf_oob_intr",
 				  &sdiodev->func[1]->dev);
@@ -121,10 +128,6 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 			return ret;
 		}
 		sdiodev->oob_irq_requested = true;
-		spin_lock_init(&sdiodev->irq_en_lock);
-		spin_lock_irqsave(&sdiodev->irq_en_lock, flags);
-		sdiodev->irq_en = true;
-		spin_unlock_irqrestore(&sdiodev->irq_en_lock, flags);
 
 		ret = enable_irq_wake(pdata->oob_irq_nr);
 		if (ret != 0) {
@@ -1039,6 +1042,7 @@ static void brcmf_sdiod_host_fixup(struct mmc_host *host)
 static int brcmf_sdiod_probe(struct brcmf_sdio_dev *sdiodev)
 {
 	int ret = 0;
+	unsigned int f2_blksz = SDIO_FUNC2_BLOCKSIZE;
 
 	sdiodev->num_funcs = 2;
 
@@ -1050,11 +1054,18 @@ static int brcmf_sdiod_probe(struct brcmf_sdio_dev *sdiodev)
 		sdio_release_host(sdiodev->func[1]);
 		goto out;
 	}
-	ret = sdio_set_block_size(sdiodev->func[2], SDIO_FUNC2_BLOCKSIZE);
+
+	if (sdiodev->func[0]->device == SDIO_DEVICE_ID_CYPRESS_4373) {
+		f2_blksz = SDIO_4373_FUNC2_BLOCKSIZE;
+	}
+
+	ret = sdio_set_block_size(sdiodev->func[2], f2_blksz);
 	if (ret) {
 		brcmf_err("Failed to set F2 blocksize\n");
 		sdio_release_host(sdiodev->func[1]);
 		goto out;
+	} else {
+		brcmf_dbg(SDIO, "set F2 blocksize to %d\n", f2_blksz);
 	}
 
 	/* increase F2 timeout */
@@ -1099,13 +1110,17 @@ static const struct sdio_device_id brcmf_sdmmc_ids[] = {
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43340),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43341),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43362),
- 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43364),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4335_4339),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4339),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43428),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43430),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4345),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43455),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4354),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4356),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4359),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_CYPRESS_4373),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_CYPRESS_43012),
 	{ /* end: all zeroes */ }
 };
 MODULE_DEVICE_TABLE(sdio, brcmf_sdmmc_ids);
@@ -1254,6 +1269,8 @@ static int brcmf_ops_sdio_suspend(struct device *dev)
 	bus_if = dev_get_drvdata(dev);
 	sdiodev = bus_if->bus_priv.sdio;
 
+	brcmf_android_wake_lock_waive(bus_if->drvr, true);
+
 	brcmf_sdiod_freezer_on(sdiodev);
 	brcmf_sdio_wd_timer(sdiodev->bus, 0);
 
@@ -1266,6 +1283,8 @@ static int brcmf_ops_sdio_suspend(struct device *dev)
 	}
 	if (sdio_set_host_pm_flags(sdiodev->func[1], sdio_flags))
 		brcmf_err("Failed to set pm_flags %x\n", sdio_flags);
+
+	brcmf_android_wake_lock_waive(bus_if->drvr, false);
 	return 0;
 }
 

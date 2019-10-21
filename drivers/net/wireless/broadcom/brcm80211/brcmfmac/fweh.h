@@ -101,7 +101,8 @@ struct brcmf_cfg80211_info;
 	BRCMF_ENUM_DEF(FIFO_CREDIT_MAP, 74) \
 	BRCMF_ENUM_DEF(ACTION_FRAME_RX, 75) \
 	BRCMF_ENUM_DEF(TDLS_PEER_EVENT, 92) \
-	BRCMF_ENUM_DEF(BCMC_CREDIT_SUPPORT, 127)
+	BRCMF_ENUM_DEF(BCMC_CREDIT_SUPPORT, 127) \
+	BRCMF_ENUM_DEF(ULP, 146)
 
 #define BRCMF_ENUM_DEF(id, val) \
 	BRCMF_E_##id = (val),
@@ -113,7 +114,7 @@ enum brcmf_fweh_event_code {
 	 * minimum length check in device firmware so it is
 	 * hard-coded here.
 	 */
-	BRCMF_E_LAST = 139
+	BRCMF_E_LAST = 147
 };
 #undef BRCMF_ENUM_DEF
 
@@ -142,6 +143,16 @@ enum brcmf_fweh_event_code {
 #define BRCMF_E_STATUS_CS_ABORT			15
 #define BRCMF_E_STATUS_ERROR			16
 
+/* status field values for PSK_SUP event */
+#define BRCMF_E_STATUS_FWSUP_WAIT_M1		4
+#define BRCMF_E_STATUS_FWSUP_PREP_M2		5
+#define BRCMF_E_STATUS_FWSUP_COMPLETED		6
+#define BRCMF_E_STATUS_FWSUP_TIMEOUT		7
+#define BRCMF_E_STATUS_FWSUP_WAIT_M3		8
+#define BRCMF_E_STATUS_FWSUP_PREP_M4		9
+#define BRCMF_E_STATUS_FWSUP_WAIT_G1		10
+#define BRCMF_E_STATUS_FWSUP_PREP_G2		11
+
 /* reason field values in struct brcmf_event_msg */
 #define BRCMF_E_REASON_INITIAL_ASSOC		0
 #define BRCMF_E_REASON_LOW_RSSI			1
@@ -160,6 +171,26 @@ enum brcmf_fweh_event_code {
 #define BRCMF_E_REASON_TDLS_PEER_DISCOVERED	0
 #define BRCMF_E_REASON_TDLS_PEER_CONNECTED	1
 #define BRCMF_E_REASON_TDLS_PEER_DISCONNECTED	2
+
+/* reason field values for PSK_SUP event */
+#define BRCMF_E_REASON_FWSUP_OTHER		0
+#define BRCMF_E_REASON_FWSUP_DECRYPT_KEY_DATA	1
+#define BRCMF_E_REASON_FWSUP_BAD_UCAST_WEP128	2
+#define BRCMF_E_REASON_FWSUP_BAD_UCAST_WEP40	3
+#define BRCMF_E_REASON_FWSUP_UNSUP_KEY_LEN	4
+#define BRCMF_E_REASON_FWSUP_PW_KEY_CIPHER	5
+#define BRCMF_E_REASON_FWSUP_MSG3_TOO_MANY_IE	6
+#define BRCMF_E_REASON_FWSUP_MSG3_IE_MISMATCH	7
+#define BRCMF_E_REASON_FWSUP_NO_INSTALL_FLAG	8
+#define BRCMF_E_REASON_FWSUP_MSG3_NO_GTK	9
+#define BRCMF_E_REASON_FWSUP_GRP_KEY_CIPHER	10
+#define BRCMF_E_REASON_FWSUP_GRP_MSG1_NO_GTK	11
+#define BRCMF_E_REASON_FWSUP_GTK_DECRYPT_FAIL	12
+#define BRCMF_E_REASON_FWSUP_SEND_FAIL		13
+#define BRCMF_E_REASON_FWSUP_DEAUTH		14
+#define BRCMF_E_REASON_FWSUP_WPA_PSK_TMO	15
+#define BRCMF_E_REASON_FWSUP_WPA_PSK_M1_TMO	16
+#define BRCMF_E_REASON_FWSUP_WPA_PSK_M3_TMO	17
 
 /* action field values for brcmf_ifevent */
 #define BRCMF_E_IF_ADD				1
@@ -264,6 +295,28 @@ struct brcmf_if_event {
 	u8 role;
 };
 
+enum event_msgs_ext_command {
+	EVENTMSGS_NONE		=	0,
+	EVENTMSGS_SET_BIT	=	1,
+	EVENTMSGS_RESET_BIT	=	2,
+	EVENTMSGS_SET_MASK	=	3
+};
+
+#define EVENTMSGS_VER 1
+#define EVENTMSGS_EXT_STRUCT_SIZE	offsetof(struct eventmsgs_ext, mask[0])
+
+/* len-	for SET it would be mask size from the application to the firmware */
+/*		for GET it would be actual firmware mask size */
+/* maxgetsize -	is only used for GET. indicate max mask size that the */
+/*				application can read from the firmware */
+struct eventmsgs_ext {
+	u8	ver;
+	u8	command;
+	u8	len;
+	u8	maxgetsize;
+	u8	mask[1];
+};
+
 typedef int (*brcmf_fweh_handler_t)(struct brcmf_if *ifp,
 				    const struct brcmf_event_msg *evtmsg,
 				    void *data);
@@ -286,6 +339,8 @@ struct brcmf_fweh_info {
 					 const struct brcmf_event_msg *evtmsg,
 					 void *data);
 };
+
+const char *brcmf_fweh_event_name(enum brcmf_fweh_event_code code);
 
 void brcmf_fweh_attach(struct brcmf_pub *drvr);
 void brcmf_fweh_detach(struct brcmf_pub *drvr);

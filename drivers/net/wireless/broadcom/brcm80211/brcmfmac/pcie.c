@@ -29,6 +29,7 @@
 #include <brcmu_utils.h>
 #include <brcmu_wifi.h>
 #include <brcm_hw_ids.h>
+#include <linux/wakelock.h>
 
 #include "debug.h"
 #include "bus.h"
@@ -39,7 +40,11 @@
 #include "chip.h"
 #include "core.h"
 #include "common.h"
+#include "android.h"
 
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#include "nv_custom_sysfs_tegra.h"
+#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
 
 enum brcmf_pcie_state {
 	BRCMFMAC_PCIE_STATE_DOWN,
@@ -78,7 +83,7 @@ static struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
 	BRCMF_FW_NVRAM_ENTRY(BRCM_CC_4371_CHIP_ID, 0xFFFFFFFF, 4371),
 };
 
-#define BRCMF_PCIE_FW_UP_TIMEOUT		2000 /* msec */
+#define BRCMF_PCIE_FW_UP_TIMEOUT		5000 /* msec */
 
 #define BRCMF_PCIE_REG_MAP_SIZE			(32 * 1024)
 
@@ -135,7 +140,7 @@ static struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
 						 BRCMF_PCIE_MB_INT_D2H3_DB1)
 
 #define BRCMF_PCIE_MIN_SHARED_VERSION		5
-#define BRCMF_PCIE_MAX_SHARED_VERSION		5
+#define BRCMF_PCIE_MAX_SHARED_VERSION		6
 #define BRCMF_PCIE_SHARED_VERSION_MASK		0x00FF
 #define BRCMF_PCIE_SHARED_DMA_INDEX		0x10000
 #define BRCMF_PCIE_SHARED_DMA_2B_IDX		0x100000
@@ -165,17 +170,6 @@ static struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
 #define BRCMF_RING_LEN_ITEMS_OFFSET		6
 #define BRCMF_RING_MEM_SZ			16
 #define BRCMF_RING_STATE_SZ			8
-
-#define BRCMF_SHARED_RING_H2D_W_IDX_PTR_OFFSET	4
-#define BRCMF_SHARED_RING_H2D_R_IDX_PTR_OFFSET	8
-#define BRCMF_SHARED_RING_D2H_W_IDX_PTR_OFFSET	12
-#define BRCMF_SHARED_RING_D2H_R_IDX_PTR_OFFSET	16
-#define BRCMF_SHARED_RING_H2D_WP_HADDR_OFFSET	20
-#define BRCMF_SHARED_RING_H2D_RP_HADDR_OFFSET	28
-#define BRCMF_SHARED_RING_D2H_WP_HADDR_OFFSET	36
-#define BRCMF_SHARED_RING_D2H_RP_HADDR_OFFSET	44
-#define BRCMF_SHARED_RING_TCM_MEMLOC_OFFSET	0
-#define BRCMF_SHARED_RING_MAX_SUB_QUEUES	52
 
 #define BRCMF_DEF_MAX_RXBUFPOST			255
 
@@ -231,7 +225,9 @@ struct brcmf_pcie_shared_info {
 	struct brcmf_pcie_ringbuf *commonrings[BRCMF_NROF_COMMON_MSGRINGS];
 	struct brcmf_pcie_ringbuf *flowrings;
 	u16 max_rxbufpost;
-	u32 nrof_flowrings;
+	u16 max_flowrings;
+	u16 max_submissionrings;
+	u16 max_completionrings;
 	u32 rx_dataoffset;
 	u32 htod_mb_data_addr;
 	u32 dtoh_mb_data_addr;
@@ -241,6 +237,7 @@ struct brcmf_pcie_shared_info {
 	dma_addr_t scratch_dmahandle;
 	void *ringupd;
 	dma_addr_t ringupd_dmahandle;
+	u8 version;
 };
 
 struct brcmf_pcie_core_info {
@@ -284,6 +281,36 @@ struct brcmf_pcie_ringbuf {
 	u8 id;
 };
 
+/**
+ * struct brcmf_pcie_dhi_ringinfo - dongle/host interface shared ring info
+ *
+ * @ringmem: dongle memory pointer to ring memory location
+ * @h2d_w_idx_ptr: h2d ring write indices dongle memory pointers
+ * @h2d_r_idx_ptr: h2d ring read indices dongle memory pointers
+ * @d2h_w_idx_ptr: d2h ring write indices dongle memory pointers
+ * @d2h_r_idx_ptr: d2h ring read indices dongle memory pointers
+ * @h2d_w_idx_hostaddr: h2d ring write indices host memory pointers
+ * @h2d_r_idx_hostaddr: h2d ring read indices host memory pointers
+ * @d2h_w_idx_hostaddr: d2h ring write indices host memory pointers
+ * @d2h_r_idx_hostaddr: d2h ring reaD indices host memory pointers
+ * @max_flowrings: maximum number of tx flow rings supported.
+ * @max_submissionrings: maximum number of submission rings(h2d) supported.
+ * @max_completionrings: maximum number of completion rings(d2h) supported.
+ */
+struct brcmf_pcie_dhi_ringinfo {
+	__le32			ringmem;
+	__le32			h2d_w_idx_ptr;
+	__le32			h2d_r_idx_ptr;
+	__le32			d2h_w_idx_ptr;
+	__le32			d2h_r_idx_ptr;
+	struct msgbuf_buf_addr	h2d_w_idx_hostaddr;
+	struct msgbuf_buf_addr	h2d_r_idx_hostaddr;
+	struct msgbuf_buf_addr	d2h_w_idx_hostaddr;
+	struct msgbuf_buf_addr	d2h_r_idx_hostaddr;
+	__le16			max_flowrings;
+	__le16			max_submissionrings;
+	__le16			max_completionrings;
+};
 
 static const u32 brcmf_ring_max_item[BRCMF_NROF_COMMON_MSGRINGS] = {
 	BRCMF_H2D_MSGRING_CONTROL_SUBMIT_MAX_ITEM,
@@ -579,7 +606,6 @@ static void brcmf_pcie_attach(struct brcmf_pciedev_info *devinfo)
 {
 	u32 config;
 
-	brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
 	/* BAR1 window may not be sized properly */
 	brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
 	brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_CONFIGADDR, 0x4e0);
@@ -778,6 +804,9 @@ static irqreturn_t brcmf_pcie_isr_thread(int irq, void *arg)
 {
 	struct brcmf_pciedev_info *devinfo = (struct brcmf_pciedev_info *)arg;
 	u32 status;
+	struct brcmf_bus *bus = dev_get_drvdata(&devinfo->pdev->dev);
+
+	brcmf_android_wake_lock(bus->drvr);
 
 	devinfo->in_irq = true;
 	status = brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT);
@@ -798,6 +827,9 @@ static irqreturn_t brcmf_pcie_isr_thread(int irq, void *arg)
 	if (devinfo->state == BRCMFMAC_PCIE_STATE_UP)
 		brcmf_pcie_intr_enable(devinfo);
 	devinfo->in_irq = false;
+
+	brcmf_android_wake_unlock(bus->drvr);
+
 	return IRQ_HANDLED;
 }
 
@@ -1054,26 +1086,35 @@ static int brcmf_pcie_init_ringbuffers(struct brcmf_pciedev_info *devinfo)
 {
 	struct brcmf_pcie_ringbuf *ring;
 	struct brcmf_pcie_ringbuf *rings;
-	u32 ring_addr;
 	u32 d2h_w_idx_ptr;
 	u32 d2h_r_idx_ptr;
 	u32 h2d_w_idx_ptr;
 	u32 h2d_r_idx_ptr;
-	u32 addr;
 	u32 ring_mem_ptr;
 	u32 i;
 	u64 address;
 	u32 bufsz;
-	u16 max_sub_queues;
 	u8 idx_offset;
+	struct brcmf_pcie_dhi_ringinfo ringinfo;
+	u16 max_flowrings;
+	u16 max_submissionrings;
+	u16 max_completionrings;
 
-	ring_addr = devinfo->shared.ring_info_addr;
-	brcmf_dbg(PCIE, "Base ring addr = 0x%08x\n", ring_addr);
-	addr = ring_addr + BRCMF_SHARED_RING_MAX_SUB_QUEUES;
-	max_sub_queues = brcmf_pcie_read_tcm16(devinfo, addr);
+	memcpy_fromio(&ringinfo, devinfo->tcm + devinfo->shared.ring_info_addr,
+		      sizeof(ringinfo));
+	if (devinfo->shared.version >= 6) {
+		max_submissionrings = le16_to_cpu(ringinfo.max_submissionrings);
+		max_flowrings = le16_to_cpu(ringinfo.max_flowrings);
+		max_completionrings = le16_to_cpu(ringinfo.max_completionrings);
+	} else {
+		max_submissionrings = le16_to_cpu(ringinfo.max_flowrings);
+		max_flowrings = max_submissionrings -
+				BRCMF_NROF_H2D_COMMON_MSGRINGS;
+		max_completionrings = BRCMF_NROF_D2H_COMMON_MSGRINGS;
+	}
 
 	if (devinfo->dma_idx_sz != 0) {
-		bufsz = (BRCMF_NROF_D2H_COMMON_MSGRINGS + max_sub_queues) *
+		bufsz = (max_submissionrings + max_completionrings) *
 			devinfo->dma_idx_sz * 2;
 		devinfo->idxbuf = dma_alloc_coherent(&devinfo->pdev->dev, bufsz,
 						     &devinfo->idxbuf_dmahandle,
@@ -1083,14 +1124,10 @@ static int brcmf_pcie_init_ringbuffers(struct brcmf_pciedev_info *devinfo)
 	}
 
 	if (devinfo->dma_idx_sz == 0) {
-		addr = ring_addr + BRCMF_SHARED_RING_D2H_W_IDX_PTR_OFFSET;
-		d2h_w_idx_ptr = brcmf_pcie_read_tcm32(devinfo, addr);
-		addr = ring_addr + BRCMF_SHARED_RING_D2H_R_IDX_PTR_OFFSET;
-		d2h_r_idx_ptr = brcmf_pcie_read_tcm32(devinfo, addr);
-		addr = ring_addr + BRCMF_SHARED_RING_H2D_W_IDX_PTR_OFFSET;
-		h2d_w_idx_ptr = brcmf_pcie_read_tcm32(devinfo, addr);
-		addr = ring_addr + BRCMF_SHARED_RING_H2D_R_IDX_PTR_OFFSET;
-		h2d_r_idx_ptr = brcmf_pcie_read_tcm32(devinfo, addr);
+		d2h_w_idx_ptr = le32_to_cpu(ringinfo.d2h_w_idx_ptr);
+		d2h_r_idx_ptr = le32_to_cpu(ringinfo.d2h_r_idx_ptr);
+		h2d_w_idx_ptr = le32_to_cpu(ringinfo.h2d_w_idx_ptr);
+		h2d_r_idx_ptr = le32_to_cpu(ringinfo.h2d_r_idx_ptr);
 		idx_offset = sizeof(u32);
 		devinfo->write_ptr = brcmf_pcie_write_tcm16;
 		devinfo->read_ptr = brcmf_pcie_read_tcm16;
@@ -1103,34 +1140,42 @@ static int brcmf_pcie_init_ringbuffers(struct brcmf_pciedev_info *devinfo)
 		devinfo->read_ptr = brcmf_pcie_read_idx;
 
 		h2d_w_idx_ptr = 0;
-		addr = ring_addr + BRCMF_SHARED_RING_H2D_WP_HADDR_OFFSET;
 		address = (u64)devinfo->idxbuf_dmahandle;
-		brcmf_pcie_write_tcm32(devinfo, addr, address & 0xffffffff);
-		brcmf_pcie_write_tcm32(devinfo, addr + 4, address >> 32);
+		ringinfo.h2d_w_idx_hostaddr.low_addr =
+			cpu_to_le32(address & 0xffffffff);
+		ringinfo.h2d_w_idx_hostaddr.high_addr =
+			cpu_to_le32(address >> 32);
 
-		h2d_r_idx_ptr = h2d_w_idx_ptr + max_sub_queues * idx_offset;
-		addr = ring_addr + BRCMF_SHARED_RING_H2D_RP_HADDR_OFFSET;
-		address += max_sub_queues * idx_offset;
-		brcmf_pcie_write_tcm32(devinfo, addr, address & 0xffffffff);
-		brcmf_pcie_write_tcm32(devinfo, addr + 4, address >> 32);
+		h2d_r_idx_ptr = h2d_w_idx_ptr +
+				max_submissionrings * idx_offset;
+		address += max_submissionrings * idx_offset;
+		ringinfo.h2d_r_idx_hostaddr.low_addr =
+			cpu_to_le32(address & 0xffffffff);
+		ringinfo.h2d_r_idx_hostaddr.high_addr =
+			cpu_to_le32(address >> 32);
 
-		d2h_w_idx_ptr = h2d_r_idx_ptr + max_sub_queues * idx_offset;
-		addr = ring_addr + BRCMF_SHARED_RING_D2H_WP_HADDR_OFFSET;
-		address += max_sub_queues * idx_offset;
-		brcmf_pcie_write_tcm32(devinfo, addr, address & 0xffffffff);
-		brcmf_pcie_write_tcm32(devinfo, addr + 4, address >> 32);
+		d2h_w_idx_ptr = h2d_r_idx_ptr +
+				max_submissionrings * idx_offset;
+		address += max_submissionrings * idx_offset;
+		ringinfo.d2h_w_idx_hostaddr.low_addr =
+			cpu_to_le32(address & 0xffffffff);
+		ringinfo.d2h_w_idx_hostaddr.high_addr =
+			cpu_to_le32(address >> 32);
 
 		d2h_r_idx_ptr = d2h_w_idx_ptr +
-				BRCMF_NROF_D2H_COMMON_MSGRINGS * idx_offset;
-		addr = ring_addr + BRCMF_SHARED_RING_D2H_RP_HADDR_OFFSET;
-		address += BRCMF_NROF_D2H_COMMON_MSGRINGS * idx_offset;
-		brcmf_pcie_write_tcm32(devinfo, addr, address & 0xffffffff);
-		brcmf_pcie_write_tcm32(devinfo, addr + 4, address >> 32);
+				max_completionrings * idx_offset;
+		address += max_completionrings * idx_offset;
+		ringinfo.d2h_r_idx_hostaddr.low_addr =
+			cpu_to_le32(address & 0xffffffff);
+		ringinfo.d2h_r_idx_hostaddr.high_addr =
+			cpu_to_le32(address >> 32);
+
+		memcpy_toio(devinfo->tcm + devinfo->shared.ring_info_addr,
+			    &ringinfo, sizeof(ringinfo));
 		brcmf_dbg(PCIE, "Using host memory indices\n");
 	}
 
-	addr = ring_addr + BRCMF_SHARED_RING_TCM_MEMLOC_OFFSET;
-	ring_mem_ptr = brcmf_pcie_read_tcm32(devinfo, addr);
+	ring_mem_ptr = le32_to_cpu(ringinfo.ringmem);
 
 	for (i = 0; i < BRCMF_NROF_H2D_COMMON_MSGRINGS; i++) {
 		ring = brcmf_pcie_alloc_dma_and_ring(devinfo, i, ring_mem_ptr);
@@ -1161,20 +1206,19 @@ static int brcmf_pcie_init_ringbuffers(struct brcmf_pciedev_info *devinfo)
 		ring_mem_ptr += BRCMF_RING_MEM_SZ;
 	}
 
-	devinfo->shared.nrof_flowrings =
-			max_sub_queues - BRCMF_NROF_H2D_COMMON_MSGRINGS;
-	rings = kcalloc(devinfo->shared.nrof_flowrings, sizeof(*ring),
-			GFP_KERNEL);
+	devinfo->shared.max_flowrings = max_flowrings;
+	devinfo->shared.max_submissionrings = max_submissionrings;
+	devinfo->shared.max_completionrings = max_completionrings;
+	rings = kcalloc(max_flowrings, sizeof(*ring), GFP_KERNEL);
 	if (!rings)
 		goto fail;
 
-	brcmf_dbg(PCIE, "Nr of flowrings is %d\n",
-		  devinfo->shared.nrof_flowrings);
+	brcmf_dbg(PCIE, "Nr of flowrings is %d\n", max_flowrings);
 
-	for (i = 0; i < devinfo->shared.nrof_flowrings; i++) {
+	for (i = 0; i < max_flowrings; i++) {
 		ring = &rings[i];
 		ring->devinfo = devinfo;
-		ring->id = i + BRCMF_NROF_COMMON_MSGRINGS;
+		ring->id = i + BRCMF_H2D_MSGRING_FLOWRING_IDSTART;
 		brcmf_commonring_register_cb(&ring->commonring,
 					     brcmf_pcie_ring_mb_ring_bell,
 					     brcmf_pcie_ring_mb_update_rptr,
@@ -1317,6 +1361,24 @@ static int brcmf_pcie_get_memdump(struct device *dev, void *data, size_t len)
 	return 0;
 }
 
+static int brcmf_pcie_get_fwname(struct device *dev, u32 chip, u32 chiprev,
+				 u8 *fw_name)
+{
+	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
+	struct brcmf_pciedev *buspub = bus_if->bus_priv.pcie;
+	struct brcmf_pciedev_info *devinfo = buspub->devinfo;
+	int ret = 0;
+
+	if (devinfo->fw_name[0] != '\0')
+		strlcpy(fw_name, devinfo->fw_name, BRCMF_FW_NAME_LEN);
+	else
+		ret = brcmf_fw_map_chip_to_name(chip, chiprev,
+						brcmf_pcie_fwnames,
+						ARRAY_SIZE(brcmf_pcie_fwnames),
+						fw_name, NULL);
+
+	return ret;
+}
 
 static const struct brcmf_bus_ops brcmf_pcie_bus_ops = {
 	.txdata = brcmf_pcie_tx,
@@ -1326,6 +1388,7 @@ static const struct brcmf_bus_ops brcmf_pcie_bus_ops = {
 	.wowl_config = brcmf_pcie_wowl_config,
 	.get_ramsize = brcmf_pcie_get_ramsize,
 	.get_memdump = brcmf_pcie_get_memdump,
+	.get_fwname = brcmf_pcie_get_fwname,
 };
 
 
@@ -1357,17 +1420,16 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
 {
 	struct brcmf_pcie_shared_info *shared;
 	u32 addr;
-	u32 version;
 
 	shared = &devinfo->shared;
 	shared->tcm_base_address = sharedram_addr;
 
 	shared->flags = brcmf_pcie_read_tcm32(devinfo, sharedram_addr);
-	version = shared->flags & BRCMF_PCIE_SHARED_VERSION_MASK;
-	brcmf_dbg(PCIE, "PCIe protocol version %d\n", version);
-	if ((version > BRCMF_PCIE_MAX_SHARED_VERSION) ||
-	    (version < BRCMF_PCIE_MIN_SHARED_VERSION)) {
-		brcmf_err("Unsupported PCIE version %d\n", version);
+	shared->version = (u8)(shared->flags & BRCMF_PCIE_SHARED_VERSION_MASK);
+	brcmf_dbg(PCIE, "PCIe protocol version %d\n", shared->version);
+	if ((shared->version > BRCMF_PCIE_MAX_SHARED_VERSION) ||
+	    (shared->version < BRCMF_PCIE_MIN_SHARED_VERSION)) {
+		brcmf_err("Unsupported PCIE version %d\n", shared->version);
 		return -EINVAL;
 	}
 
@@ -1539,7 +1601,7 @@ static int brcmf_pcie_attach_bus(struct brcmf_pciedev_info *devinfo)
 	if (ret) {
 		brcmf_err("brcmf_attach failed\n");
 	} else {
-		ret = brcmf_bus_start(&devinfo->pdev->dev);
+		ret = brcmf_bus_started(&devinfo->pdev->dev);
 		if (ret)
 			brcmf_err("dongle is not responding\n");
 	}
@@ -1627,12 +1689,23 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 	struct brcmf_pciedev_info *devinfo;
 	struct brcmf_commonring **flowrings;
 	u32 i;
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	struct brcmf_pub *drvr;
+#endif
 
+	bus = dev_get_drvdata(dev);
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	drvr = bus->drvr;
+	if (!brcmf_android_in_reset(drvr)) {
+		brcmf_android_init(drvr);
+		drvr->android->init_done = true;
+		return;
+	}
+#endif
 	/* check firmware loading result */
 	if (ret)
 		goto fail;
 
-	bus = dev_get_drvdata(dev);
 	pcie_bus_dev = bus->bus_priv.pcie;
 	devinfo = pcie_bus_dev->devinfo;
 	brcmf_pcie_attach(devinfo);
@@ -1668,29 +1741,36 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 		bus->msgbuf->commonrings[i] =
 				&devinfo->shared.commonrings[i]->commonring;
 
-	flowrings = kcalloc(devinfo->shared.nrof_flowrings, sizeof(*flowrings),
+	flowrings = kcalloc(devinfo->shared.max_flowrings, sizeof(*flowrings),
 			    GFP_KERNEL);
 	if (!flowrings)
 		goto fail;
 
-	for (i = 0; i < devinfo->shared.nrof_flowrings; i++)
+	for (i = 0; i < devinfo->shared.max_flowrings; i++)
 		flowrings[i] = &devinfo->shared.flowrings[i].commonring;
 	bus->msgbuf->flowrings = flowrings;
 
 	bus->msgbuf->rx_dataoffset = devinfo->shared.rx_dataoffset;
 	bus->msgbuf->max_rxbufpost = devinfo->shared.max_rxbufpost;
-	bus->msgbuf->nrof_flowrings = devinfo->shared.nrof_flowrings;
+	bus->msgbuf->max_flowrings = devinfo->shared.max_flowrings;
 
 	init_waitqueue_head(&devinfo->mbdata_resp_wait);
 
 	brcmf_pcie_intr_enable(devinfo);
-	if (brcmf_pcie_attach_bus(devinfo) == 0)
+	if (brcmf_pcie_attach_bus(devinfo) == 0) {
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+		brcmf_wake_dev_reset_waitq(drvr, 0);
+#endif
 		return;
+	}
 
 	brcmf_pcie_bus_console_read(devinfo);
 
 fail:
 	device_release_driver(dev);
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	brcmf_wake_dev_reset_waitq(drvr, -EIO);
+#endif
 }
 
 static int
@@ -1702,6 +1782,10 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct brcmf_bus *bus;
 	u16 domain_nr;
 	u16 bus_nr;
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	struct brcmf_pub *drvr = NULL;
+	int i;
+#endif
 
 	domain_nr = pci_domain_nr(pdev->bus) + 1;
 	bus_nr = pdev->bus->number;
@@ -1760,6 +1844,34 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	bus->wowl_supported = pci_pme_capable(pdev, PCI_D3hot);
 	dev_set_drvdata(&pdev->dev, bus);
 
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	if (!g_drvr) {
+		/* Allocate primary brcmf_info */
+		drvr = kzalloc(sizeof(*drvr), GFP_ATOMIC);
+		if (!drvr) {
+			ret = -ENOMEM;
+			goto fail_bus;
+		}
+		for (i = 0; i < ARRAY_SIZE(drvr->if2bss); i++)
+			drvr->if2bss[i] = -1;
+
+		mutex_init(&drvr->proto_block);
+		mutex_init(&drvr->net_if_lock);
+		/* Attach Android module */
+		ret = brcmf_android_attach(drvr);
+		if (ret)
+			goto fail_bus;
+		/* Link to bus module */
+		drvr->hdrlen = 0;
+		drvr->bus_if = dev_get_drvdata(&pdev->dev);
+		drvr->bus_if->drvr = drvr;
+		drvr->settings = devinfo->settings;
+		brcmf_fweh_attach(drvr);
+		g_drvr = drvr;
+	}
+	bus->drvr = g_drvr;
+#endif
+
 	ret = brcmf_fw_map_chip_to_name(devinfo->ci->chip, devinfo->ci->chiprev,
 					brcmf_pcie_fwnames,
 					ARRAY_SIZE(brcmf_pcie_fwnames),
@@ -1771,9 +1883,16 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 						    BRCMF_FW_REQ_NV_OPTIONAL,
 					  devinfo->fw_name, devinfo->nvram_name,
 					  brcmf_pcie_setup, domain_nr, bus_nr);
-	if (ret == 0)
+	if (ret == 0) {
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+		tegra_sysfs_bus_register(&pdev->dev);
+#endif
 		return 0;
+	}
 fail_bus:
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	kfree(drvr);
+#endif
 	kfree(bus->msgbuf);
 	kfree(bus);
 fail:
@@ -1800,6 +1919,9 @@ brcmf_pcie_remove(struct pci_dev *pdev)
 	bus = dev_get_drvdata(&pdev->dev);
 	if (bus == NULL)
 		return;
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+		tegra_sysfs_bus_unregister(&pdev->dev);
+#endif
 
 	devinfo = bus->bus_priv.pcie->devinfo;
 
@@ -1843,6 +1965,7 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 	bus = dev_get_drvdata(dev);
 	devinfo = bus->bus_priv.pcie->devinfo;
 
+	brcmf_android_wake_lock_waive(bus->drvr, true);
 	brcmf_bus_change_state(bus, BRCMF_BUS_DOWN);
 
 	devinfo->mbdata_completed = false;
@@ -1852,10 +1975,15 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 			   BRCMF_PCIE_MBDATA_TIMEOUT);
 	if (!devinfo->mbdata_completed) {
 		brcmf_err("Timeout on response for entering D3 substate\n");
+		brcmf_bus_change_state(bus, BRCMF_BUS_UP);
 		return -EIO;
 	}
 
 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
+	brcmf_android_wake_lock_waive(bus->drvr, false);
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	tegra_sysfs_suspend();
+#endif
 
 	return 0;
 }
@@ -1874,6 +2002,9 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
 	devinfo = bus->bus_priv.pcie->devinfo;
 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
 
+#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	tegra_sysfs_resume();
+#endif
 	/* Check if device is still up and running, if so we are ready */
 	if (brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_INTMASK) != 0) {
 		brcmf_dbg(PCIE, "Try to wakeup device....\n");
@@ -1918,8 +2049,10 @@ static const struct dev_pm_ops brcmf_pciedrvr_pm = {
 	BRCM_PCIE_VENDOR_ID_BROADCOM, dev_id,\
 	subvend, subdev, PCI_CLASS_NETWORK_OTHER << 8, 0xffff00, 0 }
 
-static struct pci_device_id brcmf_pcie_devid_table[] = {
+static const struct pci_device_id brcmf_pcie_devid_table[] = {
 	BRCMF_PCIE_DEVICE(BRCM_PCIE_4350_DEVICE_ID),
+	BRCMF_PCIE_DEVICE(BRCM_PCIE_4354_RAW_DEVICE_ID),
+	BRCMF_PCIE_DEVICE_SUB(BRCM_PCIE_4355_DEVICE_ID,BRCM_PCIE_VENDOR_ID_BROADCOM,BRCM_PCIE_4355_DEVICE_ID),
 	BRCMF_PCIE_DEVICE(BRCM_PCIE_4356_DEVICE_ID),
 	BRCMF_PCIE_DEVICE(BRCM_PCIE_43567_DEVICE_ID),
 	BRCMF_PCIE_DEVICE(BRCM_PCIE_43570_DEVICE_ID),

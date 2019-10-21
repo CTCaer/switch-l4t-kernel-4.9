@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012 Broadcom Corporation
+ * Copyright (C) 2019 NVIDIA Corporation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,9 +23,12 @@
 #include "core.h"
 #include "debug.h"
 #include "tracepoint.h"
-#include "fwsignal.h"
 #include "fweh.h"
 #include "fwil.h"
+#include "proto.h"
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#include "nv_logger.h"
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 
 /**
  * struct brcmf_fweh_queue_item - event item on event queue.
@@ -54,7 +58,7 @@ struct brcmf_fweh_event_name {
 	const char *name;
 };
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(CPTCFG_BRCMFMAC_NV_IDS)
 #define BRCMF_ENUM_DEF(id, val) \
 	{ val, #id },
 
@@ -69,7 +73,7 @@ static struct brcmf_fweh_event_name fweh_event_names[] = {
  *
  * @code: code to lookup.
  */
-static const char *brcmf_fweh_event_name(enum brcmf_fweh_event_code code)
+const char *brcmf_fweh_event_name(enum brcmf_fweh_event_code code)
 {
 	int i;
 	for (i = 0; i < ARRAY_SIZE(fweh_event_names); i++) {
@@ -79,7 +83,7 @@ static const char *brcmf_fweh_event_name(enum brcmf_fweh_event_code code)
 	return "unknown";
 }
 #else
-static const char *brcmf_fweh_event_name(enum brcmf_fweh_event_code code)
+const char *brcmf_fweh_event_name(enum brcmf_fweh_event_code code)
 {
 	return "nodebug";
 }
@@ -115,7 +119,16 @@ static int brcmf_fweh_call_event_handler(struct brcmf_if *ifp,
 
 		/* handle the event if valid interface and handler */
 		if (fweh->evt_handler[code])
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+		{
+			if (NV_FILELOG_ON())
+				write_log(code,
+					brcmf_fweh_event_name(code), emsg->addr);
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 			err = fweh->evt_handler[code](ifp, emsg, data);
+#ifdef CPTCFG_BRCMFMAC_NV_IDS
+		}
+#endif /* CPTCFG_BRCMFMAC_NV_IDS */
 		else
 			brcmf_err("unhandled event %d ignored\n", code);
 	} else {
@@ -172,14 +185,14 @@ static void brcmf_fweh_handle_if_event(struct brcmf_pub *drvr,
 		if (IS_ERR(ifp))
 			return;
 		if (!is_p2pdev)
-			brcmf_fws_add_interface(ifp);
+			brcmf_proto_add_if(drvr, ifp);
 		if (!drvr->fweh.evt_handler[BRCMF_E_IF])
 			if (brcmf_net_attach(ifp, false) < 0)
 				return;
 	}
 
 	if (ifp && ifevent->action == BRCMF_E_IF_CHANGE)
-		brcmf_fws_reset_interface(ifp);
+		brcmf_proto_reset_if(drvr, ifp);
 
 	err = brcmf_fweh_call_event_handler(ifp, emsg->event_code, emsg, data);
 

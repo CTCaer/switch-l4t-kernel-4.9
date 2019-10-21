@@ -23,6 +23,7 @@
 
 #include <net/cfg80211.h>
 #include "fweh.h"
+#include "fwil_types.h"
 
 #define TOE_TX_CSUM_OL		0x00000001
 #define TOE_RX_CSUM_OL		0x00000002
@@ -36,10 +37,10 @@
 #define BRCMF_DCMD_MEDLEN	1536
 #define BRCMF_DCMD_MAXLEN	8192
 
-/* IOCTL from host to device are limited in lenght. A device can only handle
+/* IOCTL from host to device are limited in length. A device can only handle
  * ethernet frame size. This limitation is to be applied by protocol layer.
  */
-#define BRCMF_TX_IOCTL_MAX_MSG_SIZE	(ETH_FRAME_LEN+ETH_FCS_LEN)
+#define BRCMF_TX_IOCTL_MAX_MSG_SIZE	(ETH_FRAME_LEN + ETH_FCS_LEN)
 
 #define BRCMF_AMPDU_RX_REORDER_MAXFLOWS		256
 
@@ -127,8 +128,6 @@ struct brcmf_pub {
 
 	struct brcmf_fweh_info fweh;
 
-	struct brcmf_fws_info *fws;
-
 	struct brcmf_ampdu_rx_reorder
 		*reorder_flows[BRCMF_AMPDU_RX_REORDER_MAXFLOWS];
 
@@ -143,6 +142,14 @@ struct brcmf_pub {
 	struct notifier_block inetaddr_notifier;
 	struct notifier_block inet6addr_notifier;
 	struct brcmf_mp_device *settings;
+
+	u8 clmver[BRCMF_DCMD_SMLEN];
+	struct brcmf_pkt_filter_enable_le pkt_filter[MAX_PKT_FILTER_COUNT];
+	u8 sta_mac_idx;
+
+	struct brcmf_android *android;
+	struct mutex net_if_lock;       /* mutex lock for net interface */
+
 };
 
 /* forward declarations */
@@ -171,7 +178,6 @@ enum brcmf_netif_stop_reason {
  * @drvr: points to device related information.
  * @vif: points to cfg80211 specific interface information.
  * @ndev: associated network device.
- * @stats: interface specific network statistics.
  * @multicast_work: worker object for multicast provisioning.
  * @ndoffload_work: worker object for neighbor discovery offload configuration.
  * @fws_desc: interface specific firmware-signalling descriptor.
@@ -187,7 +193,6 @@ struct brcmf_if {
 	struct brcmf_pub *drvr;
 	struct brcmf_cfg80211_vif *vif;
 	struct net_device *ndev;
-	struct net_device_stats stats;
 	struct work_struct multicast_work;
 	struct work_struct ndoffload_work;
 	struct brcmf_fws_mac_descriptor *fws_desc;
@@ -200,6 +205,9 @@ struct brcmf_if {
 	wait_queue_head_t pend_8021x_wait;
 	struct in6_addr ipv6_addr_tbl[NDOL_MAX_ENTRIES];
 	u8 ipv6addr_idx;
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	wait_queue_head_t pend_dev_reset_wait;
+#endif
 };
 
 int brcmf_netdev_wait_pend8021x(struct brcmf_if *ifp);
@@ -216,8 +224,17 @@ void brcmf_txflowblock_if(struct brcmf_if *ifp,
 void brcmf_txfinalize(struct brcmf_if *ifp, struct sk_buff *txp, bool success);
 void brcmf_netif_rx(struct brcmf_if *ifp, struct sk_buff *skb);
 void brcmf_net_setcarrier(struct brcmf_if *ifp, bool on);
-void brcmf_c_set_joinpref_default(struct brcmf_if *ifp);
 int __init brcmf_core_init(void);
 void __exit brcmf_core_exit(void);
-
+int brcmf_pktfilter_add_remove(struct net_device *ndev, int filter_num,
+			       bool add);
+int brcmf_pktfilter_enable(struct net_device *ndev, bool enable);
+int brcmf_set_country(struct net_device *ndev, char *country);
+int brcmf_set_power(bool on, unsigned long msec);
+#ifdef CPTCFG_BRCMFMAC_ANDROID
+extern void wifi_card_detect(bool on);
+#endif
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+void brcmf_wake_dev_reset_waitq(struct brcmf_pub *drvr, int status);
+#endif
 #endif /* BRCMFMAC_CORE_H */

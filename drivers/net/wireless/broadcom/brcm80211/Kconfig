@@ -1,16 +1,19 @@
 config BRCMUTIL
 	tristate
+	depends on m
 
 config BRCMSMAC
+	depends on n
 	tristate "Broadcom IEEE802.11n PCIe SoftMAC WLAN driver"
+	depends on m
 	depends on MAC80211
 	depends on BCMA_POSSIBLE
-	select BCMA
+	depends on BCMA
 	select NEW_LEDS if BCMA_DRIVER_GPIO
 	select LEDS_CLASS if BCMA_DRIVER_GPIO
 	select BRCMUTIL
-	select FW_LOADER
-	select CORDIC
+	depends on FW_LOADER
+	select BPAUTO_CORDIC
 	---help---
 	  This module adds support for PCIe wireless adapters based on Broadcom
 	  IEEE802.11n SoftMAC chipsets. It also has WLAN led support, which will
@@ -18,14 +21,15 @@ config BRCMSMAC
 	  module, the driver will be called brcmsmac.ko.
 
 config BRCMFMAC
-	tristate "Broadcom IEEE802.11n embedded FullMAC WLAN driver"
+	tristate "Broadcom FullMAC WLAN driver"
+	depends on m
 	depends on CFG80211
 	select BRCMUTIL
 	---help---
-	  This module adds support for embedded wireless adapters based on
-	  Broadcom IEEE802.11n FullMAC chipsets. It has to work with at least
-	  one of the bus interface support. If you choose to build a module,
-	  it'll be called brcmfmac.ko.
+	  This module adds support for wireless adapters based on Broadcom
+	  FullMAC chipsets. It has to work with at least one of the bus
+	  interface support. If you choose to build a module, it'll be called
+	  brcmfmac.ko.
 
 config BRCMFMAC_PROTO_BCDC
 	bool
@@ -38,7 +42,7 @@ config BRCMFMAC_SDIO
 	depends on (MMC = y || MMC = BRCMFMAC)
 	depends on BRCMFMAC
 	select BRCMFMAC_PROTO_BCDC
-	select FW_LOADER
+	depends on FW_LOADER
 	default y
 	---help---
 	  This option enables the SDIO bus interface support for Broadcom
@@ -50,7 +54,7 @@ config BRCMFMAC_USB
 	depends on (USB = y || USB = BRCMFMAC)
 	depends on BRCMFMAC
 	select BRCMFMAC_PROTO_BCDC
-	select FW_LOADER
+	depends on FW_LOADER
 	---help---
 	  This option enables the USB bus interface support for Broadcom
 	  IEEE802.11n embedded FullMAC WLAN driver. Say Y if you want to
@@ -62,7 +66,7 @@ config BRCMFMAC_PCIE
 	depends on PCI
 	depends on HAS_DMA
 	select BRCMFMAC_PROTO_MSGBUF
-	select FW_LOADER
+	depends on FW_LOADER
 	---help---
 	  This option enables the PCIE bus interface support for Broadcom
 	  IEEE802.11ac embedded FullMAC WLAN driver. Say Y if you want to
@@ -82,6 +86,71 @@ config BRCM_TRACING
 config BRCMDBG
 	bool "Broadcom driver debug functions"
 	depends on BRCMSMAC || BRCMFMAC
-	select WANT_DEV_COREDUMP
+	select BPAUTO_WANT_DEV_COREDUMP
 	---help---
 	  Selecting this enables additional code for debug purposes.
+
+config BRCMFMAC_ANDROID
+	bool "brcmfmac android support"
+	depends on BRCMFMAC
+	---help---
+	  If you say Y here, the FMAC driver will support Android mode
+
+config BRCM_INSMOD_NO_FW
+	bool "insmod module without loading firmware"
+	depends on BRCMFMAC_ANDROID
+	---help---
+	  If you say Y here, the FMAC driver will not load firmware when
+	  inserting the module, it only create wlan interface. Firmware
+	  will be loaded when wlan interface up.
+
+config NV_CUSTOM_SYSFS_TEGRA
+	bool "Custom sysfs for Tegra platform"
+	depends on BRCMFMAC
+	default y
+	---help---
+	  Enable custom sysfs for Tegra platform.
+
+config NV_CUSTOM_CAP
+	bool "NvCap support for Tegra platform"
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable custom NvCap support for Tegra platform.
+
+config BRCMFMAC_NV_IDS
+	bool "Nv IDS support for Tegra platform"
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable NV IDS support for Tegra platform.
+
+config NV_CUSTOM_SCAN
+	bool "scan optimization support"
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable custom scan optimization support for Tegra platform.
+
+config NV_NET_BW_EST_TEGRA
+	bool "bandwidth estimation support for netdiag"
+	depends on NV_NET_DIAG_TEGRA
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable bandwidth estimation support for netdiag
+
+config NV_NET_DIAG_TEGRA
+	bool "netdiag support"
+	depends on BRCMFMAC_ANDROID
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable netdiag support
+
+config NV_CUSTOM_RF_TEST
+	bool "RF test support for Tegra platform"
+	depends on NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable RF test support for Tegra platform.

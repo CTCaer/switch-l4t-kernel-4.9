@@ -109,7 +109,8 @@ brcmf_fil_cmd_data(struct brcmf_if *ifp, u32 cmd, void *data, u32 len, bool set)
 	struct brcmf_pub *drvr = ifp->drvr;
 	s32 err;
 
-	if (drvr->bus_if->state != BRCMF_BUS_UP) {
+	if (drvr->bus_if->state != BRCMF_BUS_UP ||
+	    !drvr->proto) {
 		brcmf_err("bus is down. we have nothing to do.\n");
 		return -EIO;
 	}
