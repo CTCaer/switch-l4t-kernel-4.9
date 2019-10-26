@@ -33,6 +33,7 @@
 #include <linux/power_supply.h>
 #include <linux/spinlock.h>
 
+#define LED_ON 1
 /*
  * Reference the url below for the following HID report defines:
  * https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering
@@ -71,11 +72,11 @@ static const u8 JC_SUBCMD_ENABLE_VIBRATION	= 0x48;
 static const u8 JC_SUBCMD_GET_REGULATED_VOLTAGE	= 0x50;
 
 /* Input Reports */
-static const u8 JC_INPUT_BUTTON_EVENT		= 0x3F;
-static const u8 JC_INPUT_SUBCMD_REPLY		= 0x21;
-static const u8 JC_INPUT_IMU_DATA		= 0x30;
-static const u8 JC_INPUT_MCU_DATA		= 0x31;
-static const u8 JC_INPUT_USB_RESPONSE		= 0x81;
+#define JC_INPUT_BUTTON_EVENT		(u8)0x3F
+#define JC_INPUT_SUBCMD_REPLY		(u8)0x21
+#define JC_INPUT_IMU_DATA		(u8)0x30
+#define JC_INPUT_MCU_DATA		(u8)0x31
+#define JC_INPUT_USB_RESPONSE		(u8)0x81
 
 /* Feature Reports */
 static const u8 JC_FEATURE_LAST_SUBCMD		= 0x02;
@@ -99,7 +100,7 @@ static const u8 JC_USB_SEND_UART		= 0x92;
 /* SPI storage addresses of factory calibration data */
 static const u16 JC_CAL_DATA_START		= 0x603d;
 static const u16 JC_CAL_DATA_END		= 0x604e;
-static const u16 JC_CAL_DATA_SIZE = JC_CAL_DATA_END - JC_CAL_DATA_START + 1;
+static const u16 JC_CAL_DATA_SIZE = 0x12; //JC_CAL_DATA_END - JC_CAL_DATA_START + 1;
 
 
 /* The raw analog joystick values will be mapped in terms of this magnitude */
@@ -181,7 +182,7 @@ static const struct joycon_rumble_freq_data joycon_rumble_frequencies[] = {
 	{ 0xf401, 0x00, 1199 }, { 0xf801, 0x00, 1226 }, { 0xfc01, 0x00, 1253 }
 };
 
-static const u16 joycon_max_rumble_amp = 1003;
+#define joycon_max_rumble_amp 1003
 static const struct joycon_rumble_amp_data joycon_rumble_amplitudes[] = {
 	/* high, low, amp */
 	{ 0x00, 0x0040,    0 },
