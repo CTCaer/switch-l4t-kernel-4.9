@@ -1774,7 +1774,7 @@ static void joycon_detection_poller(struct work_struct *work)
 
 retry:
 	queue_delayed_work(ctlr->detection_queue, &ctlr->detection_worker,
-			   msecs_to_jiffies(100));
+			   msecs_to_jiffies(10));
 }
 
 static int joycon_serdev_receive_buf(struct serdev_device *serdev,
