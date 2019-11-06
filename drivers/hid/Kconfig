@@ -370,6 +370,12 @@ config HID_ICADE
 	To compile this driver as a module, choose M here: the
 	module will be called hid-icade.
 
+config HID_JOYCON
+	tristate "Nintendo Joycon Remapper"
+	depends on HID
+	---help---
+	Remaps default hid packets to match hid-nintendo upstream
+
 config HID_TWINHAN
 	tristate "Twinhan IR remote control"
 	depends on HID
