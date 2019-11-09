@@ -32,6 +32,9 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/kthread.h>
+#include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/iio/iio.h>
@@ -48,6 +51,8 @@
 #define ST_LSM6DSX_REG_RESET_MASK		BIT(0)
 #define ST_LSM6DSX_REG_BDU_ADDR			0x12
 #define ST_LSM6DSX_REG_BDU_MASK			BIT(6)
+#define ST_LSM6DSX_REG_HLA_ADDR			0x12
+#define ST_LSM6DSX_REG_HLA_MASK			BIT(5)
 #define ST_LSM6DSX_REG_INT2_ON_INT1_ADDR	0x13
 #define ST_LSM6DSX_REG_INT2_ON_INT1_MASK	BIT(5)
 #define ST_LSM6DSX_REG_ROUNDING_ADDR		0x16
@@ -625,7 +630,8 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 		     const struct st_lsm6dsx_transfer_function *tf_ops)
 {
 	struct st_lsm6dsx_hw *hw;
-	int i, err;
+	unsigned long irq_type;
+	int i, err, irq_active_low;
 
 	hw = devm_kzalloc(dev, sizeof(*hw), GFP_KERNEL);
 	if (!hw)
@@ -633,6 +639,7 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 
 	dev_set_drvdata(dev, (void *)hw);
 
+	mutex_init(&hw->poll_lock);
 	mutex_init(&hw->lock);
 	mutex_init(&hw->fifo_lock);
 
@@ -655,10 +662,31 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 		return err;
 
 	if (hw->irq > 0) {
-		err = st_lsm6dsx_fifo_setup(hw);
+		irq_type = irqd_get_trigger_type(irq_get_irq_data(hw->irq));
+
+		switch (irq_type) {
+		
+		case IRQF_TRIGGER_LOW:
+		case IRQF_TRIGGER_FALLING:
+			irq_active_low = 1;
+			break;
+		case IRQF_TRIGGER_HIGH:
+		case IRQF_TRIGGER_RISING:
+		default:
+			irq_active_low = 0;
+			break;
+		}
+
+		/* Set Interrupt activation level */
+		err = st_lsm6dsx_write_with_mask(hw, ST_LSM6DSX_REG_HLA_ADDR,
+							 ST_LSM6DSX_REG_HLA_MASK, irq_active_low);
 		if (err < 0)
 			return err;
 	}
+
+	err = st_lsm6dsx_fifo_setup(hw);
+	if (err < 0)
+		return err;
 
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
 		err = devm_iio_device_register(hw->dev, hw->iio_devs[i]);
