@@ -32,6 +32,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/iio/iio.h>
@@ -633,6 +634,7 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 
 	dev_set_drvdata(dev, (void *)hw);
 
+	mutex_init(&hw->poll_lock);
 	mutex_init(&hw->lock);
 	mutex_init(&hw->fifo_lock);
 
@@ -654,11 +656,9 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 	if (err < 0)
 		return err;
 
-	if (hw->irq > 0) {
-		err = st_lsm6dsx_fifo_setup(hw);
-		if (err < 0)
-			return err;
-	}
+	err = st_lsm6dsx_fifo_setup(hw);
+	if (err < 0) 
+		return err;
 
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
 		err = devm_iio_device_register(hw->dev, hw->iio_devs[i]);
