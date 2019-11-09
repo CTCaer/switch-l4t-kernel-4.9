@@ -29,6 +29,8 @@
 #include <linux/iio/kfifo_buf.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/buffer.h>
+#include <linux/kthread.h>
+#include <linux/delay.h>
 
 #include "st_lsm6dsx.h"
 
@@ -62,6 +64,8 @@ struct st_lsm6dsx_decimator_entry st_lsm6dsx_decimator_table[] = {
 	{ 16, 0x6 },
 	{ 32, 0x7 },
 };
+
+static int st_lsm6dsx_poll_thread(void *data);
 
 static int st_lsm6dsx_get_decimator_val(u8 val)
 {
@@ -322,6 +326,7 @@ static int st_lsm6dsx_update_fifo(struct iio_dev *iio_dev, bool enable)
 	struct st_lsm6dsx_hw *hw = sensor->hw;
 	int err;
 
+	mutex_lock(&hw->poll_lock);
 	if (hw->fifo_mode != ST_LSM6DSX_FIFO_BYPASS) {
 		err = st_lsm6dsx_flush_fifo(hw);
 		if (err < 0)
@@ -358,6 +363,15 @@ static int st_lsm6dsx_update_fifo(struct iio_dev *iio_dev, bool enable)
 		sensor->ts = iio_get_time_ns(iio_dev);
 	}
 
+	if (!hw->irq) {
+		if (enable) {
+			hw->poll_thread = kthread_run(st_lsm6dsx_poll_thread, hw, "st_lsm6dsx_poll");
+		} else {
+			kthread_stop(hw->poll_thread);
+		}
+	}
+
+	mutex_unlock(&hw->poll_lock);
 	return 0;
 }
 
@@ -397,6 +411,21 @@ static irqreturn_t st_lsm6dsx_handler_thread(int irq, void *private)
 	return !count ? IRQ_NONE : IRQ_HANDLED;
 }
 
+static int st_lsm6dsx_poll_thread(void *data)
+{
+	struct st_lsm6dsx_hw *hw = (struct st_lsm6dsx_hw *)data;
+
+	while (!kthread_should_stop()) {
+		if (mutex_trylock(&hw->poll_lock) != 0) {
+			st_lsm6dsx_handler_irq(0, data);
+			st_lsm6dsx_handler_thread(0, data);
+			mutex_unlock(&hw->poll_lock);
+		}
+		msleep(50);
+	}
+	return 0;
+}
+
 static int st_lsm6dsx_buffer_preenable(struct iio_dev *iio_dev)
 {
 	return st_lsm6dsx_update_fifo(iio_dev, true);
@@ -418,28 +447,33 @@ int st_lsm6dsx_fifo_setup(struct st_lsm6dsx_hw *hw)
 	unsigned long irq_type;
 	int i, err;
 
-	irq_type = irqd_get_trigger_type(irq_get_irq_data(hw->irq));
+	if (hw->irq > 0) {
+		irq_type = irqd_get_trigger_type(irq_get_irq_data(hw->irq));
 
-	switch (irq_type) {
-	case IRQF_TRIGGER_HIGH:
-	case IRQF_TRIGGER_RISING:
-		break;
-	default:
-		dev_info(hw->dev, "mode %lx unsupported\n", irq_type);
-		return -EINVAL;
+		switch (irq_type) {
+		case IRQF_TRIGGER_HIGH:
+		case IRQF_TRIGGER_RISING:
+			break;
+		default:
+			dev_info(hw->dev, "mode %lx unsupported\n", irq_type);
+			return -EINVAL;
+		}
+
+		err = devm_request_threaded_irq(hw->dev, hw->irq,
+						st_lsm6dsx_handler_irq,
+						st_lsm6dsx_handler_thread,
+						irq_type | IRQF_ONESHOT,
+						"lsm6dsx", hw);
+		if (err) {
+			dev_err(hw->dev, "failed to request trigger irq %d\n",
+				hw->irq);
+			return err;
+		}
+	} else {
+		hw->poll_thread = kthread_run(st_lsm6dsx_poll_thread, hw, "st_lsm6dsx_poll");
+		if (IS_ERR(hw->poll_thread))
+			return -EIO;
 	}
-
-	err = devm_request_threaded_irq(hw->dev, hw->irq,
-					st_lsm6dsx_handler_irq,
-					st_lsm6dsx_handler_thread,
-					irq_type | IRQF_ONESHOT,
-					"lsm6dsx", hw);
-	if (err) {
-		dev_err(hw->dev, "failed to request trigger irq %d\n",
-			hw->irq);
-		return err;
-	}
-
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
 		buffer = devm_iio_kfifo_allocate(hw->dev);
 		if (!buffer)
