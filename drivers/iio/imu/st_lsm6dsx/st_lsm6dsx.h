@@ -114,12 +114,16 @@ struct st_lsm6dsx_hw {
 	struct device *dev;
 	int irq;
 
+	struct task_struct *poll_thread;
+
 	struct mutex lock;
 	struct mutex fifo_lock;
+	struct mutex poll_lock;
 
 	enum st_lsm6dsx_fifo_mode fifo_mode;
 	u8 enable_mask;
 	u8 sip;
+	bool poll_started;
 
 	struct iio_dev *iio_devs[ST_LSM6DSX_ID_MAX];
 
