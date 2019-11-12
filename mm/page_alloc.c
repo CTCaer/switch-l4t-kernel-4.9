@@ -115,6 +115,36 @@ nodemask_t node_states[NR_NODE_STATES] __read_mostly = {
 };
 EXPORT_SYMBOL(node_states);
 
+#ifdef CONFIG_CMA
+extern bool strict_cma_enabled;
+
+static bool is_gfp_allow_cma(gfp_t gfp_flags) {
+	gfp_t gfp_mask = GFP_HIGHUSER_MOVABLE | GFP_HIGHUSER_MOVABLE_NOCMA;
+	gfp_t cma_movable_mask = __GFP_MOVABLE | GFP_MOVABLE_TRY_CMA;
+
+	bool is_allow_cma;
+	bool is_cma_movable;
+
+	is_cma_movable = (gfp_flags & cma_movable_mask) == cma_movable_mask;
+	is_allow_cma = ((gfp_flags & gfp_mask) == GFP_HIGHUSER_MOVABLE) ||
+		is_cma_movable;
+
+	if (gfpflags_to_migratetype(gfp_flags) == MIGRATE_MOVABLE) {
+		if (!strict_cma_enabled)
+			return true;
+		else if (is_allow_cma)
+			return true;
+		else
+			return false;
+	}
+	return false;
+}
+#else
+static bool is_gfp_allow_cma(gfp_t gfp_flags) {
+	return false;
+}
+#endif
+
 /* Protect totalram_pages and zone->managed_pages */
 static DEFINE_SPINLOCK(managed_page_count_lock);
 
@@ -863,16 +893,19 @@ continue_merging:
 	}
 	if (max_order < MAX_ORDER) {
 		/* If we are here, it means order is >= pageblock_order.
-		 * We want to prevent merge between freepages on isolate
+		 * We want to prevent merge between freepages on isolate/cma
 		 * pageblock and normal pageblock. Without this, pageblock
 		 * isolation could cause incorrect freepage or CMA accounting.
 		 *
 		 * We don't want to hit this code for the more frequent
 		 * low-order merging.
 		 */
-		if (unlikely(has_isolate_pageblock(zone))) {
+		if (unlikely(has_isolate_pageblock(zone))
+#ifdef CONFIG_CMA
+                || strict_cma_enabled
+#endif
+				) {
 			int buddy_mt;
-
 			buddy_idx = __find_buddy_index(page_idx, order);
 			buddy = page + (buddy_idx - page_idx);
 			buddy_mt = get_pageblock_migratetype(buddy);
@@ -881,7 +914,15 @@ continue_merging:
 					&& (is_migrate_isolate(migratetype) ||
 						is_migrate_isolate(buddy_mt)))
 				goto done_merging;
+
+#ifdef CONFIG_CMA
+			if (migratetype != buddy_mt
+					&& (is_migrate_cma(migratetype) ||
+						is_migrate_cma(buddy_mt)))
+				goto done_merging;
+#endif
 		}
+
 		max_order++;
 		goto continue_merging;
 	}
@@ -2214,34 +2255,39 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype)
  * Call me with the zone->lock already held.
  */
 static struct page *__rmqueue(struct zone *zone, unsigned int order,
-				int migratetype)
+				int migratetype, gfp_t gfp_flags)
 {
 	struct page *page;
 
-#ifdef CONFIG_CMA
-	/*
-	 * Balance movable allocations between regular and CMA areas by
-	 * allocating from CMA when over half of the zone's free memory
-	 * is in the CMA area.
-	 */
-	if (migratetype == MIGRATE_MOVABLE &&
-	    zone_page_state(zone, NR_FREE_CMA_PAGES) >
-	    zone_page_state(zone, NR_FREE_PAGES) / 2) {
-		page = __rmqueue_cma_fallback(zone, order);
-		if (page)
-			return page;
+	if (IS_ENABLED(CONFIG_CMA)) {
+		/*
+		 * Balance movable allocations between regular and CMA areas by
+		 * allocating from CMA when over half of the zone's free memory
+		 * is in the CMA area.
+		 */
+		if (migratetype == MIGRATE_MOVABLE &&
+		    is_gfp_allow_cma(gfp_flags) &&
+		    zone_page_state(zone, NR_FREE_CMA_PAGES) >
+		    zone_page_state(zone, NR_FREE_PAGES) / 2) {
+			page = __rmqueue_cma_fallback(zone, order);
+			if (page)
+				goto out;
+		}
 	}
-#endif
+
 	page = __rmqueue_smallest(zone, order, migratetype);
 	if (unlikely(!page)) {
-		if (migratetype == MIGRATE_MOVABLE)
-			page = __rmqueue_cma_fallback(zone, order);
+		if (migratetype == MIGRATE_MOVABLE) {
+			if (is_gfp_allow_cma(gfp_flags))
+				page = __rmqueue_cma_fallback(zone, order);
+		}
 
 		if (!page)
 			page = __rmqueue_fallback(zone, order, migratetype);
 	}
-
-	trace_mm_page_alloc_zone_locked(page, order, migratetype);
+out:
+	if (page)
+		trace_mm_page_alloc_zone_locked(page, order, migratetype);
 	return page;
 }
 
@@ -2252,13 +2298,13 @@ static struct page *__rmqueue(struct zone *zone, unsigned int order,
  */
 static int rmqueue_bulk(struct zone *zone, unsigned int order,
 			unsigned long count, struct list_head *list,
-			int migratetype, bool cold)
+			int migratetype, bool cold, gfp_t gfp_flags)
 {
 	int i, alloced = 0;
 
 	spin_lock(&zone->lock);
 	for (i = 0; i < count; ++i) {
-		struct page *page = __rmqueue(zone, order, migratetype);
+		struct page *page = __rmqueue(zone, order, migratetype, gfp_flags);
 		if (unlikely(page == NULL))
 			break;
 
@@ -2504,6 +2550,19 @@ void free_hot_cold_page(struct page *page, bool cold)
 			free_one_page(zone, page, pfn, 0, migratetype);
 			goto out;
 		}
+
+#ifdef CONFIG_CMA
+		/*
+		 * Free cma pages back to allocator if strict cma is enabled.
+		 * Otherwise, MIGRATE_CMA fallback to MIGRATE_MOVABLE, and can be
+		 * used for __GFP_MOVABLE page allocation.
+		 */
+		if (strict_cma_enabled && is_migrate_cma(migratetype)) {
+			free_one_page(zone, page, pfn, 0, migratetype);
+			goto out;
+		}
+#endif
+
 		migratetype = MIGRATE_MOVABLE;
 	}
 
@@ -2651,7 +2710,19 @@ struct page *buffered_rmqueue(struct zone *preferred_zone,
 	struct page *page;
 	bool cold = ((gfp_flags & __GFP_COLD) != 0);
 
-	if (likely(order == 0)) {
+	if (likely(order == 0)
+#ifdef CONFIG_CMA
+		/*
+		 * Strict CMA only allow GFP_HIGHUSER_MOVABLE pages use CMA.
+		 * rmqueue_bulk() can return MIGRATE_CMA pages to pcplist as
+		 * MIGRATE_MOVABLE which can be use by __GFP_MOVABLE pages,
+		 * which breaks the strict CMA rule. In oder to satisfy strict CMA,
+		 * do not allocate GFP_HIGHUSER_MOVABLE on pcplist.
+		 */
+		&& (!(strict_cma_enabled) ||
+			 !is_gfp_allow_cma(gfp_flags))
+#endif
+		) {
 		struct per_cpu_pages *pcp;
 		struct list_head *list;
 
@@ -2662,7 +2733,7 @@ struct page *buffered_rmqueue(struct zone *preferred_zone,
 			if (list_empty(list)) {
 				pcp->count += rmqueue_bulk(zone, 0,
 						pcp->batch, list,
-						migratetype, cold);
+						migratetype, cold, gfp_flags);
 				if (unlikely(list_empty(list)))
 					goto failed;
 			}
@@ -2692,7 +2763,7 @@ struct page *buffered_rmqueue(struct zone *preferred_zone,
 					trace_mm_page_alloc_zone_locked(page, order, migratetype);
 			}
 			if (!page)
-				page = __rmqueue(zone, order, migratetype);
+				page = __rmqueue(zone, order, migratetype, gfp_flags);
 		} while (page && check_new_pages(page, order));
 		spin_unlock(&zone->lock);
 		if (!page)
@@ -3432,10 +3503,9 @@ gfp_to_alloc_flags(gfp_t gfp_mask)
 	} else if (unlikely(rt_task(current)) && !in_interrupt())
 		alloc_flags |= ALLOC_HARDER;
 
-#ifdef CONFIG_CMA
-	if (gfpflags_to_migratetype(gfp_mask) == MIGRATE_MOVABLE)
+	if (is_gfp_allow_cma(gfp_mask))
 		alloc_flags |= ALLOC_CMA;
-#endif
+
 	return alloc_flags;
 }
 
@@ -3839,7 +3909,7 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 	if (unlikely(!zonelist->_zonerefs->zone))
 		return NULL;
 
-	if (IS_ENABLED(CONFIG_CMA) && ac.migratetype == MIGRATE_MOVABLE)
+	if (ac.migratetype == MIGRATE_MOVABLE && is_gfp_allow_cma(gfp_mask))
 		alloc_flags |= ALLOC_CMA;
 
 	/* Dirty zone balancing only done in the fast path */
