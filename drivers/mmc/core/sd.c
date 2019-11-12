@@ -4,7 +4,7 @@
  *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
  *  SD support Copyright (C) 2004 Ian Molton, All Rights Reserved.
  *  Copyright (C) 2005-2007 Pierre Ossman, All Rights Reserved.
- *  Copyright (c) 2017, NVIDIA CORPORATION.  All rights reserved.
+ *  Copyright (c) 2017-2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -821,6 +821,7 @@ int mmc_sd_get_cid(struct mmc_host *host, u32 ocr, u32 *cid, u32 *rocr)
 	int err;
 	u32 max_current;
 	int retries = 10;
+	int fallback = 0;
 	u32 pocr = ocr;
 	if (host->ops->voltage_switch_req)
 		host->ops->voltage_switch_req(host, false);
@@ -886,12 +887,42 @@ try_again:
 			voltage_switch_uhs_failure++;
 			goto try_again;
 		}
+	} else if (!fallback && (host->caps2 & MMC_CAP2_SLOT_REG_ALWAYS_ON)) {
+		/*
+		 * With slot regulator always-on, SW reset does not power cycle
+		 * the card. As a result, the card continues to stay in 1.8V
+		 * mode from previous init cycle and sends S18A=0 in response to
+		 * CMD8 even though it supports 1.8V signalling.
+		 * Skip CMD11, set rocr to support 1.8V for S18A=0 response from
+		 * the card if slot is fed from always-on supply and
+		 * continue with UHS mode init.
+		 * If S18A=0 response is due to an HS card plugin, all subsequent
+		 * commands at 1.8V will fail and the host controller enumerates
+		 * the card in HS mode in the next retry.
+		 */
+		err = __mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180);
+		if (!err) {
+			*rocr |= SD_ROCR_S18A;
+		}
+		fallback = 1;
+		retries = 5;
 	}
 
 	if (mmc_host_is_spi(host))
 		err = mmc_send_cid(host, cid);
 	else
 		err = mmc_all_send_cid(host, cid);
+
+	/* If immediate command after mandatory voltage switch fails with -ETIMEOUT,
+	 * it is most likely due to an HS card connected. Switch the voltage back to
+	 * 3.3V and re-try
+	 */
+	if (err == -ETIMEDOUT && fallback && retries) {
+		__mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_330);
+		pr_warn("%s: fallback to HS enumeration.\n", mmc_hostname(host));
+		retries--;
+		goto try_again;
+	}
 
 	if (host->ops->voltage_switch_req)
 		host->ops->voltage_switch_req(host, true);
@@ -1400,6 +1431,9 @@ int mmc_attach_sd(struct mmc_host *host)
 {
 	int err;
 	u32 ocr, rocr;
+	char event_string[32];
+	char *envp[] = {event_string, NULL};
+	int ret;
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
 	int retries;
 #endif
@@ -1467,7 +1501,9 @@ int mmc_attach_sd(struct mmc_host *host)
 		goto remove_card;
 
 	mmc_claim_host(host);
-	return 0;
+
+	err = 0;
+	goto send_uevent;
 
 remove_card:
 	mmc_remove_card(host->card);
@@ -1479,5 +1515,11 @@ err:
 	pr_err("%s: error %d whilst initialising SD card\n",
 		mmc_hostname(host), err);
 
+send_uevent:
+	snprintf(event_string, 32, "SD_INIT_EVENT=%d", -err);
+	ret = kobject_uevent_env(&host->class_dev.kobj, KOBJ_CHANGE, envp);
+	if (ret)
+		pr_info("%s: sent uevent: %s error %d.\n",
+				mmc_hostname(host), event_string, ret);
 	return err;
 }
