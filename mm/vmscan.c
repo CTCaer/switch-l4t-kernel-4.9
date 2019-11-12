@@ -3641,6 +3641,28 @@ void wakeup_kswapd(struct zone *zone, int order, enum zone_type classzone_idx)
 	wake_up_interruptible(&pgdat->kswapd_wait);
 }
 
+static unsigned long __shrink_all_memory(struct scan_control *sc)
+{
+	struct reclaim_state reclaim_state;
+	struct zonelist *zonelist = node_zonelist(numa_node_id(), sc->gfp_mask);
+	struct task_struct *p = current;
+	unsigned long nr_reclaimed;
+
+	adjust_scan_control(sc);
+	p->flags |= PF_MEMALLOC;
+	lockdep_set_current_reclaim_state(sc->gfp_mask);
+	reclaim_state.reclaimed_slab = 0;
+	p->reclaim_state = &reclaim_state;
+
+	nr_reclaimed = do_try_to_free_pages(zonelist, sc);
+
+	p->reclaim_state = NULL;
+	lockdep_clear_current_reclaim_state();
+	p->flags &= ~PF_MEMALLOC;
+
+	return nr_reclaimed;
+}
+
 #ifdef CONFIG_HIBERNATION
 /*
  * Try to free `nr_to_reclaim' of memory, system-wide, and return the number of
@@ -3652,7 +3674,6 @@ void wakeup_kswapd(struct zone *zone, int order, enum zone_type classzone_idx)
  */
 unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 {
-	struct reclaim_state reclaim_state;
 	struct scan_control sc = {
 		.nr_to_reclaim = nr_to_reclaim,
 		.gfp_mask = GFP_HIGHUSER_MOVABLE,
@@ -3663,25 +3684,53 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 		.may_swap = 1,
 		.hibernation_mode = 1,
 	};
-	struct zonelist *zonelist = node_zonelist(numa_node_id(), sc.gfp_mask);
-	struct task_struct *p = current;
-	unsigned long nr_reclaimed;
 
-	adjust_scan_control(&sc);
-	p->flags |= PF_MEMALLOC;
-	lockdep_set_current_reclaim_state(sc.gfp_mask);
-	reclaim_state.reclaimed_slab = 0;
-	p->reclaim_state = &reclaim_state;
-
-	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
-
-	p->reclaim_state = NULL;
-	lockdep_clear_current_reclaim_state();
-	p->flags &= ~PF_MEMALLOC;
-
-	return nr_reclaimed;
+	return __shrink_all_memory(&sc);
 }
 #endif /* CONFIG_HIBERNATION */
+
+int shrink_memory_size;
+int shrink_memory_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp,
+		loff_t *ppos)
+{
+	int ret;
+	struct scan_control sc = {
+		.nr_to_reclaim = 0,
+		.gfp_mask = GFP_HIGHUSER_MOVABLE,
+		.reclaim_idx = MAX_NR_ZONES - 1,
+		.priority = DEF_PRIORITY,
+		.may_writepage = 0,
+		.may_unmap = 1,
+		.may_swap = 1,
+		.hibernation_mode = 0,
+	};
+
+	unsigned long nr_reclaimed;
+	unsigned long nr_to_reclaim;
+	unsigned long nr_total_pages;
+
+	if (write) {
+
+		nr_total_pages = global_page_state(NR_SLAB_RECLAIMABLE)
+						  + global_node_page_state(NR_ACTIVE_ANON)
+						  + global_node_page_state(NR_INACTIVE_ANON)
+						  + global_node_page_state(NR_ACTIVE_FILE)
+						  + global_node_page_state(NR_INACTIVE_FILE);
+
+		ret = proc_dointvec(table, write, buffer, lenp, ppos);
+		if(ret == 0) {
+			nr_to_reclaim = min(nr_total_pages/2,
+					(shrink_memory_size * 1024 *1024) >> PAGE_SHIFT);
+			sc.nr_to_reclaim = nr_to_reclaim;
+			nr_reclaimed = __shrink_all_memory(&sc);
+			pr_info("Reclaimed %lu pages\n", nr_reclaimed);
+		}
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(shrink_memory_handler);
 
 /* It's optimal to keep kswapds on the same CPUs as their memory, but
    not required for correctness.  So if the last cpu in a node goes

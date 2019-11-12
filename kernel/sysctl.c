@@ -1737,6 +1737,13 @@ static struct ctl_table vm_table[] = {
 		.extra2		= (void *)&mmap_rnd_compat_bits_max,
 	},
 #endif
+	{
+		.procname	= "shrink_memory_mbytes",
+		.data		= &shrink_memory_size,
+		.maxlen		= sizeof(shrink_memory_size),
+		.mode		= 0200,
+		.proc_handler	= shrink_memory_handler,
+	},
 	{ }
 };
 

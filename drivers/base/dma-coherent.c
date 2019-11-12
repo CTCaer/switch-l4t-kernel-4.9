@@ -1,6 +1,20 @@
 /*
  * Coherent per-device memory handling.
  * Borrowed from i386
+ *
+ * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
+ * kind, whether express or implied; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <linux/io.h>
 #include <linux/slab.h>
@@ -11,6 +25,7 @@
 #include <linux/debugfs.h>
 #include <linux/highmem.h>
 #include <linux/kthread.h>
+#include <linux/delay.h>
 
 #ifdef pr_fmt
 #undef pr_fmt
@@ -144,7 +159,7 @@ int dma_set_resizable_heap_floor_size(struct device *dev, size_t floor_size)
 	int ret = 0;
 	struct heap_info *h = NULL;
 	phys_addr_t orig_base, prev_base, left_chunks_base, right_chunks_base;
-	size_t orig_len, prev_len, left_chunks_len, right_chunks_len;
+	size_t orig_len, prev_len, left_chunks_len, right_chunks_len, orig_floor;
 
 	if (!dma_is_coherent_dev(dev))
 		return -ENODEV;
@@ -156,6 +171,7 @@ int dma_set_resizable_heap_floor_size(struct device *dev, size_t floor_size)
 	mutex_lock(&h->resize_lock);
 	orig_base = h->curr_base;
 	orig_len = h->curr_len;
+	orig_floor = h->floor_size;
 	right_chunks_base = h->curr_base + h->curr_len;
 	left_chunks_len = right_chunks_len = 0;
 
@@ -176,12 +192,16 @@ int dma_set_resizable_heap_floor_size(struct device *dev, size_t floor_size)
 		}
 	}
 
-	ret = update_vpr_config(h);
-	if (!ret) {
-		dev_dbg(&h->dev,
-			"grow heap base from=%pa to=%pa,"
-			" len from=0x%zx to=0x%zx\n",
-			&orig_base, &h->curr_base, orig_len, h->curr_len);
+	if ((h->curr_base != orig_base) || (h->curr_len != orig_len)) {
+		ret = update_vpr_config(h);
+		if (!ret) {
+			dev_dbg(&h->dev,
+				"grow heap base from=%pa to=%pa,"
+				" len from=0x%zx to=0x%zx\n",
+				&orig_base, &h->curr_base, orig_len, h->curr_len);
+			goto success_set_floor;
+		}
+	} else {
 		goto success_set_floor;
 	}
 
@@ -194,6 +214,7 @@ fail_set_floor:
 				right_chunks_len);
 	h->curr_base = orig_base;
 	h->curr_len = orig_len;
+	h->floor_size = orig_floor;
 
 success_set_floor:
 	if (h->task)
@@ -364,7 +385,7 @@ int dma_declare_coherent_resizable_cma_memory(struct device *dev,
 					dma_info->notifier.ops->resize) ? 0 : 1))
 		goto declare_fail;
 	heap_info->dev.dma_mem->size = 0;
-	heap_info->shrink_interval = HZ * RESIZE_DEFAULT_SHRINK_AGE;
+	heap_info->shrink_interval = msecs_to_jiffies(100);
 	kthread_run(shrink_thread, heap_info, "%s-shrink_thread",
 		heap_info->name);
 
@@ -497,6 +518,9 @@ static void update_alloc_range(struct heap_info *h)
 					h->curr_len) >> PAGE_SHIFT;
 }
 
+void dump_faulty_page(const char *reason);
+
+#define MAX_HEAP_RESIZE_RETRY 2
 static int heap_resize_locked(struct heap_info *h, bool skip_vpr_config)
 {
 	phys_addr_t base = -1;
@@ -506,6 +530,7 @@ static int heap_resize_locked(struct heap_info *h, bool skip_vpr_config)
 	int alloc_at_idx = 0;
 	int first_alloc_idx;
 	int last_alloc_idx;
+	int retries = 0;
 	phys_addr_t start_addr = h->cma_base;
 
 	get_first_and_last_idx(h, &first_alloc_idx, &last_alloc_idx);
@@ -515,6 +540,7 @@ static int heap_resize_locked(struct heap_info *h, bool skip_vpr_config)
 	if (first_alloc_idx == 0 && last_alloc_idx == h->num_chunks - 1)
 		return -ENOMEM;
 
+retry:
 	/* All chunks are free. Attempt to allocate the first chunk. */
 	if (first_alloc_idx == -1) {
 		base = alloc_from_contiguous_heap(h, start_addr, len);
@@ -547,9 +573,20 @@ static int heap_resize_locked(struct heap_info *h, bool skip_vpr_config)
 		BUG_ON(!dma_mapping_error(h->cma_dev, base));
 	}
 
-	if (dma_mapping_error(h->cma_dev, base))
-		dev_err(&h->dev,
-		"Failed to allocate contiguous memory on heap grow req\n");
+	if (dma_mapping_error(h->cma_dev, base)){
+		if (retries < MAX_HEAP_RESIZE_RETRY) {
+			dev_info(&h->dev,
+			"Retry alloc_from_contiguous_heap: %d\n", retries);
+			dump_faulty_page("CMA resize failed");
+			msleep(5);
+			retries++;
+			cond_resched();
+			goto retry;
+		} else {
+			dev_err(&h->dev,
+			"Failed to allocate contiguous memory on heap grow req\n");
+		}
+	}
 
 	return -ENOMEM;
 
@@ -874,6 +911,11 @@ static bool shrink_chunk_locked(struct heap_info *h, int idx)
 	/* check if entire chunk is free */
 	chunk_size = (idx == h->num_chunks - 1) ? h->rem_chunk_size :
 						  h->cma_chunk_size;
+
+	/* Do not attempt to downsize if we will violate the floor */
+	if ((h->curr_len - chunk_size) < h->floor_size)
+		return false;
+
 	resize_err = dma_alloc_from_coherent_dev_at(&h->dev,
 				chunk_size, &dev_base, &ret, attrs,
 				idx * h->cma_chunk_size >> PAGE_SHIFT);
@@ -898,31 +940,9 @@ static bool shrink_chunk_locked(struct heap_info *h, int idx)
 			goto out;
 		}
 
-		/* Handle VPR configuration updates */
-		if (h->update_resize_cfg) {
-			phys_addr_t new_base = h->curr_base;
-			size_t new_len = h->curr_len - chunk_size;
-			if (h->curr_base == dev_base)
-				new_base += chunk_size;
-			dev_dbg(&h->dev, "update vpr base to %pa, size=%zx\n",
-				&new_base, new_len);
-			resize_err =
-				h->update_resize_cfg(new_base, new_len);
-			if (resize_err) {
-				dev_err(&h->dev,
-					"update resize failed\n");
-				goto out;
-			}
-		}
-
 		if (h->curr_base == dev_base)
 			h->curr_base += chunk_size;
 		h->curr_len -= chunk_size;
-		update_alloc_range(h);
-		release_from_contiguous_heap(h, dev_base, chunk_size);
-		dev_dbg(&h->dev, "removed chunk b=%pa, s=0x%zx"
-			" new heap b=%pa, s=0x%zx\n", &dev_base,
-			chunk_size, &h->curr_base, h->curr_len);
 		return true;
 	}
 out:
@@ -931,18 +951,18 @@ out:
 
 static void shrink_resizable_heap(struct heap_info *h)
 {
-	bool unlock = false;
-	int first_alloc_idx, last_alloc_idx;
+	phys_addr_t orig_base, right_chunks_base;
+	int first_alloc_idx, last_alloc_idx, resize_err;
+	size_t orig_len, left_chunks_len, right_chunks_len;
 
-check_next_chunk:
-	if (unlock) {
-		mutex_unlock(&h->resize_lock);
-		cond_resched();
-	}
 	mutex_lock(&h->resize_lock);
-	unlock = true;
+	orig_base = h->curr_base;
+	orig_len = h->curr_len;
+
 	if (h->curr_len <= h->floor_size)
 		goto out_unlock;
+
+check_next_chunk:
 	get_first_and_last_idx(h, &first_alloc_idx, &last_alloc_idx);
 	/* All chunks are free. Exit. */
 	if (first_alloc_idx == -1)
@@ -956,6 +976,40 @@ check_next_chunk:
 		goto check_next_chunk;
 
 out_unlock:
+	if ((h->curr_base != orig_base) || (h->curr_len != orig_len)) {
+		/* Handle VPR configuration updates */
+		if (h->update_resize_cfg) {
+			dev_dbg(&h->dev, "update vpr base to %pa, size=%zx\n",
+				&h->curr_base, h->curr_len);
+			resize_err =
+				h->update_resize_cfg(h->curr_base, h->curr_len);
+			if (resize_err) {
+				dev_err(&h->dev,
+					"update resize failed\n");
+				goto err_out;
+			}
+		}
+
+		update_alloc_range(h);
+
+		left_chunks_len = h->curr_base - orig_base;
+		right_chunks_base = h->curr_base + h->curr_len;
+		right_chunks_len = orig_len - left_chunks_len - h->curr_len;
+		dev_dbg(&h->dev, "right chunk b=%pa, s=0x%zx\n",
+				&right_chunks_base, right_chunks_len);
+		dev_dbg(&h->dev, "left chunk b=%pa, s=0x%zx\n",
+				&orig_base, left_chunks_len);
+
+		if (left_chunks_len != 0)
+			release_from_contiguous_heap(h, orig_base, left_chunks_len);
+
+		if (right_chunks_len != 0)
+			release_from_contiguous_heap(h, right_chunks_base, right_chunks_len);
+
+		dev_dbg(&h->dev, "config new heap b=%pa, s=0x%zx\n",
+			&h->curr_base, h->curr_len);
+	}
+err_out:
 	mutex_unlock(&h->resize_lock);
 }
 

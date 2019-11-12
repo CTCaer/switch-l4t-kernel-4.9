@@ -2608,6 +2608,10 @@ void unmap_mapping_range(struct address_space *mapping,
 }
 EXPORT_SYMBOL(unmap_mapping_range);
 
+#ifdef CONFIG_CMA
+extern bool strict_cma_enabled;
+#endif
+
 /*
  * We enter with non-exclusive mmap_sem (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
@@ -2626,6 +2630,7 @@ int do_swap_page(struct fault_env *fe, pte_t orig_pte)
 	int locked;
 	int exclusive = 0;
 	int ret = 0;
+	gfp_t readahead_flags = GFP_HIGHUSER_MOVABLE;
 
 	if (!pte_unmap_same(vma->vm_mm, fe->pmd, fe->pte, orig_pte))
 		goto out;
@@ -2653,8 +2658,12 @@ int do_swap_page(struct fault_env *fe, pte_t orig_pte)
 	delayacct_set_flag(DELAYACCT_PF_SWAPIN);
 	page = lookup_swap_cache(entry);
 	if (!page) {
+#ifdef CONFIG_CMA
+		if (strict_cma_enabled)
+			readahead_flags |= GFP_HIGHUSER_MOVABLE_NOCMA;
+#endif
 		page = swapin_readahead(entry,
-					GFP_HIGHUSER_MOVABLE, vma, fe->address);
+					readahead_flags, vma, fe->address);
 		if (!page) {
 			/*
 			 * Back out if somebody else faulted in this pte
