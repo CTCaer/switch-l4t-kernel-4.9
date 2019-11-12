@@ -2,7 +2,7 @@
  *  linux/drivers/mmc/host/sdhci.c - Secure Digital Host Controller Interface driver
  *
  *  Copyright (C) 2005-2008 Pierre Ossman, All Rights Reserved.
- *  Copyright (c) 2012-2017, NVIDIA CORPORATION.  All rights reserved.
+ *  Copyright (c) 2012-2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2923,21 +2923,25 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 
 	if (intmask & SDHCI_INT_DATA_TIMEOUT) {
 		host->data->error = -ETIMEDOUT;
+		error_data_timeout++;
 		pr_err("%s: Data timeout error\n", mmc_hostname(host->mmc));
 		sdhci_dumpregs(host);
 	} else if (intmask & SDHCI_INT_DATA_END_BIT) {
 		host->data->error = -EILSEQ;
+		error_data_end_bit++;
 		pr_err("%s: Data end bit error\n", mmc_hostname(host->mmc));
 		sdhci_dumpregs(host);
 	} else if ((intmask & SDHCI_INT_DATA_CRC) &&
 		SDHCI_GET_CMD(sdhci_readw(host, SDHCI_COMMAND))
 			!= MMC_BUS_TEST_R) {
 		host->data->error = -EILSEQ;
+		error_data_crc++;
 		pr_err("%s: Data CRC error\n", mmc_hostname(host->mmc));
 		sdhci_dumpregs(host);
 	} else if (intmask & SDHCI_INT_ADMA_ERROR) {
 		pr_err("%s: ADMA error\n", mmc_hostname(host->mmc));
 		sdhci_adma_show_error(host);
+		error_data_adma++;
 		host->data->error = -EIO;
 		if (host->ops->adma_workaround)
 			host->ops->adma_workaround(host, intmask);

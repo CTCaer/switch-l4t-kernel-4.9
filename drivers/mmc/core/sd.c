@@ -4,7 +4,7 @@
  *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
  *  SD support Copyright (C) 2004 Ian Molton, All Rights Reserved.
  *  Copyright (C) 2005-2007 Pierre Ossman, All Rights Reserved.
- *  Copyright (c) 2017, NVIDIA CORPORATION.  All rights reserved.
+ *  Copyright (c) 2017-2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1439,6 +1439,9 @@ int mmc_attach_sd(struct mmc_host *host)
 {
 	int err;
 	u32 ocr, rocr;
+	char event_string[32];
+	char *envp[] = {event_string, NULL};
+	int ret;
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
 	int retries;
 #endif
@@ -1512,7 +1515,9 @@ int mmc_attach_sd(struct mmc_host *host)
 		goto remove_card;
 
 	mmc_claim_host(host);
-	return 0;
+
+	err = 0;
+	goto send_uevent;
 
 remove_card:
 	mmc_remove_card(host->card);
@@ -1524,5 +1529,11 @@ err:
 	pr_err("%s: error %d whilst initialising SD card\n",
 		mmc_hostname(host), err);
 
+send_uevent:
+	snprintf(event_string, 32, "SD_INIT_EVENT=%d", -err);
+	ret = kobject_uevent_env(&host->class_dev.kobj, KOBJ_CHANGE, envp);
+	if (ret)
+		pr_info("%s: sent uevent: %s error %d.\n",
+				mmc_hostname(host), event_string, ret);
 	return err;
 }
