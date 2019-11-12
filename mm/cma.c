@@ -50,6 +50,17 @@ struct cma cma_areas[MAX_CMA_AREAS];
 unsigned cma_area_count;
 static DEFINE_MUTEX(cma_mutex);
 
+bool strict_cma_enabled = false;
+static int early_strict_cma_param(char *buf)
+{
+	if (!buf)
+		return -EINVAL;
+	if (strncmp(buf, "on", 2) == 0)
+		strict_cma_enabled = true;
+	return 0;
+}
+early_param("strict_cma", early_strict_cma_param);
+
 phys_addr_t cma_get_base(const struct cma *cma)
 {
 	return PFN_PHYS(cma->base_pfn);
@@ -149,6 +160,8 @@ err:
 static int __init cma_init_reserved_areas(void)
 {
 	int i;
+
+	pr_info("strict cma policy: %s\n", strict_cma_enabled ? "on" : "off");
 
 	for (i = 0; i < cma_area_count; i++) {
 		int ret = cma_activate_area(&cma_areas[i]);

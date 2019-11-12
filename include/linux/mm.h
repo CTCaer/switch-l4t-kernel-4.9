@@ -119,11 +119,14 @@ extern unsigned long sysctl_admin_reserve_kbytes;
 extern int sysctl_overcommit_memory;
 extern int sysctl_overcommit_ratio;
 extern unsigned long sysctl_overcommit_kbytes;
+extern int shrink_memory_size;
 
 extern int overcommit_ratio_handler(struct ctl_table *, int, void __user *,
 				    size_t *, loff_t *);
 extern int overcommit_kbytes_handler(struct ctl_table *, int, void __user *,
 				    size_t *, loff_t *);
+extern int shrink_memory_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp, loff_t *ppos);
 
 #define nth_page(page,n) pfn_to_page(page_to_pfn((page)) + (n))
 

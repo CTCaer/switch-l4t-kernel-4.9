@@ -8,6 +8,7 @@
 #include <linux/memory.h>
 #include <linux/hugetlb.h>
 #include <linux/page_owner.h>
+#include <linux/mmdebug.h>
 #include "internal.h"
 
 #define CREATE_TRACE_POINTS
@@ -247,6 +248,13 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 	return pfn;
 }
 
+static unsigned long faulty_pfn;
+void dump_faulty_page(const char *reason)
+{
+	if (faulty_pfn)
+		dump_page(pfn_to_page(faulty_pfn), reason);
+}
+
 /* Caller should ensure that requested range is in a single zone */
 int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 			bool skip_hwpoisoned_pages)
@@ -276,6 +284,8 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	spin_unlock_irqrestore(&zone->lock, flags);
 
 	trace_test_pages_isolated(start_pfn, end_pfn, pfn);
+
+	faulty_pfn = pfn < end_pfn ? pfn : 0;
 
 	return pfn < end_pfn ? -EBUSY : 0;
 }

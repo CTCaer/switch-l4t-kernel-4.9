@@ -41,6 +41,8 @@ struct vm_area_struct;
 #define ___GFP_OTHER_NODE	0x800000u
 #define ___GFP_WRITE		0x1000000u
 #define ___GFP_KSWAPD_RECLAIM	0x2000000u
+#define ___GFP_HIGHUSER_MOVABLE_NOCMA	0x4000000u
+#define ___GFP_MOVABLE_TRY_CMA			0x8000000u
 /* If the above are modified, __GFP_BITS_SHIFT may need updating */
 
 /*
@@ -55,6 +57,8 @@ struct vm_area_struct;
 #define __GFP_DMA32	((__force gfp_t)___GFP_DMA32)
 #define __GFP_MOVABLE	((__force gfp_t)___GFP_MOVABLE)  /* ZONE_MOVABLE allowed */
 #define GFP_ZONEMASK	(__GFP_DMA|__GFP_HIGHMEM|__GFP_DMA32|__GFP_MOVABLE)
+#define GFP_HIGHUSER_MOVABLE_NOCMA	((__force gfp_t)___GFP_HIGHUSER_MOVABLE_NOCMA)
+#define GFP_MOVABLE_TRY_CMA     ((__force gfp_t)___GFP_MOVABLE_TRY_CMA)
 
 /*
  * Page mobility and placement hints
@@ -187,7 +191,7 @@ struct vm_area_struct;
 #define __GFP_OTHER_NODE ((__force gfp_t)___GFP_OTHER_NODE)
 
 /* Room for N __GFP_FOO bits */
-#define __GFP_BITS_SHIFT 26
+#define __GFP_BITS_SHIFT 28
 #define __GFP_BITS_MASK ((__force gfp_t)((1 << __GFP_BITS_SHIFT) - 1))
 
 /*
