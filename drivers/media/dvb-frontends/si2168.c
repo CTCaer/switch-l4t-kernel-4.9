@@ -39,10 +39,12 @@ static int si2168_cmd_execute(struct i2c_client *client, struct si2168_cmd *cmd)
 			goto err_mutex_unlock;
 		}
 
-		if (cmd->args[0] == 0x85) { /* restart */
+		if (cmd->args[0] == 0x85) {
+			/* restart */
 			usleep_range(10000, 11000);
-		} else if (cmd->wlen > 1 && cmd->args[0] == 0xc0 && cmd->args[1] == 0x06) { /* power up */
-			usleep_range(15000,16000);
+		} else if (cmd->wlen > 1 && cmd->args[0] == 0xc0 && cmd->args[1] == 0x06) {
+			/* power up */
+			usleep_range(15000, 16000);
 		}
 	}
 
@@ -63,7 +65,7 @@ static int si2168_cmd_execute(struct i2c_client *client, struct si2168_cmd *cmd)
 			if ((cmd->args[0] >> 7) & 0x01)
 				break;
 
-			usleep_range(5000,6000);
+			usleep_range(5000, 6000);
 		}
 
 		dev_dbg(&client->dev, "cmd execution took %d ms\n",
@@ -81,7 +83,7 @@ static int si2168_cmd_execute(struct i2c_client *client, struct si2168_cmd *cmd)
 			goto err_mutex_unlock;
 		}
 
-		usleep_range(2000,3000);
+		usleep_range(2000, 3000);
 	}
 
 	mutex_unlock(&dev->i2c_mutex);
@@ -170,18 +172,21 @@ static int si2168_read_status(struct dvb_frontend *fe, enum fe_status *status)
 
 	ret = si2168_cmd_execute(client, &cmd);
 	if (ret == -EREMOTEIO) {
-		/* In auto-PLP mode it is possible to read 0x8701 while
+		/*
+		 * In auto-PLP mode it is possible to read 0x8701 while
 		 * the frontend is in switchover transition. This causes
 		 * a status read failure, due to incorrect system. Check
 		 * the other sys if we hit this race condition.
 		 */
 		if (sys == SYS_DVBT) {
-			memcpy(cmd.args, "\x50\x01", 2); /* DVB-T2 */
+			/* DVB-T2 */
+			memcpy(cmd.args, "\x50\x01", 2);
 			cmd.wlen = 2;
 			cmd.rlen = 14;
 			ret = si2168_cmd_execute(client, &cmd);
 		} else if (sys == SYS_DVBT2) {
-			memcpy(cmd.args, "\xa0\x01", 2); /* DVB-T */
+			/* DVB-T */
+			memcpy(cmd.args, "\xa0\x01", 2);
 			cmd.wlen = 2;
 			cmd.rlen = 13;
 			ret = si2168_cmd_execute(client, &cmd);
