@@ -37,6 +37,10 @@ static inline void count_compact_events(enum vm_event_item item, long delta)
 #define count_compact_events(item, delta) do { } while (0)
 #endif
 
+#ifdef CONFIG_CMA
+extern bool strict_cma_enabled;
+#endif
+
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
 
 #define CREATE_TRACE_POINTS
@@ -90,6 +94,10 @@ static void map_pages(struct list_head *list)
 
 static inline bool migrate_async_suitable(int migratetype)
 {
+#ifdef CONFIG_CMA
+    if (strict_cma_enabled)
+        return migratetype == MIGRATE_MOVABLE;
+#endif
 	return is_migrate_cma(migratetype) || migratetype == MIGRATE_MOVABLE;
 }
 
@@ -985,8 +993,13 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 static bool suitable_migration_target(struct compact_control *cc,
 							struct page *page)
 {
-	if (cc->ignore_block_suitable)
+	if (cc->ignore_block_suitable) {
+#ifdef CONFIG_CMA
+		if (!strict_cma_enabled ||
+				get_pageblock_migratetype(page) != MIGRATE_CMA)
+#endif
 		return true;
+	}
 
 	/* If the page is a large free page, then disallow migration */
 	if (PageBuddy(page)) {
@@ -1320,7 +1333,8 @@ static enum compact_result __compact_finished(struct zone *zone, struct compact_
 #ifdef CONFIG_CMA
 		/* MIGRATE_MOVABLE can fallback on MIGRATE_CMA */
 		if (migratetype == MIGRATE_MOVABLE &&
-			!list_empty(&area->free_list[MIGRATE_CMA]))
+			!list_empty(&area->free_list[MIGRATE_CMA]) &&
+			!strict_cma_enabled)
 			return COMPACT_SUCCESS;
 #endif
 		/*
@@ -1375,26 +1389,31 @@ static enum compact_result __compaction_suitable(struct zone *zone, int order,
 								alloc_flags))
 		return COMPACT_SUCCESS;
 
-	/*
-	 * Watermarks for order-0 must be met for compaction to be able to
-	 * isolate free pages for migration targets. This means that the
-	 * watermark and alloc_flags have to match, or be more pessimistic than
-	 * the check in __isolate_free_page(). We don't use the direct
-	 * compactor's alloc_flags, as they are not relevant for freepage
-	 * isolation. We however do use the direct compactor's classzone_idx to
-	 * skip over zones where lowmem reserves would prevent allocation even
-	 * if compaction succeeds.
-	 * For costly orders, we require low watermark instead of min for
-	 * compaction to proceed to increase its chances.
-	 * ALLOC_CMA is used, as pages in CMA pageblocks are considered
-	 * suitable migration targets
-	 */
-	watermark = (order > PAGE_ALLOC_COSTLY_ORDER) ?
-				low_wmark_pages(zone) : min_wmark_pages(zone);
-	watermark += compact_gap(order);
-	if (!__zone_watermark_ok(zone, 0, watermark, classzone_idx,
-						ALLOC_CMA, wmark_target))
-		return COMPACT_SKIPPED;
+#ifdef CONFIG_CMA
+	if(!strict_cma_enabled)
+#endif
+	{
+		/*
+		 * Watermarks for order-0 must be met for compaction to be able to
+		 * isolate free pages for migration targets. This means that the
+		 * watermark and alloc_flags have to match, or be more pessimistic than
+		 * the check in __isolate_free_page(). We don't use the direct
+		 * compactor's alloc_flags, as they are not relevant for freepage
+		 * isolation. We however do use the direct compactor's classzone_idx to
+		 * skip over zones where lowmem reserves would prevent allocation even
+		 * if compaction succeeds.
+		 * For costly orders, we require low watermark instead of min for
+		 * compaction to proceed to increase its chances.
+		 * ALLOC_CMA is used, as pages in CMA pageblocks are considered
+		 * suitable migration targets
+		 */
+		watermark = (order > PAGE_ALLOC_COSTLY_ORDER) ?
+					low_wmark_pages(zone) : min_wmark_pages(zone);
+		watermark += compact_gap(order);
+		if (!__zone_watermark_ok(zone, 0, watermark, classzone_idx,
+							ALLOC_CMA, wmark_target))
+			return COMPACT_SKIPPED;
+	}
 
 	return COMPACT_CONTINUE;
 }
