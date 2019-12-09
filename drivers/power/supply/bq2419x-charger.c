@@ -953,6 +953,45 @@ static int bq2419x_extcon_cable_update(struct bq2419x_chip *bq2419x,
 	return 0;
 }
 
+static int bq2419x_extcon_charger_cable_update(struct bq2419x_chip *bq2419x,
+							unsigned int val)
+{
+	int ret = 0;
+	if (((val & BQ2419x_VBUS_PG_STAT) == BQ2419x_PG_VBUS_USB) && !bq2419x->cable_connected) {
+		extcon_set_state(&bq2419x->edev, EXTCON_USB,  true);
+		bq2419x->cable_connected = 1;
+		bq2419x->chg_status = BATTERY_CHARGING;
+		battery_charger_thermal_start_monitoring(
+				bq2419x->bc_dev);
+		/* Set JEITA_VSET bit if charger cable connected */
+		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_MISC_OPER_REG,
+			BQ2419X_JEITA_VSET_MASK, BQ2419X_JEITA_VSET_42V);
+		if (ret < 0)
+			dev_err(bq2419x->dev, "JEITA_VSET update failed: %d\n",
+				ret);
+		dev_err(bq2419x->dev, "USB is connected\n");
+		bq2419x_configure_charging_current(bq2419x, 2000);
+	} else if (((val & BQ2419x_VBUS_PG_STAT) == BQ2419x_VBUS_UNKNOWN) && bq2419x->cable_connected) {
+		extcon_set_state(&bq2419x->edev, EXTCON_USB, false);
+		bq2419x->cable_connected = 0;
+		bq2419x->chg_status = BATTERY_DISCHARGING;
+		battery_charger_thermal_stop_monitoring(
+				bq2419x->bc_dev);
+		/* Clear JEITA_VSET bit if cable disconnected */
+		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_MISC_OPER_REG,
+					BQ2419X_JEITA_VSET_MASK, 0);
+		if (ret < 0)
+			dev_err(bq2419x->dev, "JEITA_VSET update failed: %d\n",
+					ret);
+
+		dev_err(bq2419x->dev, "USB is disconnected\n");
+		bq2419x_configure_charging_current(bq2419x, 500);
+	}
+
+	battery_charging_status_update(bq2419x->bc_dev, bq2419x->chg_status);
+	return 0;
+}
+
 static irqreturn_t bq2419x_irq(int irq, void *data)
 {
 	struct bq2419x_chip *bq2419x = data;
@@ -970,7 +1009,7 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 		goto out;
 	}
 
-	dev_dbg(bq2419x->dev, "%s() Irq %d status 0x%02x\n",
+	dev_err(bq2419x->dev, "%s() Irq %d status 0x%02x\n",
 		__func__, irq, val);
 
 	if (val & BQ2419x_FAULT_BOOST_FAULT) {
@@ -1029,7 +1068,11 @@ sys_stat_read:
 		goto out;
 	}
 
-	bq2419x_extcon_cable_update(bq2419x, val);
+	if (bq2419x->charger_pdata->enable_full_plug_detection)
+		bq2419x_extcon_charger_cable_update(bq2419x, val);
+	else
+		bq2419x_extcon_cable_update(bq2419x, val);
+
 
 	if (!bq2419x->battery_presense)
 		goto out;
@@ -1686,7 +1729,7 @@ static int bq2419x_charger_thermal_configure(
 
 	/* Fast charger become 50% when temp is at < 10 degC */
 	if (temp <= 10)
-		fast_charge_current *= 2;
+		fast_charge_current /= 2;
 
 	curr_ichg = bq2419x->chg_current_control.val >> 2;
 	ichg = bq2419x_val_to_reg(fast_charge_current,
@@ -1837,6 +1880,10 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client,
 				"ti,charge-voltage-limit-mv", &pval);
 		if (!ret)
 			pdata->bcharger_pdata->charge_voltage_limit_mV = pval;
+
+		pdata->bcharger_pdata->enable_full_plug_detection =
+				of_property_read_bool(batt_reg_node,
+				"ti,enable-full-plug-detection");
 
 		pdata->bcharger_pdata->disable_suspend_during_charging =
 				of_property_read_bool(batt_reg_node,
