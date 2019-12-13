@@ -86,8 +86,10 @@ enum bm92t_state_type {
 	HPD_HANDLED,
 	VDM_QUERY_DEVICE_SENT,
 	VDM_ACCEPT_QUERY_DEVICE_SENT,
+	VDM_LED_ON_SENT,
+	VDM_ACCEPT_LED_ON_SENT,
 	VDM_CHECK_USBHUB_SENT,
-	VDM_ACCEPT_CHECK_USBHUB_SENT
+	VDM_ACCEPT_CHECK_USBHUB_SENT,
 };
 
 enum bm92t_extcon_cable_type {
@@ -137,6 +139,8 @@ static const char * const states[] = {
 	"HPD_HANDLED",
 	"VDM_QUERY_DEVICE_SENT",
 	"VDM_ACCEPT_QUERY_DEVICE_SENT",
+	"VDM_LED_ON_SENT",
+	"VDM_ACCEPT_LED_ON_SENT",
 	"VDM_CHECK_USBHUB_SENT",
 	"VDM_ACCEPT_CHECK_USBHUB_SENT"
 };
@@ -156,6 +160,8 @@ unsigned char vdm_id_phase1_msg[6] = {OUTGOING_VDM,
 	0x04, 0x01, 0x80, 0x00, 0xFF};
 unsigned char vdm_id_phase2_msg[6] = {OUTGOING_VDM,
 	0x04, 0x04, 0x81, 0x7E, 0x05};
+unsigned char vdm_led_on_msg[14] = {OUTGOING_VDM,
+	0x0c, 0x00, 0x00, 0x7E, 0x05, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x14, 0x80};
 unsigned char vdm_query_device_msg[10] = {OUTGOING_VDM,
 	0x08, 0x00, 0x00, 0x7E, 0x05, 0x00, 0x01, 0x16, 0x00};
 unsigned char vdm_check_usbhub_msg[10] = {OUTGOING_VDM,
@@ -746,6 +752,21 @@ static void bm92t_event_handler2(struct work_struct *work)
 					EXTCON_USB, true);
 			}
 
+			bm92t_send_vdm(info, vdm_led_on_msg,
+				sizeof(vdm_led_on_msg));
+			bm92t_state_machine(info, VDM_LED_ON_SENT);
+		}
+		break;
+	case VDM_LED_ON_SENT:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, VDM_ACCEPT_LED_ON_SENT);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_dbg(dev, "cmd done in VDM_CHECK_USBHUB_SENT\n");
+		break;
+	case VDM_ACCEPT_LED_ON_SENT:
+		if (alert_data & ALERT_CMD_DONE) {
 			bm92t_send_vdm(info, vdm_check_usbhub_msg,
 				sizeof(vdm_check_usbhub_msg));
 			bm92t_state_machine(info, VDM_CHECK_USBHUB_SENT);
