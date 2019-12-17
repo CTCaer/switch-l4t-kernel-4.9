@@ -1,0 +1,1 @@
+obj-$(CONFIG_BACKPORT_MT7601U)	+= mt7601u/

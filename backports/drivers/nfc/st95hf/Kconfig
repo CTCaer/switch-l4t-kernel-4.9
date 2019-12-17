@@ -1,0 +1,11 @@
+config BACKPORT_NFC_ST95HF
+	tristate "ST95HF NFC Transceiver driver"
+	depends on !NFC_ST95HF
+	depends on SPI && BACKPORT_NFC_DIGITAL
+	help
+	This enables the ST BACKPORT_NFC driver for ST95HF BACKPORT_NFC transceiver.
+	This makes use of SPI framework to communicate with transceiver
+	and registered with BACKPORT_NFC digital core to support Linux BACKPORT_NFC framework.
+
+	Say Y here to compile support for ST BACKPORT_NFC transceiver ST95HF
+	linux driver into the kernel or say M to compile it as module.

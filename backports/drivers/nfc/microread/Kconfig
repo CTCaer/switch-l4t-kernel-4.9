@@ -1,0 +1,34 @@
+config BACKPORT_NFC_MICROREAD
+	tristate
+	depends on !NFC_MICROREAD
+	depends on CRC_CCITT
+	---help---
+	  This module contains the main code for Inside Secure microread
+	  BACKPORT_NFC chipsets. It implements the chipset HCI logic and hooks into
+	  the BACKPORT_NFC kernel APIs. Physical layers will register against it.
+
+config BACKPORT_NFC_MICROREAD_I2C
+	tristate "Inside Secure Microread device support (I2C)"
+	depends on !NFC_MICROREAD_I2C
+	depends on BACKPORT_NFC_HCI && I2C && BACKPORT_NFC_SHDLC
+	select BACKPORT_NFC_MICROREAD
+	---help---
+	  This module adds support for the i2c interface of adapters using
+	  Inside microread chipsets.  Select this if your platform is using
+	  the i2c bus.
+
+	  If you choose to build a module, it'll be called microread_i2c.
+	  Say N if unsure.
+
+config BACKPORT_NFC_MICROREAD_MEI
+	tristate "Inside Secure Microread device support (MEI)"
+	depends on !NFC_MICROREAD_MEI
+	depends on BACKPORT_NFC_HCI && BACKPORT_NFC_MEI_PHY
+	select BACKPORT_NFC_MICROREAD
+	---help---
+	  This module adds support for the mei interface of adapters using
+	  Inside microread chipsets.  Select this if your microread chipset
+	  is handled by Intel's Management Engine Interface on your platform.
+
+	  If you choose to build a module, it'll be called microread_mei.
+	  Say N if unsure.

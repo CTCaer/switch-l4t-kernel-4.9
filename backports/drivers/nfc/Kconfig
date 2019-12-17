@@ -1,0 +1,65 @@
+#
+# Near Field Communication (NFC) devices
+#
+
+menu "Near Field Communication (NFC) devices"
+	depends on BACKPORT_NFC
+
+config BACKPORT_NFC_TRF7970A
+	tristate "Texas Instruments TRF7970a NFC driver"
+	depends on !NFC_TRF7970A
+	depends on SPI && BACKPORT_NFC_DIGITAL && GPIOLIB
+	help
+	  This option enables the BACKPORT_NFC driver for Texas Instruments' TRF7970a
+	  device. Such device supports 5 different protocols: ISO14443A,
+	  ISO14443B, FeLiCa, ISO15693 and ISO18000-3.
+
+	  Say Y here to compile support for TRF7970a into the kernel or
+	  say M  to compile it as a module. The module will be called
+	  trf7970a.ko.
+
+config BACKPORT_NFC_MEI_PHY
+	tristate "MEI bus NFC device support"
+	depends on !NFC_MEI_PHY
+	depends on INTEL_MEI && BACKPORT_NFC_HCI
+	help
+	  This adds support to use an mei bus nfc device. Select this if you
+	  will use an HCI BACKPORT_NFC driver for an BACKPORT_NFC chip connected behind an
+	  Intel's Management Engine chip.
+
+	  If unsure, say N.
+
+config BACKPORT_NFC_SIM
+	tristate "NFC hardware simulator driver"
+	depends on !NFC_SIM
+	depends on BACKPORT_NFC_DIGITAL
+	help
+	  This driver declares two virtual BACKPORT_NFC devices supporting BACKPORT_NFC-DEP
+	  protocol. An LLCP connection can be established between them and
+	  all packets sent from one device is sent back to the other, acting as
+	  loopback devices.
+
+	  If unsure, say N.
+
+config BACKPORT_NFC_PORT100
+	tristate "Sony NFC Port-100 Series USB device support"
+	depends on !NFC_PORT100
+	depends on USB
+	depends on BACKPORT_NFC_DIGITAL
+	help
+	  This adds support for Sony Port-100 chip based USB devices such as the
+	  RC-S380 dongle.
+
+	  If unsure, say N.
+
+source "$BACKPORT_DIR/drivers/nfc/fdp/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/pn544/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/pn533/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/microread/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/nfcmrvl/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/st21nfca/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/st-nci/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/nxp-nci/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/s3fwrn5/Kconfig"
+source "$BACKPORT_DIR/drivers/nfc/st95hf/Kconfig"
+endmenu
