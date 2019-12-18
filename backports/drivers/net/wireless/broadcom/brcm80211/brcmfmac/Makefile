@@ -2,6 +2,7 @@
 # Makefile fragment for Broadcom 802.11n Networking Device Driver
 #
 # Copyright (c) 2010 Broadcom Corporation
+# Copyright (C) 2018-2019 NVIDIA Corporation. All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -17,7 +18,13 @@
 
 ccflags-y += \
 	-I$(backport_srctree)/drivers/net/wireless/broadcom/brcm80211/brcmfmac	\
-	-I$(backport_srctree)/drivers/net/wireless/broadcom/brcm80211/include
+	-I$(backport_srctree)/drivers/net/wireless/broadcom/brcm80211/include \
+	-I$(backport_srctree)/drivers/net/wireless/broadcom/brcm80211/brcmfmac/nv \
+	-DCONFIG_BACKPORT_BRCMFMAC_NV_GPIO \
+	-DCONFIG_BACKPORT_BRCMFMAC_NV_CUSTOM_MAC \
+	-DCONFIG_BACKPORT_BRCMFMAC_NV_CUSTOM_FILES \
+	-DCONFIG_BACKPORT_BRCMFMAC_NV_COUNTRY_CODE \
+	-DCONFIG_BACKPORT_BRCMFMAC_NV_PRIV_CMD
 
 obj-$(CONFIG_BACKPORT_BRCMFMAC) += brcmfmac.o
 brcmfmac-objs += \
@@ -54,3 +61,57 @@ brcmfmac-$(CONFIG_BACKPORT_BRCM_TRACING) += \
 		tracepoint.o
 brcmfmac-$(CONFIG_OF) += \
 		of.o
+brcmfmac-$(CONFIG_BACKPORT_BRCMFMAC_ANDROID) += \
+		android.o \
+		nv_common.o
+
+ifneq ($(CONFIG_BACKPORT_NV_CUSTOM_SYSFS_TEGRA),)
+brcmfmac-$(CONFIG_BACKPORT_NV_CUSTOM_SYSFS_TEGRA) += \
+	nv/nv_custom_sysfs_tegra.o
+ccflags-y += \
+	-DCONFIG_BACKPORT_NV_CUSTOM_SYSFS_TEGRA
+endif
+
+ifneq ($(CONFIG_BACKPORT_NV_CUSTOM_CAP),)
+brcmfmac-$(CONFIG_BACKPORT_NV_CUSTOM_CAP) += \
+	nv/nv_ping.o \
+	nv/nv_rssi.o \
+	nv/nv_tcpdump.o
+ccflags-y += \
+	-DCONFIG_BACKPORT_NV_CUSTOM_CAP
+endif
+
+ifneq ($(CONFIG_BACKPORT_BRCMFMAC_NV_IDS),)
+brcmfmac-$(CONFIG_BACKPORT_BRCMFMAC_NV_IDS) += \
+    nv/nv_logger.o
+ccflags-y += \
+    -DCONFIG_BACKPORT_BRCMFMAC_NV_IDS
+endif
+
+ifneq ($(CONFIG_BACKPORT_NV_CUSTOM_SCAN),)
+brcmfmac-$(CONFIG_BACKPORT_NV_CUSTOM_SCAN) += \
+	nv/nv_scan.o
+ccflags-y += \
+	-DCONFIG_BACKPORT_NV_CUSTOM_SCAN
+endif
+
+ifneq ($(CONFIG_BACKPORT_NV_NET_BW_EST_TEGRA),)
+brcmfmac-$(CONFIG_BACKPORT_NV_NET_BW_EST_TEGRA) += \
+	nv/dhd_custom_net_bw_est_tegra.o
+ccflags-y += \
+	-DCONFIG_BACKPORT_BRCMFMAC_NV_NET_BW_EST_TEGRA
+endif
+
+ifneq ($(CONFIG_BACKPORT_NV_NET_DIAG_TEGRA),)
+brcmfmac-$(CONFIG_BACKPORT_NV_NET_DIAG_TEGRA) += \
+		nv/dhd_custom_net_diag_tegra.o
+ccflags-y += \
+	-DCONFIG_BACKPORT_BRCMFMAC_NV_NET_DIAG_TEGRA
+endif
+
+ifneq ($(CONFIG_BACKPORT_NV_CUSTOM_RF_TEST),)
+brcmfmac-$(CONFIG_BACKPORT_NV_CUSTOM_RF_TEST) += \
+	nv/nv_rf_test.o
+ccflags-y += \
+	-DCONFIG_BACKPORT_NV_CUSTOM_RF_TEST
+endif

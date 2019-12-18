@@ -1,27 +1,28 @@
 config BACKPORT_BRCMUTIL
 	tristate
-	depends on !BRCMUTIL
+	depends on m
 
 config BACKPORT_BRCMSMAC
+	depends on n
 	tristate "Broadcom IEEE802.11n PCIe SoftMAC WLAN driver"
-	depends on !BRCMSMAC
-	depends on BACKPORT_MAC80211
-	depends on BACKPORT_BCMA_POSSIBLE
-	select BACKPORT_BCMA
-	select NEW_LEDS if BACKPORT_BCMA_DRIVER_GPIO
-	select LEDS_CLASS if BACKPORT_BCMA_DRIVER_GPIO
-	select BACKPORT_BRCMUTIL
+	depends on m
+	depends on MAC80211
+	depends on BCMA_POSSIBLE
+	depends on BCMA
+	select NEW_LEDS if BCMA_DRIVER_GPIO
+	select LEDS_CLASS if BCMA_DRIVER_GPIO
+	select BRCMUTIL
 	depends on FW_LOADER
-	depends on CORDIC
+	select BPAUTO_CORDIC
 	---help---
 	  This module adds support for PCIe wireless adapters based on Broadcom
-	  IEEE802.11n SoftMAC chipsets. It also has BACKPORT_WLAN led support, which will
-	  be available if you select BACKPORT_BCMA_DRIVER_GPIO. If you choose to build a
+	  IEEE802.11n SoftMAC chipsets. It also has WLAN led support, which will
+	  be available if you select BCMA_DRIVER_GPIO. If you choose to build a
 	  module, the driver will be called brcmsmac.ko.
 
 config BACKPORT_BRCMFMAC
 	tristate "Broadcom FullMAC WLAN driver"
-	depends on !BRCMFMAC
+	depends on m
 	depends on BACKPORT_CFG80211
 	select BACKPORT_BRCMUTIL
 	---help---
@@ -30,17 +31,14 @@ config BACKPORT_BRCMFMAC
 	  interface support. If you choose to build a module, it'll be called
 	  brcmfmac.ko.
 
-config BACKPORT_BRCMFMAC_PROTO_BCDC
+config BRCMFMAC_PROTO_BCDC
 	bool
-	depends on !BRCMFMAC_PROTO_BCDC
 
-config BACKPORT_BRCMFMAC_PROTO_MSGBUF
+config BRCMFMAC_PROTO_MSGBUF
 	bool
-	depends on !BRCMFMAC_PROTO_MSGBUF
 
 config BACKPORT_BRCMFMAC_SDIO
 	bool "SDIO bus interface support for FullMAC driver"
-	depends on !BRCMFMAC_SDIO
 	depends on (MMC = y || MMC = BACKPORT_BRCMFMAC)
 	depends on BACKPORT_BRCMFMAC
 	select BACKPORT_BRCMFMAC_PROTO_BCDC
@@ -48,24 +46,22 @@ config BACKPORT_BRCMFMAC_SDIO
 	default y
 	---help---
 	  This option enables the SDIO bus interface support for Broadcom
-	  IEEE802.11n embedded FullMAC BACKPORT_WLAN driver. Say Y if you want to
+	  IEEE802.11n embedded FullMAC WLAN driver. Say Y if you want to
 	  use the driver for a SDIO wireless card.
 
-config BACKPORT_BRCMFMAC_USB
+config BRCMFMAC_USB
 	bool "USB bus interface support for FullMAC driver"
-	depends on !BRCMFMAC_USB
 	depends on (USB = y || USB = BACKPORT_BRCMFMAC)
 	depends on BACKPORT_BRCMFMAC
 	select BACKPORT_BRCMFMAC_PROTO_BCDC
 	depends on FW_LOADER
 	---help---
 	  This option enables the USB bus interface support for Broadcom
-	  IEEE802.11n embedded FullMAC BACKPORT_WLAN driver. Say Y if you want to
+	  IEEE802.11n embedded FullMAC WLAN driver. Say Y if you want to
 	  use the driver for an USB wireless card.
 
-config BACKPORT_BRCMFMAC_PCIE
+config BRCMFMAC_PCIE
 	bool "PCIE bus interface support for FullMAC driver"
-	depends on !BRCMFMAC_PCIE
 	depends on BACKPORT_BRCMFMAC
 	depends on PCI
 	depends on HAS_DMA
@@ -73,13 +69,12 @@ config BACKPORT_BRCMFMAC_PCIE
 	depends on FW_LOADER
 	---help---
 	  This option enables the PCIE bus interface support for Broadcom
-	  IEEE802.11ac embedded FullMAC BACKPORT_WLAN driver. Say Y if you want to
+	  IEEE802.11ac embedded FullMAC WLAN driver. Say Y if you want to
 	  use the driver for an PCIE wireless card.
 
 config BACKPORT_BRCM_TRACING
 	bool "Broadcom device tracing"
-	depends on !BRCM_TRACING
-	depends on BACKPORT_BRCMSMAC || BRCMFMAC
+	depends on BACKPORT_BRCMSMAC || BACKPORT_BRCMFMAC
 	---help---
 	  If you say Y here, the Broadcom wireless drivers will register
 	  with ftrace to dump event information into the trace ringbuffer.
@@ -90,8 +85,72 @@ config BACKPORT_BRCM_TRACING
 
 config BACKPORT_BRCMDBG
 	bool "Broadcom driver debug functions"
-	depends on !BRCMDBG
-	depends on BACKPORT_BRCMSMAC || BRCMFMAC
-	depends on WANT_DEV_COREDUMP
+	depends on BACKPORT_BRCMSMAC || BACKPORT_BRCMFMAC
+	select BACKPORT_BPAUTO_WANT_DEV_COREDUMP
 	---help---
 	  Selecting this enables additional code for debug purposes.
+
+config BACKPORT_BRCMFMAC_ANDROID
+	bool "brcmfmac android support"
+	depends on BACKPORT_BRCMFMAC
+	---help---
+	  If you say Y here, the FMAC driver will support Android mode
+
+config BACKPORT_BRCM_INSMOD_NO_FW
+	bool "insmod module without loading firmware"
+	depends on BACKPORT_BRCMFMAC_ANDROID
+	---help---
+	  If you say Y here, the FMAC driver will not load firmware when
+	  inserting the module, it only create wlan interface. Firmware
+	  will be loaded when wlan interface up.
+
+config BACKPORT_NV_CUSTOM_SYSFS_TEGRA
+	bool "Custom sysfs for Tegra platform"
+	depends on BACKPORT_BRCMFMAC
+	default y
+	---help---
+	  Enable custom sysfs for Tegra platform.
+
+config BACKPORT_NV_CUSTOM_CAP
+	bool "NvCap support for Tegra platform"
+	depends on BACKPORT_NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable custom NvCap support for Tegra platform.
+
+config BACKPORT_BRCMFMAC_NV_IDS
+	bool "Nv IDS support for Tegra platform"
+	depends on BACKPORT_NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable NV IDS support for Tegra platform.
+
+config BACKPORT_NV_CUSTOM_SCAN
+	bool "scan optimization support"
+	depends on BACKPORT_NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable custom scan optimization support for Tegra platform.
+
+config BACKPORT_NV_NET_BW_EST_TEGRA
+	bool "bandwidth estimation support for netdiag"
+	depends on BACKPORT_NV_NET_DIAG_TEGRA
+	depends on BACKPORT_NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable bandwidth estimation support for netdiag
+
+config BACKPORT_NV_NET_DIAG_TEGRA
+	bool "netdiag support"
+	depends on BACKPORT_BRCMFMAC_ANDROID
+	depends on BACKPORT_NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable netdiag support
+
+config BACKPORT_NV_CUSTOM_RF_TEST
+	bool "RF test support for Tegra platform"
+	depends on BACKPORT_NV_CUSTOM_SYSFS_TEGRA
+	default y
+	---help---
+	  Enable RF test support for Tegra platform.

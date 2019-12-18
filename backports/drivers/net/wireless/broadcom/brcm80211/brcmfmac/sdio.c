@@ -33,6 +33,7 @@
 #include <linux/bcma/bcma.h>
 #include <linux/debugfs.h>
 #include <linux/vmalloc.h>
+#include <linux/wakelock.h>
 #include <asm/unaligned.h>
 #include <defs.h>
 #include <brcmu_wifi.h>
@@ -46,6 +47,7 @@
 #include "common.h"
 #include "bcdc.h"
 #include "fwil.h"
+#include "android.h"
 
 #define DCMD_RESP_TIMEOUT	msecs_to_jiffies(2500)
 #define CTL_DONE_TIMEOUT	msecs_to_jiffies(2500)
@@ -913,6 +915,9 @@ static int brcmf_sdio_clkctl(struct brcmf_sdio *bus, uint target, bool pendok)
 #ifdef DEBUG
 	uint oldstate = bus->clkstate;
 #endif				/* DEBUG */
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+	struct brcmf_pub *drvr = bus->sdiodev->bus_if->drvr;
+#endif
 
 	brcmf_dbg(SDIO, "Enter\n");
 
@@ -922,6 +927,12 @@ static int brcmf_sdio_clkctl(struct brcmf_sdio *bus, uint target, bool pendok)
 
 	switch (target) {
 	case CLK_AVAIL:
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+		if (!drvr->android->init_done) {
+			brcmf_dbg(SDIO, "skip requesting HT in boot-up\n");
+			break;
+		}
+#endif
 		/* Make sure SD clock is available */
 		if (bus->clkstate == CLK_NONE)
 			brcmf_sdio_sdclk(bus, true);
@@ -2053,6 +2064,8 @@ static uint brcmf_sdio_readframes(struct brcmf_sdio *bus, uint maxframes)
 		rd->seq_num--;
 	bus->rx_seq = rd->seq_num;
 
+	brcmf_android_wake_unlock_timeout(bus->sdiodev->bus_if->drvr);
+
 	return rxcount;
 }
 
@@ -2090,7 +2103,7 @@ static int brcmf_sdio_txpkt_hdalign(struct brcmf_sdio *bus, struct sk_buff *pkt)
 	return head_pad;
 }
 
-/**
+/*
  * struct brcmf_skbuff_cb reserves first two bytes in sk_buff::cb for
  * bus layer usage.
  */
@@ -3863,12 +3876,15 @@ static void brcmf_sdio_dataworker(struct work_struct *work)
 {
 	struct brcmf_sdio *bus = container_of(work, struct brcmf_sdio,
 					      datawork);
+	struct brcmf_pub *drvr = bus->sdiodev->bus_if->drvr;
 
 	bus->dpc_running = true;
 	wmb();
 	while (ACCESS_ONCE(bus->dpc_triggered)) {
 		bus->dpc_triggered = false;
+		brcmf_android_wake_lock(drvr);
 		brcmf_sdio_dpc(bus);
+		brcmf_android_wake_unlock(drvr);
 		bus->idlecount = 0;
 	}
 	bus->dpc_running = false;
@@ -4257,6 +4273,9 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 	struct brcmf_sdio *bus;
 	u8 saveclk;
 	u8 devctl;
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+	struct brcmf_pub *drvr;
+#endif
 
 	brcmf_dbg(ULP, "Enter: dev=%s, err=%d\n", dev_name(dev), err);
 	bus_if = dev_get_drvdata(dev);
@@ -4269,6 +4288,16 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 
 	bus = sdiodev->bus;
 
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+	drvr = bus_if->drvr;
+	if (!brcmf_android_in_reset(drvr)) {
+		sdio_claim_host(bus->sdiodev->func[1]);
+		sdio_release_host(bus->sdiodev->func[1]);
+		brcmf_android_init(drvr);
+		drvr->android->init_done = true;
+		return;
+	}
+#endif
 	/* try to download image and nvram to the dongle */
 	bus->alp_only = true;
 	err = brcmf_sdio_download_firmware(bus, code, nvram, nvram_len);
@@ -4405,15 +4434,20 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 		if (bus->sdiodev->fmac_ulp.ulp_state == FMAC_ULP_TRIGGERED)
 			bus->sdiodev->fmac_ulp.ulp_state = FMAC_ULP_IDLE;
 	}
-
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+	brcmf_wake_dev_reset_waitq(drvr, 0);
+#endif
 	return;
 
 release:
 	sdio_release_host(sdiodev->func[1]);
 fail:
 	brcmf_dbg(TRACE, "failed: dev=%s, err=%d\n", dev_name(dev), err);
-	device_release_driver(dev);
 	device_release_driver(&sdiodev->func[2]->dev);
+	device_release_driver(dev);
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+	brcmf_wake_dev_reset_waitq(drvr, -EIO);
+#endif
 }
 
 struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
@@ -4567,10 +4601,9 @@ void brcmf_sdio_remove(struct brcmf_sdio *bus)
 	brcmf_dbg(TRACE, "Enter\n");
 
 	if (bus) {
+		brcmf_detach(bus->sdiodev->dev);
 		/* De-register interrupt handler */
 		brcmf_sdiod_intr_unregister(bus->sdiodev);
-
-		brcmf_detach(bus->sdiodev->dev);
 
 		cancel_work_sync(&bus->datawork);
 		if (bus->brcmf_wq)

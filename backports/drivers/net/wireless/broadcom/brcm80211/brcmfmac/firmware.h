@@ -23,7 +23,11 @@
 
 #define	BRCMF_FW_NAME_LEN		320
 
+#ifdef CONFIG_BACKPORT_BRCMFMAC_ANDROID
+#define BRCMF_FW_DEFAULT_PATH		""
+#else
 #define BRCMF_FW_DEFAULT_PATH		"brcm/"
+#endif
 
 /**
  * struct brcmf_firmware_mapping - Used to map chipid/revmask to firmware

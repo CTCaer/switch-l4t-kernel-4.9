@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2010 Broadcom Corporation
+ * Copyright (C) 2018-2019 NVIDIA Corporation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,6 +22,7 @@
 #include <linux/firmware.h>
 #include <brcmu_wifi.h>
 #include <brcmu_utils.h>
+#include <linux/regulator/consumer.h>
 #include "core.h"
 #include "bus.h"
 #include "debug.h"
@@ -33,6 +35,13 @@
 #include "fweh.h"
 #include <brcm_hw_ids.h>
 #include "defs.h"
+
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_CUSTOM_FILES
+#include "nv_common.h"
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_IDS
+#include "nv_logger.h"
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BACKPORT_BRCM_NV_CUSTOM_FILES */
 
 MODULE_AUTHOR("Broadcom Corporation");
 MODULE_DESCRIPTION("Broadcom 802.11 wireless LAN fullmac driver.");
@@ -67,7 +76,7 @@ MODULE_PARM_DESC(feature_disable, "Disable features");
 
 static char brcmf_firmware_path[BRCMF_FW_ALTPATH_LEN];
 module_param_string(alternative_fw_path, brcmf_firmware_path,
-		    BRCMF_FW_ALTPATH_LEN, S_IRUSR);
+		    BRCMF_FW_ALTPATH_LEN, 0600);
 MODULE_PARM_DESC(alternative_fw_path, "Alternative firmware path");
 
 static int brcmf_fcmode;
@@ -103,6 +112,7 @@ MODULE_PARM_DESC(ignore_probe_fail, "always succeed probe for debugging");
 
 static struct brcmfmac_platform_data *brcmfmac_pdata;
 struct brcmf_mp_global_t brcmf_mp_global;
+struct regulator *wifi_regulator;
 
 void brcmf_c_set_joinpref_default(struct brcmf_if *ifp)
 {
@@ -201,9 +211,8 @@ static int brcmf_c_process_clm_blob(struct brcmf_if *ifp)
 
 	err = request_firmware(&clm, clm_name, dev);
 	if (err) {
-		brcmf_info("no clm_blob available(err=%d), device may have limited channels available\n",
-			   err);
-		return 0;
+		brcmf_err("no clm_blob available(err=%d)\n", err);
+		return err;
 	}
 
 	chunk_buf = kzalloc(sizeof(*chunk_buf) + MAX_CHUNK_LEN - 1, GFP_KERNEL);
@@ -262,7 +271,6 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 	u8 msglen;
 	struct brcmf_bus *bus = ifp->drvr->bus_if;
 
-	/* retrieve mac addresses */
 	err = brcmf_fil_iovar_data_get(ifp, "cur_etheraddr", ifp->mac_addr,
 				       sizeof(ifp->mac_addr));
 	if (err < 0) {
@@ -351,6 +359,18 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 	}
 
 	brcmf_c_set_joinpref_default(ifp);
+
+	/* Set the rpt_hitxrate to 1 so that link speed updated by WLC_GET_RATE
+	*  is the maximum transmit rate
+	*  rpt_hitxrate 0 : Here the rate reported is the most used rate in
+	*			the link.
+	*  rpt_hitxrate 1 : Here the rate reported is the highest used rate
+	*			in the link.
+	*/
+	err = brcmf_fil_iovar_int_set(ifp, "rpt_hitxrate", 1);
+	if (err) {
+		brcmf_err("Set rpt_hitxrate failed (%d)\n", err);
+	}
 
 	/* Setup event_msgs, enable E_IF */
 	err = brcmf_fil_iovar_data_get(ifp, "event_msgs", eventmask,
@@ -511,6 +531,9 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
 #ifdef DEBUG
 	settings->ignore_probe_fail = !!brcmf_ignore_probe_fail;
 #endif
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+	brcmf_mp_attach();
+#endif
 
 	if (bus_type == BRCMF_BUSTYPE_SDIO)
 		settings->bus.sdio.txglomsz = brcmf_sdiod_txglomsz;
@@ -552,11 +575,34 @@ static int __init brcmf_common_pd_probe(struct platform_device *pdev)
 {
 	brcmf_dbg(INFO, "Enter\n");
 
+#ifndef CONFIG_BACKPORT_BRCMFMAC_NV_GPIO
 	brcmfmac_pdata = dev_get_platdata(&pdev->dev);
 
-	if (brcmfmac_pdata->power_on)
+	if (brcmfmac_pdata && brcmfmac_pdata->power_on) {
 		brcmfmac_pdata->power_on();
+	} else {
+		if (!wifi_regulator) {
+			wifi_regulator = regulator_get(&pdev->dev, "wlreg_on");
+			if (!wifi_regulator) {
+				brcmf_err("cannot get wifi regulator\n");
+				return -ENODEV;
+			}
+		}
+		if (regulator_enable(wifi_regulator)) {
+			brcmf_err("WL_REG_ON state unknown, Power off forcely\n");
+			regulator_disable(wifi_regulator);
+			return -EIO;
+		}
+		wifi_card_detect(true);
+	}
+#else
+	setup_gpio(pdev, true);
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_GPIO */
 
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_COUNTRY_CODE
+	if (wifi_platform_get_country_code_map())
+		brcmf_err("platform country code map is not available\n");
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_COUNTRY_CODE */
 	return 0;
 }
 
@@ -564,9 +610,22 @@ static int brcmf_common_pd_remove(struct platform_device *pdev)
 {
 	brcmf_dbg(INFO, "Enter\n");
 
-	if (brcmfmac_pdata->power_off)
+#ifndef CONFIG_BACKPORT_BRCMFMAC_NV_GPIO
+	if (brcmfmac_pdata && brcmfmac_pdata->power_off) {
 		brcmfmac_pdata->power_off();
+	} else if (wifi_regulator) {
+		regulator_disable(wifi_regulator);
+		wifi_card_detect(false);
+		regulator_put(wifi_regulator);
+		wifi_regulator = NULL;
+	}
+#else
+	setup_gpio(pdev, false);
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_GPIO */
 
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_COUNTRY_CODE
+	wifi_platform_free_country_code_map();
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_COUNTRY_CODE */
 	return 0;
 }
 
@@ -577,17 +636,40 @@ static struct platform_driver brcmf_pd = {
 	}
 };
 
+static const struct of_device_id wifi_device_dt_match[] = {
+	{ .compatible = "brcm,android-fmac", },
+	{},
+};
+
+static __refdata struct platform_driver brcmf_platform_dev_driver = {
+	.probe		= brcmf_common_pd_probe,
+	.remove		= brcmf_common_pd_remove,
+	.driver		= {
+		.name	= "brcmfmac",
+		.of_match_table = wifi_device_dt_match,
+	}
+};
+
 static int __init brcmfmac_module_init(void)
 {
 	int err;
 
 	/* Initialize debug system first */
 	brcmf_debugfs_init();
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_IDS
+	write_log_init();
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_IDS */
 
 	/* Get the platform data (if available) for our devices */
 	err = platform_driver_probe(&brcmf_pd, brcmf_common_pd_probe);
 	if (err == -ENODEV)
 		brcmf_dbg(INFO, "No platform data available.\n");
+
+	if (err) {
+		err = platform_driver_register(&brcmf_platform_dev_driver);
+		if (err)
+			brcmf_err("platform_driver_register failed\n");
+	}
 
 	/* Initialize global module parameters */
 	brcmf_mp_attach();
@@ -598,6 +680,8 @@ static int __init brcmfmac_module_init(void)
 		brcmf_debugfs_exit();
 		if (brcmfmac_pdata)
 			platform_driver_unregister(&brcmf_pd);
+		if (wifi_regulator)
+			platform_driver_unregister(&brcmf_platform_dev_driver);
 	}
 
 	return err;
@@ -608,9 +692,14 @@ static void __exit brcmfmac_module_exit(void)
 	brcmf_core_exit();
 	if (brcmfmac_pdata)
 		platform_driver_unregister(&brcmf_pd);
+	if (wifi_regulator)
+		platform_driver_unregister(&brcmf_platform_dev_driver);
 	brcmf_debugfs_exit();
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_IDS
+	write_log_uninit();
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_IDS */
 }
 
-module_init(brcmfmac_module_init);
+late_initcall(brcmfmac_module_init);
 module_exit(brcmfmac_module_exit);
 

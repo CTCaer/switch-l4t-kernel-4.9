@@ -96,7 +96,8 @@ static inline void
 brcmf_proto_configure_addr_mode(struct brcmf_pub *drvr, int ifidx,
 				enum proto_addr_mode addr_mode)
 {
-	drvr->proto->configure_addr_mode(drvr, ifidx, addr_mode);
+	if (drvr && drvr->proto)
+		drvr->proto->configure_addr_mode(drvr, ifidx, addr_mode);
 }
 static inline void
 brcmf_proto_delete_peer(struct brcmf_pub *drvr, int ifidx, u8 peer[ETH_ALEN])

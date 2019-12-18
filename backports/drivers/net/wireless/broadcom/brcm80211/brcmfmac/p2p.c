@@ -29,6 +29,9 @@
 #include "p2p.h"
 #include "cfg80211.h"
 #include "feature.h"
+#ifdef CONFIG_BACKPORT_NV_CUSTOM_SCAN
+#include "nv_custom_sysfs_tegra.h"
+#endif /* CONFIG_BACKPORT_NV_CUSTOM_SCAN */
 
 /* parameters used for p2p escan */
 #define P2PAPI_SCAN_NPROBES 1
@@ -463,23 +466,35 @@ static int brcmf_p2p_set_firmware(struct brcmf_if *ifp, u8 *p2p_mac)
  * @dev_addr: optional device address.
  *
  * P2P needs mac addresses for P2P device and interface. If no device
- * address it specified, these are derived from the primary net device, ie.
- * the permanent ethernet address of the device.
+ * address it specified, these are derived from a random ethernet
+ * address.
  */
 static void brcmf_p2p_generate_bss_mac(struct brcmf_p2p_info *p2p, u8 *dev_addr)
 {
 	struct brcmf_if *pri_ifp = p2p->bss_idx[P2PAPI_BSSCFG_PRIMARY].vif->ifp;
+	bool random_addr = false;
 	bool local_admin = false;
 
 	if (!dev_addr || is_zero_ether_addr(dev_addr)) {
-		dev_addr = pri_ifp->mac_addr;
-		local_admin = true;
+		/* If the primary interface address is already locally
+		 * administered, create a new random address.
+		 */
+		if (pri_ifp->mac_addr[0] & 0x02) {
+			random_addr = true;
+		} else {
+			dev_addr = pri_ifp->mac_addr;
+			local_admin = true;
+		}
 	}
 
-	/* Generate the P2P Device Address.  This consists of the device's
-	 * primary MAC address with the locally administered bit set.
+	/* Generate the P2P Device Address obtaining a random ethernet
+	 * address with the locally administered bit set.
 	 */
-	memcpy(p2p->dev_addr, dev_addr, ETH_ALEN);
+	if (random_addr)
+		eth_random_addr(p2p->dev_addr);
+	else
+		memcpy(p2p->dev_addr, dev_addr, ETH_ALEN);
+
 	if (local_admin)
 		p2p->dev_addr[0] |= 0x02;
 
@@ -652,7 +667,16 @@ static s32 brcmf_p2p_escan(struct brcmf_p2p_info *p2p, u32 num_chans,
 	memblk = kzalloc(memsize, GFP_KERNEL);
 	if (!memblk)
 		return -ENOMEM;
-
+#ifdef CONFIG_BACKPORT_NV_CUSTOM_SCAN
+	if (num_chans > 70) {
+		WIFI_SCAN_DEBUG("%s:"
+			" wifi scan rule substituted too many channels (%lu)"
+			" - fixing by reducing number of scan channels\n",
+			__func__,
+			(unsigned long) num_chans);
+		num_chans = 70;
+	}
+#endif
 	vif = p2p->bss_idx[bss_type].vif;
 	if (vif == NULL) {
 		brcmf_err("no vif for bss type %d\n", bss_type);
@@ -745,6 +769,16 @@ static s32 brcmf_p2p_escan(struct brcmf_p2p_info *p2p, u32 num_chans,
 	p2p_params->eparams.version = cpu_to_le32(BRCMF_ESCAN_REQ_VERSION);
 	p2p_params->eparams.action =  cpu_to_le16(WL_ESCAN_ACTION_START);
 	p2p_params->eparams.sync_id = cpu_to_le16(0x1234);
+#ifdef CONFIG_BACKPORT_NV_CUSTOM_SCAN
+	{
+		struct cfg80211_scan_request *request
+			= p2p->cfg->scan_request;
+		struct brcmf_scan_params_le *params = &p2p_params->eparams.params_le;
+		if (request) {
+			TEGRA_P2P_SCAN_PREPARE(params, request)
+		}
+	}
+#endif
 	/* perform p2p scan on primary device */
 	ret = brcmf_fil_bsscfg_data_set(vif->ifp, "p2p_scan", memblk, memsize);
 	if (!ret)
@@ -2459,7 +2493,12 @@ void brcmf_p2p_detach(struct brcmf_p2p_info *p2p)
 	if (vif != NULL) {
 		brcmf_p2p_cancel_remain_on_channel(vif->ifp);
 		brcmf_p2p_deinit_discovery(p2p);
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+		/* The rtnl_lock is held already in devinet_ioctl() */
+		brcmf_remove_interface(vif->ifp, true);
+#else
 		brcmf_remove_interface(vif->ifp, false);
+#endif
 	}
 	/* just set it all to zero */
 	memset(p2p, 0, sizeof(*p2p));

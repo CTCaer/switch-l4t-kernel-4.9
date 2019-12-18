@@ -33,6 +33,8 @@
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/acpi.h>
+#include <linux/regulator/consumer.h>
+#include <linux/wakelock.h>
 #include <net/cfg80211.h>
 
 #include <defs.h>
@@ -47,6 +49,7 @@
 #include "sdio.h"
 #include "core.h"
 #include "common.h"
+#include "android.h"
 
 #define SDIOH_API_ACCESS_RETRY_LIMIT	2
 
@@ -1266,6 +1269,8 @@ static int brcmf_ops_sdio_suspend(struct device *dev)
 	bus_if = dev_get_drvdata(dev);
 	sdiodev = bus_if->bus_priv.sdio;
 
+	brcmf_android_wake_lock_waive(bus_if->drvr, true);
+
 	brcmf_sdiod_freezer_on(sdiodev);
 	brcmf_sdio_wd_timer(sdiodev->bus, 0);
 
@@ -1278,6 +1283,8 @@ static int brcmf_ops_sdio_suspend(struct device *dev)
 	}
 	if (sdio_set_host_pm_flags(sdiodev->func[1], sdio_flags))
 		brcmf_err("Failed to set pm_flags %x\n", sdio_flags);
+
+	brcmf_android_wake_lock_waive(bus_if->drvr, false);
 	return 0;
 }
 

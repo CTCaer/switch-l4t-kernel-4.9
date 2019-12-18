@@ -54,7 +54,7 @@
 /* Keep BRCMF_ESCAN_BUF_SIZE below 64K (65536). Allocing over 64K can be
  * problematic on some systems and should be avoided.
  */
-#define BRCMF_ESCAN_BUF_SIZE		65000
+#define BRCMF_ESCAN_BUF_SIZE		(3 * 64 * 1024)
 #define BRCMF_ESCAN_TIMER_INTERVAL_MS	10000	/* E-Scan timeout */
 
 #define WL_ESCAN_ACTION_START		1
@@ -180,6 +180,12 @@ enum brcmf_vif_status {
 	BRCMF_VIF_STATUS_AP_CREATED,
 	BRCMF_VIF_STATUS_EAP_SUCCESS,
 	BRCMF_VIF_STATUS_ASSOC_SUCCESS,
+};
+
+enum brcmf_pktype {
+	BRCMF_PKTTYPE_BEACON_FLAG = 0x1,
+	BRCMF_PKTTYPE_PRBRSP_FLAG = 0x2,
+	BRCMF_PKTTYPE_ASSOCRESP_FLAG = 0x4,
 };
 
 /**
@@ -464,4 +470,12 @@ void brcmf_set_mpc(struct brcmf_if *ndev, int mpc);
 void brcmf_abort_scanning(struct brcmf_cfg80211_info *cfg);
 void brcmf_cfg80211_free_netdev(struct net_device *ndev);
 
+int brcmf_crit_proto_start(struct net_device *ndev);
+int brcmf_crit_proto_stop(struct net_device *ndev);
+int brcmf_setup_wiphybands(struct wiphy *wiphy);
+#ifdef CONFIG_BACKPORT_BRCM_INSMOD_NO_FW
+int brcmf_cfg80211_register_if(struct brcmf_pub *drvr);
+#endif
+s32 brcmf_cfg80211_set_ap_wps_p2p_ie(struct brcmf_cfg80211_vif *vif,
+				char *buf, int len, enum brcmf_pktype type);
 #endif /* BRCMFMAC_CFG80211_H */

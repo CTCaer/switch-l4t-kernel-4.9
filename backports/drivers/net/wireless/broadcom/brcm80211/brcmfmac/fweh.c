@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012 Broadcom Corporation
+ * Copyright (C) 2019 NVIDIA Corporation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -25,6 +26,9 @@
 #include "fweh.h"
 #include "fwil.h"
 #include "proto.h"
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_IDS
+#include "nv_logger.h"
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_IDS */
 
 /**
  * struct brcmf_fweh_queue_item - event item on event queue.
@@ -54,7 +58,7 @@ struct brcmf_fweh_event_name {
 	const char *name;
 };
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(CONFIG_BACKPORT_BRCMFMAC_NV_IDS)
 #define BRCMF_ENUM_DEF(id, val) \
 	{ val, #id },
 
@@ -115,7 +119,16 @@ static int brcmf_fweh_call_event_handler(struct brcmf_if *ifp,
 
 		/* handle the event if valid interface and handler */
 		if (fweh->evt_handler[code])
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_IDS
+		{
+			if (NV_FILELOG_ON())
+				write_log(code,
+					brcmf_fweh_event_name(code), emsg->addr);
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_IDS */
 			err = fweh->evt_handler[code](ifp, emsg, data);
+#ifdef CONFIG_BACKPORT_BRCMFMAC_NV_IDS
+		}
+#endif /* CONFIG_BACKPORT_BRCMFMAC_NV_IDS */
 		else
 			brcmf_err("unhandled event %d ignored\n", code);
 	} else {
@@ -429,7 +442,8 @@ void brcmf_fweh_process_event(struct brcmf_pub *drvr,
 	if (code != BRCMF_E_IF && !fweh->evt_handler[code])
 		return;
 
-	if (datalen > BRCMF_DCMD_MAXLEN)
+	if (datalen > BRCMF_DCMD_MAXLEN ||
+	    datalen + sizeof(*event_packet) > packet_len)
 		return;
 
 	if (in_interrupt())

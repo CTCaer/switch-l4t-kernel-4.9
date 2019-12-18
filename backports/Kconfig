@@ -32,6 +32,6 @@ if BACKPORT_LINUX
 
 source "$BACKPORT_DIR/Kconfig.versions"
 source "$BACKPORT_DIR/Kconfig.sources"
-# source "$BACKPORT_DIR/Kconfig.local"
+#source "$BACKPORT_DIR/Kconfig.local"
 
 endif # BACKPORT_LINUX
