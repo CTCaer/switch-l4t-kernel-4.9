@@ -251,4 +251,44 @@ int mii_ethtool_get_link_ksettings(struct mii_if_info *mii,
 	return 0;
 }
 EXPORT_SYMBOL(mii_ethtool_get_link_ksettings);
+
+/**
+ * mii_link_ok - is link status up/ok
+ * @mii: the MII interface
+ *
+ * Returns 1 if the MII reports link status up/ok, 0 otherwise.
+ */
+int mii_link_ok (struct mii_if_info *mii)
+{
+	/* first, a dummy read, needed to latch some MII phys */
+	mii->mdio_read(mii->dev, mii->phy_id, MII_BMSR);
+	if (mii->mdio_read(mii->dev, mii->phy_id, MII_BMSR) & BMSR_LSTATUS)
+		return 1;
+	return 0;
+}
+EXPORT_SYMBOL(mii_link_ok);
+
+/**
+ * mii_nway_restart - restart NWay (autonegotiation) for this interface
+ * @mii: the MII interface
+ *
+ * Returns 0 on success, negative on error.
+ */
+int mii_nway_restart (struct mii_if_info *mii)
+{
+	int bmcr;
+	int r = -EINVAL;
+
+	/* if autoneg is off, it's an error */
+	bmcr = mii->mdio_read(mii->dev, mii->phy_id, MII_BMCR);
+
+	if (bmcr & BMCR_ANENABLE) {
+		bmcr |= BMCR_ANRESTART;
+		mii->mdio_write(mii->dev, mii->phy_id, MII_BMCR, bmcr);
+		r = 0;
+	}
+
+	return r;
+}
+EXPORT_SYMBOL(mii_nway_restart);
 #endif /* LINUX_VERSION_IS_GEQ(4,6,0) */
