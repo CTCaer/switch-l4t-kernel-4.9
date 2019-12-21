@@ -95,7 +95,7 @@ enum bm92t_state_type {
 enum bm92t_extcon_cable_type {
 	USB_HOST = 0,
 	USB,
-	USB_PD
+	USB_DISP_DP
 };
 
 enum bm92t_vdm_id_type {
@@ -152,7 +152,7 @@ struct bm92t_platform_data bm92t_dflt_pdata = {
 static const unsigned int bm92t_extcon_cable[] = {
 	EXTCON_USB_HOST, /* id */
 	EXTCON_USB, /* vbus */
-	EXTCON_USB_PD, /* usb-pd */
+	EXTCON_DISP_DP, /* DisplayPort */
 	EXTCON_NONE,
 };
 
@@ -302,8 +302,6 @@ static void bm92t_power_work(struct work_struct *work)
 
 	bm92t_set_current_limit(info, PD_CHARGING_CURRENT_LIMIT_UA);
 	info->charging_enabled = true;
-
-	extcon_set_cable_state_(&info->edev, EXTCON_USB_PD, true);
 }
 
 static inline void bm92t_swap_data_role(struct bm92t_info *info,
@@ -357,8 +355,6 @@ static void
 	} else if (dr == DATA_ROLE_DFP) {
 		bm92t_set_current_limit(info, PD_CHARGING_CURRENT_LIMIT_UA);
 		info->charging_enabled = true;
-		bm92t_extcon_cable_update(info,
-			EXTCON_USB_PD, true);
 		bm92t_extcon_cable_update(info,
 			EXTCON_USB_HOST, true);
 		bm92t_state_machine(info, HPD_HANDLED);
@@ -470,8 +466,6 @@ static void bm92t_event_handler(struct work_struct *work)
 				if (info->charging_enabled) {
 					bm92t_set_current_limit(info, 0);
 					info->charging_enabled = false;
-					bm92t_extcon_cable_update(info,
-						EXTCON_USB_PD, false);
 				}
 
 				if (info->state == INIT_STATE)
@@ -586,6 +580,7 @@ static void bm92t_event_handler2(struct work_struct *work)
 		bm92t_state_machine(info, INIT_STATE);
 		bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 		bm92t_extcon_cable_update(info, EXTCON_USB, false);
+		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
 		goto ret;
 	}
 
@@ -596,12 +591,11 @@ static void bm92t_event_handler2(struct work_struct *work)
 			if (info->charging_enabled) {
 				bm92t_set_current_limit(info, 0);
 				info->charging_enabled = false;
-				bm92t_extcon_cable_update(info,
-					EXTCON_USB_PD, false);
 			}
 
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
+			bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
 			bm92t_state_machine(info, INIT_STATE);
 		}
 		goto ret;
@@ -721,6 +715,7 @@ static void bm92t_event_handler2(struct work_struct *work)
 		}
 		break;
 	case HPD_HANDLED:
+		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, true);
 		if (bm92t_is_success(alert_data, status1_data) &&
 			((status1_data & 0xff) == 0x80)) {
 			bm92t_send_vdm(info, vdm_query_device_msg,
