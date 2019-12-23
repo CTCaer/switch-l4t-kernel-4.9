@@ -2584,7 +2584,7 @@ static int tegra210_emc_suspend(struct device *dev)
 {
 	if (!IS_ERR(emc_override_clk)) {
 		emc_override_rate = clk_get_rate(emc_override_clk);
-		clk_set_rate(emc_override_clk, 204000000);
+		clk_set_rate(emc_override_clk, 40800000);
 		clk_prepare_enable(emc_override_clk);
 
 		pr_debug("%s at rate %lu\n",
@@ -2608,7 +2608,7 @@ static int tegra210_emc_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops tegra210_emc_pm_ops = {
-	SET_LATE_SYSTEM_SLEEP_PM_OPS(tegra210_emc_suspend, tegra210_emc_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(tegra210_emc_suspend, tegra210_emc_resume)
 };
 
 static struct of_device_id tegra210_emc_of_match[] = {
