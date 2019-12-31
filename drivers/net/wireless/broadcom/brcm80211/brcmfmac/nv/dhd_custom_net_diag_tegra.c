@@ -15,7 +15,7 @@
  */
 
 #include "dhd_custom_net_diag_tegra.h"
-#ifdef CPTCFG_BRCMFMAC_NV_NET_BW_EST_TEGRA
+#ifdef CONFIG_BRCMFMAC_NV_NET_BW_EST_TEGRA
 #include "dhd_custom_net_bw_est_tegra.h"
 #endif
 //#include "nv_common.h"
@@ -130,7 +130,7 @@ int wldev_get_mode(
 
 static void tegra_net_diag_work_func(struct work_struct *work)
 {
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 	extern struct net_device *dhd_custom_sysfs_tegra_histogram_stat_netdev;
 	struct net_device *net
 		= dhd_custom_sysfs_tegra_histogram_stat_netdev;
@@ -152,7 +152,7 @@ static void tegra_net_diag_work_func(struct work_struct *work)
 		return;
 	}
 
-#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_SCAN
+#ifdef CONFIG_BRCMFMAC_NV_CUSTOM_SCAN
 	/* Abort ongoing scan and acquire scan lock */
 	if (wifi_scan_sem_lock() < 0)
 		return;
@@ -189,10 +189,10 @@ static void tegra_net_diag_work_func(struct work_struct *work)
 
 	/* get bandwidth estimate */
 	tegra_net_diag_data.bw_est = 0;
-#ifdef CPTCFG_BRCMFMAC_NV_NET_BW_EST_TEGRA
+#ifdef CONFIG_BRCMFMAC_NV_NET_BW_EST_TEGRA
 	tegra_net_diag_data.bw_est = tegra_net_bw_est_get_value();
 #endif
-#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_SCAN
+#ifdef CONFIG_BRCMFMAC_NV_CUSTOM_SCAN
 	wifi_scan_sem_unlock();
 #endif
 
@@ -245,7 +245,7 @@ void tegra_net_diag_get_value(tegra_net_diag_data_t *net_diag_data)
 			sizeof(tegra_net_diag_data_t));
 
 	/* save a copy of the diag data in bcmdhd tcpdump */
-#ifdef CPTCFG_BRCMFMAC_NV_SYSFS_TEGRA
+#ifdef CONFIG_BRCMFMAC_NV_SYSFS_TEGRA
 	tcpdump_pkt_save('D', "", __func__, __LINE__,
 		(void *) &tegra_net_diag_data, sizeof(tegra_net_diag_data), 0);
 #endif

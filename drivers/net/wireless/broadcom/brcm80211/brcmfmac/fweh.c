@@ -26,9 +26,9 @@
 #include "fweh.h"
 #include "fwil.h"
 #include "proto.h"
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 #include "nv_logger.h"
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */
 
 /**
  * struct brcmf_fweh_queue_item - event item on event queue.
@@ -58,7 +58,7 @@ struct brcmf_fweh_event_name {
 	const char *name;
 };
 
-#if defined(DEBUG) || defined(CPTCFG_BRCMFMAC_NV_IDS)
+#if defined(DEBUG) || defined(CONFIG_BRCMFMAC_NV_IDS)
 #define BRCMF_ENUM_DEF(id, val) \
 	{ val, #id },
 
@@ -119,16 +119,16 @@ static int brcmf_fweh_call_event_handler(struct brcmf_if *ifp,
 
 		/* handle the event if valid interface and handler */
 		if (fweh->evt_handler[code])
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 		{
 			if (NV_FILELOG_ON())
 				write_log(code,
 					brcmf_fweh_event_name(code), emsg->addr);
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */
 			err = fweh->evt_handler[code](ifp, emsg, data);
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 		}
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */
 		else
 			brcmf_err("unhandled event %d ignored\n", code);
 	} else {

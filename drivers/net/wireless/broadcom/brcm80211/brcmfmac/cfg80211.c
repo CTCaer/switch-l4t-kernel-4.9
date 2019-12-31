@@ -44,13 +44,13 @@
 #include "common.h"
 #include "android.h"
 
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 #include "nv_custom_sysfs_tegra.h"
-#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
+#endif /* CONFIG_NV_CUSTOM_SYSFS_TEGRA */
 
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 #include "nv_custom_sysfs_tegra.h"
-#endif /* CPTCFG_NV_CUSTOM_SCAN */
+#endif /* CONFIG_NV_CUSTOM_SCAN */
 
 #define BRCMF_SCAN_IE_LEN_MAX		2048
 
@@ -264,9 +264,9 @@ static u8 nl80211_band_to_fwil(enum nl80211_band band)
 	return 0;
 }
 
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 extern u32  restrict_bw_20;
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 
 static u16 chandef_to_chanspec(struct brcmu_d11inf *d11inf,
 			       struct cfg80211_chan_def *ch)
@@ -321,13 +321,13 @@ static u16 chandef_to_chanspec(struct brcmu_d11inf *d11inf,
 		WARN_ON_ONCE(1);
 	}
 
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 	/* Override channel bw preference if bw is restricted to 20MHz */
 	if (restrict_bw_20) {
 		brcmf_err("setting bw to 20 MHz \n");
 		ch_inf.bw = BRCMU_CHAN_BW_20;
 	}
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 	d11inf->encchspec(&ch_inf);
 
 	return ch_inf.chspec;
@@ -803,11 +803,11 @@ s32 brcmf_notify_escan_complete(struct brcmf_cfg80211_info *cfg,
 		struct cfg80211_scan_info info = {
 			.aborted = aborted,
 		};
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 		TEGRA_SCAN_DONE(scan_request, fw_abort)
 #endif
 		cfg80211_scan_done(scan_request, &info);
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 		skip_cfg80211_scan_done:
 #endif
 		brcmf_dbg(SCAN, "ESCAN Completed scan: %s\n",
@@ -1015,7 +1015,7 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
 	params_le->passive_time = cpu_to_le32(-1);
 	params_le->home_time = cpu_to_le32(-1);
 	memset(&params_le->ssid_le, 0, sizeof(params_le->ssid_le));
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 	TEGRA_SCAN_PREPARE(params_le, request)
 #endif
 
@@ -1263,7 +1263,7 @@ brcmf_cfg80211_scan(struct wiphy *wiphy, struct cfg80211_scan_request *request)
 	if (!check_vif_up(vif))
 		return -EIO;
 
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 	{
 		int status = wifi_scan_request(brcmf_cfg80211_scan,
 			wiphy, request);
@@ -3689,7 +3689,7 @@ static s32 brcmf_cfg80211_resume(struct wiphy *wiphy)
 	/* Android doesn't need below setting */
 	if (brcmf_android_is_attached(ifp->drvr))
 		return 0;
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 	tegra_sysfs_resume();
 #endif
 
@@ -3841,7 +3841,7 @@ static s32 brcmf_cfg80211_suspend(struct wiphy *wiphy,
 			/* Configure WOWL parameters */
 			brcmf_configure_wowl(cfg, ifp, wowl);
 	}
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 	tegra_sysfs_suspend();
 #endif
 
@@ -5695,7 +5695,7 @@ static s32 brcmf_get_assoc_ies(struct brcmf_cfg80211_info *cfg,
 	return err;
 }
 
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 int brcmf_get_max_linkspeed(
         struct net_device *dev, char *command, int total_len)
 {
@@ -5765,7 +5765,7 @@ int brcmf_get_max_linkspeed(
 	done:
 		return bytes_written;
 }
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 
 static s32
 brcmf_bss_roaming_done(struct brcmf_cfg80211_info *cfg,
@@ -6757,7 +6757,7 @@ static int brcmf_setup_ifmodes(struct wiphy *wiphy, struct brcmf_if *ifp)
 	p2p = brcmf_feat_is_enabled(ifp, BRCMF_FEAT_P2P);
 	rsdb = brcmf_feat_is_enabled(ifp, BRCMF_FEAT_RSDB);
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	if (ifp->drvr->android->init_done)
 		return 0;
 
@@ -7015,12 +7015,12 @@ static int brcmf_setup_wiphy(struct wiphy *wiphy, struct brcmf_if *ifp)
 	brcmf_fweh_register(cfg->pub, BRCMF_E_PHY_TEMP,
 			    brcmf_wiphy_phy_temp_evt_handler);
 
-#ifdef CPTCFG_BRCMFMAC_ANDROID
+#ifdef CONFIG_BRCMFMAC_ANDROID
 	err = brcmf_android_set_extra_wiphy(wiphy, ifp);
 	if (err)
 		return err;
 #endif
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	if (!drvr->android->init_done)
 		return 0;
 #endif
@@ -7393,7 +7393,7 @@ struct brcmf_cfg80211_info *brcmf_cfg80211_attach(struct brcmf_pub *drvr,
 		return NULL;
 	}
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	ops = drvr->config->ops;
 	if (!ops)
 		ops = kmemdup(&brcmf_cfg80211_ops, sizeof(*ops), GFP_KERNEL);
@@ -7409,7 +7409,7 @@ struct brcmf_cfg80211_info *brcmf_cfg80211_attach(struct brcmf_pub *drvr,
 		ops->set_rekey_data = brcmf_cfg80211_set_rekey_data;
 #endif
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	wiphy = drvr->android->wiphy;
 #else
 	wiphy = wiphy_new(ops, sizeof(struct brcmf_cfg80211_info));
@@ -7423,7 +7423,7 @@ struct brcmf_cfg80211_info *brcmf_cfg80211_attach(struct brcmf_pub *drvr,
 
 	cfg = wiphy_priv(wiphy);
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	vif = ifp->vif;
 	memset(&vif->saved_ie, 0, sizeof(vif->saved_ie));
 	brcmf_init_prof(&vif->profile);
@@ -7480,7 +7480,7 @@ struct brcmf_cfg80211_info *brcmf_cfg80211_attach(struct brcmf_pub *drvr,
 		cap = &wiphy->bands[NL80211_BAND_2GHZ]->ht_cap.cap;
 		*cap |= IEEE80211_HT_CAP_SUP_WIDTH_20_40;
 	}
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	brcmf_dbg(INFO, "skip register wiphy\n");
 #else
 	err = wiphy_register(wiphy);
@@ -7592,14 +7592,14 @@ void brcmf_cfg80211_detach(struct brcmf_cfg80211_info *cfg)
 
 	brcmf_pno_detach(cfg);
 	brcmf_btcoex_detach(cfg);
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	brcmf_dbg(INFO, "not unregister wiphy and cfg->ops\n");
 #else
 	wiphy_unregister(cfg->wiphy);
 	kfree(cfg->ops);
 #endif
 	wl_deinit_priv(cfg);
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	brcmf_dbg(INFO, "not free wiphy\n");
 #else
 	brcmf_free_wiphy(cfg->wiphy);
@@ -7639,7 +7639,7 @@ int brcmf_crit_proto_stop(struct net_device *ndev)
 	return 0;
 }
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 static struct ieee80211_supported_band brcmf_def_band_2ghz = {
 	.band = NL80211_BAND_2GHZ,
 	.channels = __wl_2ghz_channels,

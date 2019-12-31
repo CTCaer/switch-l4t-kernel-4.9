@@ -334,16 +334,16 @@ tegra_sysfs_suspend(void);
 void
 tegra_sysfs_resume(void);
 
-#ifdef CPTCFG_NV_CUSTOM_CAP
+#ifdef CONFIG_NV_CUSTOM_CAP
 #include "nv_cap.h"
 #endif
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 #include "nv_logger.h"
 #endif
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 #include "nv_scan.h"
 #endif
-#ifdef CPTCFG_NV_CUSTOM_RF_TEST
+#ifdef CONFIG_NV_CUSTOM_RF_TEST
 #include "nv_rf_test.h"
 #endif
 #endif  /* _nv_custom_sysfs_tegra_h_ */

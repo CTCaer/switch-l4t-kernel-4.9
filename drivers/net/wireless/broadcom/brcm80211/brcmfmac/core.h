@@ -204,7 +204,7 @@ struct brcmf_if {
 	wait_queue_head_t pend_8021x_wait;
 	struct in6_addr ipv6_addr_tbl[NDOL_MAX_ENTRIES];
 	u8 ipv6addr_idx;
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	wait_queue_head_t pend_dev_reset_wait;
 #endif
 };
@@ -230,10 +230,10 @@ int brcmf_pktfilter_add_remove(struct net_device *ndev, int filter_num,
 int brcmf_pktfilter_enable(struct net_device *ndev, bool enable);
 int brcmf_set_country(struct net_device *ndev, char *country);
 int brcmf_set_power(bool on, unsigned long msec);
-#ifdef CPTCFG_BRCMFMAC_ANDROID
+#ifdef CONFIG_BRCMFMAC_ANDROID
 extern void wifi_card_detect(bool on);
 #endif
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 void brcmf_wake_dev_reset_waitq(struct brcmf_pub *drvr, int status);
 #endif
 #endif /* BRCMFMAC_CORE_H */

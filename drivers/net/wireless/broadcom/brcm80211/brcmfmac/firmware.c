@@ -495,13 +495,13 @@ static void brcmf_fw_request_code_done(const struct firmware *fw, void *ctx)
 {
 	struct brcmf_fw *fwctx = ctx;
 	int ret = 0;
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	struct brcmf_bus *bus_if = dev_get_drvdata(fwctx->dev);
 #endif
 
 	brcmf_dbg(TRACE, "enter: dev=%s\n", dev_name(fwctx->dev));
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	if (!brcmf_android_in_reset(bus_if->drvr)) {
 		fwctx->done(fwctx->dev, ret, fw, NULL, 0);
 		kfree(fwctx);
@@ -530,7 +530,7 @@ fail:
 	brcmf_dbg(TRACE, "failed: dev=%s\n", dev_name(fwctx->dev));
 done:
 	fwctx->done(fwctx->dev, ret, fw, NULL, 0);
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	if (fw)
 		release_firmware(fw);
 #endif

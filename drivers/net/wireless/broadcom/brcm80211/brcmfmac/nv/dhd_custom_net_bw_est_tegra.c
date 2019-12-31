@@ -15,13 +15,13 @@
  */
 
 #include "dhd_custom_net_bw_est_tegra.h"
-#ifdef CPTCFG_BRCMFMAC_NV_NET_PERF_TEGRA
+#ifdef CONFIG_BRCMFMAC_NV_NET_PERF_TEGRA
 #include "dhd_custom_net_perf_tegra.h"
 #endif
 
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 #include "nv_custom_sysfs_tegra.h"
-#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
+#endif /* CONFIG_NV_CUSTOM_SYSFS_TEGRA */
 
 static int tegra_net_bw_est_debug;
 
@@ -240,7 +240,7 @@ static DECLARE_DELAYED_WORK(tegra_net_bw_est_work, tegra_net_bw_est_work_func);
 
 static void tegra_net_bw_est_work_func(struct work_struct *work)
 {
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 	extern struct net_device *dhd_custom_sysfs_tegra_histogram_stat_netdev;
 	struct net_device *net
 		= dhd_custom_sysfs_tegra_histogram_stat_netdev;
@@ -294,7 +294,7 @@ static void tegra_net_bw_est_work_func(struct work_struct *work)
 		denom = TEGRA_NET_BW_EST_PREFILL_TX_QUEUE_DENOM_MAX;
 
 	/* boost net perf while running b/w estimator */
-#ifdef CPTCFG_BRCMFMAC_NV_NET_PERF_TEGRA
+#ifdef CONFIG_BRCMFMAC_NV_NET_PERF_TEGRA
 	wifi_sclk_enable();
 	/* wait for boost to take into effect */
 	OSL_SLEEP(2);
@@ -394,7 +394,7 @@ static void tegra_net_bw_est_work_func(struct work_struct *work)
 
 	/* unboost net perf after running b/w estimator */
 done2:
-#ifdef CPTCFG_BRCMFMAC_NV_NET_PERF_TEGRA
+#ifdef CONFIG_BRCMFMAC_NV_NET_PERF_TEGRA
 	wifi_sclk_disable();
 #endif
 
@@ -674,11 +674,11 @@ void tegra_net_bw_est_set_dst_macaddr(unsigned char *macaddr)
 
 unsigned long tegra_net_bw_est_get_value(void)
 {
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 	if (!tegra_sysfs_wifi_on) {
 		return 0;
 	}
-#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
+#endif /* CONFIG_NV_CUSTOM_SYSFS_TEGRA */
 
 	/* start work */
 	tegra_net_bw_est_work_start();

@@ -16,7 +16,7 @@
  *
  */
 
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 
 #include <linux/fs.h>
 #include <linux/jiffies.h>
@@ -52,4 +52,4 @@ s32 dhd_log_netlink_send_msg(int pid, int type, int seq,
 int dhdlog_sysfs_init(struct device *dev);
 int dhdlog_sysfs_deinit(struct device *dev);
 extern char nv_error_buffer[MAX_ERROR_SIZE];
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */

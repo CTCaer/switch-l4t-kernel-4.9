@@ -41,9 +41,9 @@
 #include "fwil.h"
 #include "vendor.h"
 
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 #include "nv_common.h"
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 
 #define CMD_START		"START"
 #define CMD_STOP		"STOP"
@@ -69,10 +69,10 @@
 #define CMD_P2P_SET_NOA		"P2P_SET_NOA"
 #define CMD_MIRACAST		"MIRACAST"
 
-#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+#ifdef CONFIG_BRCMFMAC_NV_COUNTRY_CODE
 #define CMD_NV_COUNTRY		"NV_COUNTRY"
-#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#endif /* CONFIG_BRCMFMAC_NV_COUNTRY_CODE */
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 #define CMD_SET_IM_MODE		"SETMIRACAST"
 #define CMD_UPDATE_CHANNEL_LIST "UPDATE_CHANNEL_LIST"
 #define CMD_RESTRICT_BW_20      "RESTRICT_BW_20"
@@ -85,7 +85,7 @@
 #define CMD_MKEEP_ALIVE		"MKEEP_ALIVE" /* TODO */
 u32 restrict_bw_20;
 bool builtin_roam_disabled;
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 
 #define DEFAULT_WIFI_TURNON_DELAY	200
 
@@ -177,11 +177,11 @@ static int brcmf_android_set_country(struct net_device *ndev, char *command,
 	struct brcmf_if *ifp =  netdev_priv(ndev);
 	struct brcmf_pub *drvr = ifp->drvr;
 	struct brcmf_android *android = drvr->android;
-#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+#ifdef CONFIG_BRCMFMAC_NV_COUNTRY_CODE
 	char *country_code = command + strlen(CMD_NV_COUNTRY) + 1;
 #else
 	char *country_code = command + strlen(CMD_COUNTRY) + 1;
-#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+#endif /* CONFIG_BRCMFMAC_NV_COUNTRY_CODE */
 
 	int ret = 0;
 
@@ -278,9 +278,9 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 	struct wireless_dev *wdev = ndev->ieee80211_ptr;
 	struct wiphy *wiphy = NULL;
 	int skip = 0;
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 	int val;
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 
 	brcmf_dbg(ANDROID, "enter\n");
 	brcmf_err("command = %s received\n", command);
@@ -306,7 +306,7 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 		    brcmf_android_set_suspendmode(ndev, command,
 						  priv_cmd.total_len);
 	} else if (strncmp(command, CMD_COUNTRY, strlen(CMD_COUNTRY)) == 0) {
-#ifndef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+#ifndef CONFIG_BRCMFMAC_NV_COUNTRY_CODE
 		bytes_written =
 		    brcmf_android_set_country(ndev, command,
 					      priv_cmd.total_len);
@@ -316,7 +316,7 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 		bytes_written =
 			brcmf_android_set_country(ndev, command,
 						priv_cmd.total_len);
-#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+#endif /* CONFIG_BRCMFMAC_NV_COUNTRY_CODE */
 	} else if (strncmp(command, CMD_BTCOEXMODE,
 		   strlen(CMD_BTCOEXMODE)) == 0) {
 		bytes_written =
@@ -357,7 +357,7 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 	} else if (strncmp(command, CMD_BTCOEXSCAN_STOP,
 		   strlen(CMD_BTCOEXSCAN_STOP)) == 0) {
 		//TODO: Handle BTCOEXSCAN_STOP command
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 	} else if (strncmp(command, CMD_SET_IM_MODE,
 			strlen(CMD_SET_IM_MODE)) == 0) {
 		bytes_written =
@@ -384,7 +384,7 @@ brcmf_handle_private_cmd(struct brcmf_pub *drvr, struct net_device *ndev,
 	} else if (strncmp(command, CMD_MKEEP_ALIVE,
 		strlen(CMD_MKEEP_ALIVE)) == 0) {
 		brcmf_err("CMD_MKEEP_ALIVE not supported\n");
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 	} else {
 		brcmf_err("unknown PRIVATE command %s - ignored\n", command);
 		snprintf(command, 5, "FAIL");
@@ -597,7 +597,7 @@ int brcmf_android_init(struct brcmf_pub *drvr)
 {
 	int err = 0;
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	err = brcmf_cfg80211_register_if(drvr);
 	if (err) {
 		brcmf_err("init failed, err=%d\n", err);

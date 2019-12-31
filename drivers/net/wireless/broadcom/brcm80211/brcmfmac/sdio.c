@@ -936,7 +936,7 @@ static int brcmf_sdio_clkctl(struct brcmf_sdio *bus, uint target, bool pendok)
 #ifdef DEBUG
 	uint oldstate = bus->clkstate;
 #endif				/* DEBUG */
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	struct brcmf_pub *drvr = bus->sdiodev->bus_if->drvr;
 #endif
 
@@ -948,7 +948,7 @@ static int brcmf_sdio_clkctl(struct brcmf_sdio *bus, uint target, bool pendok)
 
 	switch (target) {
 	case CLK_AVAIL:
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 		if (!drvr->android->init_done) {
 			brcmf_dbg(SDIO, "skip requesting HT in boot-up\n");
 			break;
@@ -4307,7 +4307,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 	struct brcmf_sdio *bus;
 	u8 saveclk;
 	u8 devctl;
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	struct brcmf_pub *drvr;
 #endif
 
@@ -4322,7 +4322,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 
 	bus = sdiodev->bus;
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	drvr = bus_if->drvr;
 	if (!brcmf_android_in_reset(drvr)) {
 		sdio_claim_host(bus->sdiodev->func[1]);
@@ -4497,7 +4497,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 		if (bus->sdiodev->fmac_ulp.ulp_state == FMAC_ULP_TRIGGERED)
 			bus->sdiodev->fmac_ulp.ulp_state = FMAC_ULP_IDLE;
 	}
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	brcmf_wake_dev_reset_waitq(drvr, 0);
 #endif
 	return;
@@ -4509,7 +4509,7 @@ fail:
 	device_release_driver(&sdiodev->func[2]->dev);
 	device_release_driver(dev);
 	device_release_driver(&sdiodev->func[2]->dev);
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	brcmf_wake_dev_reset_waitq(drvr, -EIO);
 #endif
 }

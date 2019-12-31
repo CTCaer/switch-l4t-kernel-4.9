@@ -29,9 +29,9 @@
 #include "p2p.h"
 #include "cfg80211.h"
 #include "feature.h"
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 #include "nv_custom_sysfs_tegra.h"
-#endif /* CPTCFG_NV_CUSTOM_SCAN */
+#endif /* CONFIG_NV_CUSTOM_SCAN */
 
 /* parameters used for p2p escan */
 #define P2PAPI_SCAN_NPROBES 1
@@ -671,7 +671,7 @@ static s32 brcmf_p2p_escan(struct brcmf_p2p_info *p2p, u32 num_chans,
 	memblk = kzalloc(memsize, GFP_KERNEL);
 	if (!memblk)
 		return -ENOMEM;
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 	if (num_chans > 70) {
 		WIFI_SCAN_DEBUG("%s:"
 			" wifi scan rule substituted too many channels (%lu)"
@@ -773,7 +773,7 @@ static s32 brcmf_p2p_escan(struct brcmf_p2p_info *p2p, u32 num_chans,
 	p2p_params->eparams.version = cpu_to_le32(BRCMF_ESCAN_REQ_VERSION);
 	p2p_params->eparams.action =  cpu_to_le16(WL_ESCAN_ACTION_START);
 	p2p_params->eparams.sync_id = cpu_to_le16(0x1234);
-#ifdef CPTCFG_NV_CUSTOM_SCAN
+#ifdef CONFIG_NV_CUSTOM_SCAN
 	{
 		struct cfg80211_scan_request *request
 			= p2p->cfg->scan_request;
@@ -2519,7 +2519,7 @@ void brcmf_p2p_detach(struct brcmf_p2p_info *p2p)
 	if (vif != NULL) {
 		brcmf_p2p_cancel_remain_on_channel(vif->ifp);
 		brcmf_p2p_deinit_discovery(p2p);
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 		/* The rtnl_lock is held already in devinet_ioctl() */
 		brcmf_remove_interface(vif->ifp, true);
 #else

@@ -43,9 +43,9 @@
 #include "cfg80211.h"
 #include "android.h"
 
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 #include "nv_custom_sysfs_tegra.h"
-#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
+#endif /* CONFIG_NV_CUSTOM_SYSFS_TEGRA */
 
 enum brcmf_pcie_state {
 	BRCMFMAC_PCIE_STATE_DOWN,
@@ -1689,12 +1689,12 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 	struct brcmf_pciedev_info *devinfo;
 	struct brcmf_commonring **flowrings;
 	u32 i;
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	struct brcmf_pub *drvr;
 #endif
 
 	bus = dev_get_drvdata(dev);
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	drvr = bus->drvr;
 	if (!brcmf_android_in_reset(drvr)) {
 		brcmf_android_init(drvr);
@@ -1758,7 +1758,7 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 
 	brcmf_pcie_intr_enable(devinfo);
 	if (brcmf_pcie_attach_bus(devinfo) == 0) {
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 		brcmf_wake_dev_reset_waitq(drvr, 0);
 #endif
 		return;
@@ -1768,7 +1768,7 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 
 fail:
 	device_release_driver(dev);
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	brcmf_wake_dev_reset_waitq(drvr, -EIO);
 #endif
 }
@@ -1782,7 +1782,7 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct brcmf_bus *bus;
 	u16 domain_nr;
 	u16 bus_nr;
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	struct brcmf_pub *drvr = NULL;
 	int i;
 #endif
@@ -1844,7 +1844,7 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	bus->wowl_supported = pci_pme_capable(pdev, PCI_D3hot);
 	dev_set_drvdata(&pdev->dev, bus);
 
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	if (!g_drvr) {
 		/* Allocate primary brcmf_info */
 		drvr = kzalloc(sizeof(*drvr), GFP_ATOMIC);
@@ -1884,13 +1884,13 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 					  devinfo->fw_name, devinfo->nvram_name,
 					  brcmf_pcie_setup, domain_nr, bus_nr);
 	if (ret == 0) {
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 		tegra_sysfs_bus_register(&pdev->dev);
 #endif
 		return 0;
 	}
 fail_bus:
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	kfree(drvr);
 #endif
 	kfree(bus->msgbuf);
@@ -1919,7 +1919,7 @@ brcmf_pcie_remove(struct pci_dev *pdev)
 	bus = dev_get_drvdata(&pdev->dev);
 	if (bus == NULL)
 		return;
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 		tegra_sysfs_bus_unregister(&pdev->dev);
 #endif
 
@@ -1992,7 +1992,7 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 
 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
 	brcmf_android_wake_lock_waive(bus->drvr, false);
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 	tegra_sysfs_suspend();
 #endif
 
@@ -2013,7 +2013,7 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
 	devinfo = bus->bus_priv.pcie->devinfo;
 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
 
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 	tegra_sysfs_resume();
 #endif
 	/* Check if device is still up and running, if so we are ready */

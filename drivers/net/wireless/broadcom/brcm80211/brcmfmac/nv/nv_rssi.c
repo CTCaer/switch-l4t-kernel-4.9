@@ -66,7 +66,7 @@ rssi_work_func(struct work_struct *work)
 			0);
 	}
 
-#ifdef CPTCFG_NV_CUSTOM_STATS
+#ifdef CONFIG_NV_CUSTOM_STATS
 	/* save rssi value for statistics */
 	if (((int) scb_val.val) < 0) {
 		TEGRA_SYSFS_HISTOGRAM_STAT_SET(rssi, scb_val.val);

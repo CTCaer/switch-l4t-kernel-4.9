@@ -20,11 +20,11 @@ ccflags-y += \
 	-Idrivers/net/wireless/broadcom/brcm80211/brcmfmac	\
 	-Idrivers/net/wireless/broadcom/brcm80211/brcmfmac/nv	\
 	-Idrivers/net/wireless/broadcom/brcm80211/include	\
-	-DCPTCFG_BRCMFMAC_NV_GPIO \
-	-DCPTCFG_BRCMFMAC_NV_CUSTOM_MAC \
-	-DCPTCFG_BRCMFMAC_NV_CUSTOM_FILES \
-	-DCPTCFG_BRCMFMAC_NV_COUNTRY_CODE \
-	-DCPTCFG_BRCMFMAC_NV_PRIV_CMD
+	-DCONFIG_BRCMFMAC_NV_GPIO \
+	-DCONFIG_BRCMFMAC_NV_CUSTOM_MAC \
+	-DCONFIG_BRCMFMAC_NV_CUSTOM_FILES \
+	-DCONFIG_BRCMFMAC_NV_COUNTRY_CODE \
+	-DCONFIG_BRCMFMAC_NV_PRIV_CMD
 
 obj-$(CONFIG_BRCMFMAC) += brcmfmac.o
 brcmfmac-objs += \
@@ -61,57 +61,57 @@ brcmfmac-$(CONFIG_BRCM_TRACING) += \
 		tracepoint.o
 brcmfmac-$(CONFIG_OF) += \
 		of.o
-brcmfmac-$(CPTCFG_BRCMFMAC_ANDROID) += \
+brcmfmac-$(CONFIG_BRCMFMAC_ANDROID) += \
 		android.o \
 		nv_common.o
 
-ifneq ($(CPTCFG_NV_CUSTOM_SYSFS_TEGRA),)
-brcmfmac-$(CPTCFG_NV_CUSTOM_SYSFS_TEGRA) += \
+ifneq ($(CONFIG_NV_CUSTOM_SYSFS_TEGRA),)
+brcmfmac-$(CONFIG_NV_CUSTOM_SYSFS_TEGRA) += \
 	nv/nv_custom_sysfs_tegra.o
 ccflags-y += \
-	-DCPTCFG_NV_CUSTOM_SYSFS_TEGRA
+	-DCONFIG_NV_CUSTOM_SYSFS_TEGRA
 endif
 
-ifneq ($(CPTCFG_NV_CUSTOM_CAP),)
-brcmfmac-$(CPTCFG_NV_CUSTOM_CAP) += \
+ifneq ($(CONFIG_NV_CUSTOM_CAP),)
+brcmfmac-$(CONFIG_NV_CUSTOM_CAP) += \
 	nv/nv_ping.o \
 	nv/nv_rssi.o \
 	nv/nv_tcpdump.o
 ccflags-y += \
-	-DCPTCFG_NV_CUSTOM_CAP
+	-DCONFIG_NV_CUSTOM_CAP
 endif
 
-ifneq ($(CPTCFG_BRCMFMAC_NV_IDS),)
-brcmfmac-$(CPTCFG_BRCMFMAC_NV_IDS) += \
+ifneq ($(CONFIG_BRCMFMAC_NV_IDS),)
+brcmfmac-$(CONFIG_BRCMFMAC_NV_IDS) += \
     nv/nv_logger.o
 ccflags-y += \
-    -DCPTCFG_BRCMFMAC_NV_IDS
+    -DCONFIG_BRCMFMAC_NV_IDS
 endif
 
-ifneq ($(CPTCFG_NV_CUSTOM_SCAN),)
-brcmfmac-$(CPTCFG_NV_CUSTOM_SCAN) += \
+ifneq ($(CONFIG_NV_CUSTOM_SCAN),)
+brcmfmac-$(CONFIG_NV_CUSTOM_SCAN) += \
 	nv/nv_scan.o
 ccflags-y += \
-	-DCPTCFG_NV_CUSTOM_SCAN
+	-DCONFIG_NV_CUSTOM_SCAN
 endif
 
-ifneq ($(CPTCFG_NV_NET_BW_EST_TEGRA),)
-brcmfmac-$(CPTCFG_NV_NET_BW_EST_TEGRA) += \
+ifneq ($(CONFIG_NV_NET_BW_EST_TEGRA),)
+brcmfmac-$(CONFIG_NV_NET_BW_EST_TEGRA) += \
 	nv/dhd_custom_net_bw_est_tegra.o
 ccflags-y += \
-	-DCPTCFG_BRCMFMAC_NV_NET_BW_EST_TEGRA
+	-DCONFIG_BRCMFMAC_NV_NET_BW_EST_TEGRA
 endif
 
-ifneq ($(CPTCFG_NV_NET_DIAG_TEGRA),)
-brcmfmac-$(CPTCFG_NV_NET_DIAG_TEGRA) += \
+ifneq ($(CONFIG_NV_NET_DIAG_TEGRA),)
+brcmfmac-$(CONFIG_NV_NET_DIAG_TEGRA) += \
 		nv/dhd_custom_net_diag_tegra.o
 ccflags-y += \
-	-DCPTCFG_BRCMFMAC_NV_NET_DIAG_TEGRA
+	-DCONFIG_BRCMFMAC_NV_NET_DIAG_TEGRA
 endif
 
-ifneq ($(CPTCFG_NV_CUSTOM_RF_TEST),)
-brcmfmac-$(CPTCFG_NV_CUSTOM_RF_TEST) += \
+ifneq ($(CONFIG_NV_CUSTOM_RF_TEST),)
+brcmfmac-$(CONFIG_NV_CUSTOM_RF_TEST) += \
 	nv/nv_rf_test.o
 ccflags-y += \
-	-DCPTCFG_NV_CUSTOM_RF_TEST
+	-DCONFIG_NV_CUSTOM_RF_TEST
 endif

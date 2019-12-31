@@ -36,12 +36,12 @@
 #include <brcm_hw_ids.h>
 #include "defs.h"
 
-#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
+#ifdef CONFIG_BRCMFMAC_NV_CUSTOM_FILES
 #include "nv_common.h"
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 #include "nv_logger.h"
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
-#endif /* CPTCFG_BRCM_NV_CUSTOM_FILES */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCM_NV_CUSTOM_FILES */
 
 MODULE_AUTHOR("Broadcom Corporation");
 MODULE_DESCRIPTION("Broadcom 802.11 wireless LAN fullmac driver.");
@@ -531,7 +531,7 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
 #ifdef DEBUG
 	settings->ignore_probe_fail = !!brcmf_ignore_probe_fail;
 #endif
-#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+#ifdef CONFIG_BRCM_INSMOD_NO_FW
 	brcmf_mp_attach();
 #endif
 
@@ -575,7 +575,7 @@ static int __init brcmf_common_pd_probe(struct platform_device *pdev)
 {
 	brcmf_dbg(INFO, "Enter\n");
 
-#ifndef CPTCFG_BRCMFMAC_NV_GPIO
+#ifndef CONFIG_BRCMFMAC_NV_GPIO
 	brcmfmac_pdata = dev_get_platdata(&pdev->dev);
 
 	if (brcmfmac_pdata && brcmfmac_pdata->power_on) {
@@ -597,12 +597,12 @@ static int __init brcmf_common_pd_probe(struct platform_device *pdev)
 	}
 #else
 	setup_gpio(pdev, true);
-#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
+#endif /* CONFIG_BRCMFMAC_NV_GPIO */
 
-#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+#ifdef CONFIG_BRCMFMAC_NV_COUNTRY_CODE
 	if (wifi_platform_get_country_code_map())
 		brcmf_err("platform country code map is not available\n");
-#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+#endif /* CONFIG_BRCMFMAC_NV_COUNTRY_CODE */
 	return 0;
 }
 
@@ -610,7 +610,7 @@ static int brcmf_common_pd_remove(struct platform_device *pdev)
 {
 	brcmf_dbg(INFO, "Enter\n");
 
-#ifndef CPTCFG_BRCMFMAC_NV_GPIO
+#ifndef CONFIG_BRCMFMAC_NV_GPIO
 	if (brcmfmac_pdata && brcmfmac_pdata->power_off) {
 		brcmfmac_pdata->power_off();
 	} else if (wifi_regulator) {
@@ -621,11 +621,11 @@ static int brcmf_common_pd_remove(struct platform_device *pdev)
 	}
 #else
 	setup_gpio(pdev, false);
-#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
+#endif /* CONFIG_BRCMFMAC_NV_GPIO */
 
-#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+#ifdef CONFIG_BRCMFMAC_NV_COUNTRY_CODE
 	wifi_platform_free_country_code_map();
-#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+#endif /* CONFIG_BRCMFMAC_NV_COUNTRY_CODE */
 	return 0;
 }
 
@@ -656,9 +656,9 @@ static int __init brcmfmac_module_init(void)
 
 	/* Initialize debug system first */
 	brcmf_debugfs_init();
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 	write_log_init();
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */
 
 	/* Get the platform data (if available) for our devices */
 	err = platform_driver_probe(&brcmf_pd, brcmf_common_pd_probe);
@@ -695,9 +695,9 @@ static void __exit brcmfmac_module_exit(void)
 	if (wifi_regulator)
 		platform_driver_unregister(&brcmf_platform_dev_driver);
 	brcmf_debugfs_exit();
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 	write_log_uninit();
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */
 }
 
 late_initcall(brcmfmac_module_init);

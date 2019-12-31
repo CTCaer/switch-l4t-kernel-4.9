@@ -19,9 +19,9 @@
 #define BRCMFMAC_DEBUG_H
 
 #include <linux/net.h>	/* net_ratelimit() */
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 #include "nv_logger.h"
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */
 
 /* message levels */
 #define BRCMF_TRACE_VAL		0x00000002
@@ -56,7 +56,7 @@ void __brcmf_err(const char *func, const char *fmt, ...);
 /* Macro for error messages. When debugging / tracing the driver all error
  * messages are important to us.
  */
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 #define brcmf_err(fmt, ...)						\
 	do {								\
 		if (IS_ENABLED(CONFIG_BRCMDBG) ||			\
@@ -73,11 +73,11 @@ void __brcmf_err(const char *func, const char *fmt, ...);
 		    net_ratelimit())					\
 			__brcmf_err(__func__, fmt, ##__VA_ARGS__);	\
 	} while (0)
-#endif /*CPTCFG_BRCMFMAC_NV_IDS */
+#endif /*CONFIG_BRCMFMAC_NV_IDS */
 
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 #define NV_FILELOG_ON()         (enable_file_logging)
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */
 
 #if defined(DEBUG) || defined(CONFIG_BRCM_TRACING)
 

@@ -58,8 +58,8 @@ unsigned long tegra_net_bw_est_get_value(void);
 #define OSL_SLEEP(ms)	OSL_DELAY(ms*1000)
 #define	OSL_DELAY(usec)	osl_delay(usec)
 
-#ifdef CPTCFG_NV_CUSTOM_SYSFS_TEGRA
+#ifdef CONFIG_NV_CUSTOM_SYSFS_TEGRA
 extern int tegra_sysfs_wifi_on;
-#endif /* CPTCFG_NV_CUSTOM_SYSFS_TEGRA */
+#endif /* CONFIG_NV_CUSTOM_SYSFS_TEGRA */
 
 #endif  /* _dhd_custom_net_bw_est_tegra_h_ */

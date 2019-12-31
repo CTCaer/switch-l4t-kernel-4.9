@@ -15,7 +15,7 @@
  * GNU General Public License for more details.
  *
  */
-#ifdef CPTCFG_BRCMFMAC_NV_IDS
+#ifdef CONFIG_BRCMFMAC_NV_IDS
 #include <nv_logger.h>
 
 atomic_t list1_val = ATOMIC_INIT(1);
@@ -430,4 +430,4 @@ int dhdlog_sysfs_init(struct device *dev)
 
 	return ret;
 }
-#endif /* CPTCFG_BRCMFMAC_NV_IDS */
+#endif /* CONFIG_BRCMFMAC_NV_IDS */

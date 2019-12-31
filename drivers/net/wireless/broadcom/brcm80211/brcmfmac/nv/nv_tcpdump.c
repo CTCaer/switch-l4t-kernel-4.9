@@ -313,7 +313,7 @@ tegra_sysfs_histogram_tcpdump_rx(struct sk_buff *skb,
 	tcpdump_pkt_save(TCPDUMP_TAG_RX, netif, func, line,
 		skb->data, skb_headlen(skb), skb->data_len);
 
-#ifdef CPTCFG_NV_CUSTOM_STATS
+#ifdef CONFIG_NV_CUSTOM_STATS
 	/* kick off a stat work so we can get counters report */
 #if TCPDUMP_RX_STAT_DELAY > 0
 	tegra_sysfs_histogram_stat_work_run(TCPDUMP_RX_STAT_DELAY);

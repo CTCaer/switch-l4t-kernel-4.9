@@ -14,7 +14,7 @@
  *
 */
 
-#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_FILES
+#ifdef CONFIG_BRCMFMAC_NV_CUSTOM_FILES
 #include <linux/types.h>
 #include <linux/err.h>
 #include <linux/fs.h>
@@ -30,13 +30,13 @@
 /* DT node used by all the features */
 struct device_node *node;
 
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 #include <brcmu_wifi.h>
 #include "fwil.h"
 extern bool builtin_roam_disabled;
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 
-#ifdef CPTCFG_BRCMFMAC_NV_GPIO
+#ifdef CONFIG_BRCMFMAC_NV_GPIO
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
@@ -74,9 +74,9 @@ void setup_gpio(struct platform_device *pdev, bool on) {
 		}
 	}
 
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 	builtin_roam_disabled = device_property_read_bool(&pdev->dev, "builtin-roam-disabled");
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
 
 }
 
@@ -90,9 +90,9 @@ void toggle_gpio(bool on, unsigned long msec) {
 	if (msec && on)
 		msleep(msec);
 }
-#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
+#endif /* CONFIG_BRCMFMAC_NV_GPIO */
 
-#ifdef CPTCFG_BRCMFMAC_NV_CUSTOM_MAC
+#ifdef CONFIG_BRCMFMAC_NV_CUSTOM_MAC
 #define WIFI_MAC_ADDR_FILE "/mnt/factory/wifi/wifi_mac.txt"
 
 static int wifi_get_mac_addr_file(unsigned char *buf)
@@ -260,9 +260,9 @@ int nv_set_mac_address(struct net_device *ndev) {
 	return err;
 }
 
-#endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_MAC */
+#endif /* CONFIG_BRCMFMAC_NV_CUSTOM_MAC */
 
-#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+#ifdef CONFIG_BRCMFMAC_NV_COUNTRY_CODE
 int wifi_platform_get_country_code_map(void)
 {
 	struct device_node *np_country;
@@ -344,9 +344,9 @@ void wifi_platform_free_country_code_map(void)
 	}
 	brcmf_mp_global.n_country = 0;
 }
-#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+#endif /* CONFIG_BRCMFMAC_NV_COUNTRY_CODE */
 
-#ifdef CPTCFG_BRCMFMAC_NV_PRIV_CMD
+#ifdef CONFIG_BRCMFMAC_NV_PRIV_CMD
 int nv_brcmf_android_set_im_mode(struct brcmf_pub *drvr,
 		struct net_device *ndev, char *command, u32 cmd_len)
 {
@@ -543,5 +543,5 @@ int nv_btcoex_get_btcparams(struct net_device *dev, char *command, int total_len
 	bytes_written = snprintf(command, total_len, "%d", value);
 	return bytes_written;
 }
-#endif /* CPTCFG_BRCMFMAC_NV_PRIV_CMD */
-#endif /* CPTCFG_BRCMFMAC_NV_CUSTOM_FILES */
+#endif /* CONFIG_BRCMFMAC_NV_PRIV_CMD */
+#endif /* CONFIG_BRCMFMAC_NV_CUSTOM_FILES */

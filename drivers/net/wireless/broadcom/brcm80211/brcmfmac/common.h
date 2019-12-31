@@ -39,16 +39,16 @@ extern const u8 ALLFFMAC[ETH_ALEN];
  */
 struct brcmf_mp_global_t {
 	char	firmware_path[BRCMF_FW_ALTPATH_LEN];
-#ifdef CPTCFG_BRCMFMAC_NV_GPIO
+#ifdef CONFIG_BRCMFMAC_NV_GPIO
 	int	irq_num;
 	uint	intr_flags;
 	int	wlan_pwr;
 	int	wlan_rst;
-#endif /* CPTCFG_BRCMFMAC_NV_GPIO */
-#ifdef CPTCFG_BRCMFMAC_NV_COUNTRY_CODE
+#endif /* CONFIG_BRCMFMAC_NV_GPIO */
+#ifdef CONFIG_BRCMFMAC_NV_COUNTRY_CODE
 	int	n_country;
 	struct brcmf_fil_country_le *country_code_map;
-#endif /* CPTCFG_BRCMFMAC_NV_COUNTRY_CODE */
+#endif /* CONFIG_BRCMFMAC_NV_COUNTRY_CODE */
 };
 
 extern struct brcmf_mp_global_t brcmf_mp_global;
