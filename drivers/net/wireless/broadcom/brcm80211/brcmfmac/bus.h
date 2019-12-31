@@ -262,6 +262,7 @@ int brcmf_fwlog_attach(struct device *dev);
 #ifdef CONFIG_BRCMFMAC_SDIO
 void brcmf_sdio_exit(void);
 void brcmf_sdio_register(void);
+int brcmf_bus_devreset(struct brcmf_sdio_dev *sdiodev, int flag);
 #endif
 #ifdef CONFIG_BRCMFMAC_USB
 void brcmf_usb_exit(void);

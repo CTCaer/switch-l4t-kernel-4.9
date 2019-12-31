@@ -29,6 +29,7 @@
 #include <brcmu_utils.h>
 #include <brcmu_wifi.h>
 #include <brcm_hw_ids.h>
+#include <linux/wakelock.h>
 
 #include "debug.h"
 #include "bus.h"
@@ -40,6 +41,7 @@
 #include "core.h"
 #include "common.h"
 #include "cfg80211.h"
+#include "android.h"
 
 
 enum brcmf_pcie_state {
@@ -799,6 +801,9 @@ static irqreturn_t brcmf_pcie_isr_thread(int irq, void *arg)
 {
 	struct brcmf_pciedev_info *devinfo = (struct brcmf_pciedev_info *)arg;
 	u32 status;
+	struct brcmf_bus *bus = dev_get_drvdata(&devinfo->pdev->dev);
+
+	brcmf_android_wake_lock(bus->drvr);
 
 	devinfo->in_irq = true;
 	status = brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT);
@@ -819,6 +824,9 @@ static irqreturn_t brcmf_pcie_isr_thread(int irq, void *arg)
 	if (devinfo->state == BRCMFMAC_PCIE_STATE_UP)
 		brcmf_pcie_intr_enable(devinfo);
 	devinfo->in_irq = false;
+
+	brcmf_android_wake_unlock(bus->drvr);
+
 	return IRQ_HANDLED;
 }
 
@@ -1678,12 +1686,23 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 	struct brcmf_pciedev_info *devinfo;
 	struct brcmf_commonring **flowrings;
 	u32 i;
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	struct brcmf_pub *drvr;
+#endif
 
+	bus = dev_get_drvdata(dev);
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	drvr = bus->drvr;
+	if (!brcmf_android_in_reset(drvr)) {
+		brcmf_android_init(drvr);
+		drvr->android->init_done = true;
+		return;
+	}
+#endif
 	/* check firmware loading result */
 	if (ret)
 		goto fail;
 
-	bus = dev_get_drvdata(dev);
 	pcie_bus_dev = bus->bus_priv.pcie;
 	devinfo = pcie_bus_dev->devinfo;
 	brcmf_pcie_attach(devinfo);
@@ -1735,13 +1754,20 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 	init_waitqueue_head(&devinfo->mbdata_resp_wait);
 
 	brcmf_pcie_intr_enable(devinfo);
-	if (brcmf_pcie_attach_bus(devinfo) == 0)
+	if (brcmf_pcie_attach_bus(devinfo) == 0) {
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+		brcmf_wake_dev_reset_waitq(drvr, 0);
+#endif
 		return;
+	}
 
 	brcmf_pcie_bus_console_read(devinfo);
 
 fail:
 	device_release_driver(dev);
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	brcmf_wake_dev_reset_waitq(drvr, -EIO);
+#endif
 }
 
 static int
@@ -1753,6 +1779,10 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct brcmf_bus *bus;
 	u16 domain_nr;
 	u16 bus_nr;
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	struct brcmf_pub *drvr = NULL;
+	int i;
+#endif
 
 	domain_nr = pci_domain_nr(pdev->bus) + 1;
 	bus_nr = pdev->bus->number;
@@ -1811,6 +1841,34 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	bus->wowl_supported = pci_pme_capable(pdev, PCI_D3hot);
 	dev_set_drvdata(&pdev->dev, bus);
 
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	if (!g_drvr) {
+		/* Allocate primary brcmf_info */
+		drvr = kzalloc(sizeof(*drvr), GFP_ATOMIC);
+		if (!drvr) {
+			ret = -ENOMEM;
+			goto fail_bus;
+		}
+		for (i = 0; i < ARRAY_SIZE(drvr->if2bss); i++)
+			drvr->if2bss[i] = -1;
+
+		mutex_init(&drvr->proto_block);
+		mutex_init(&drvr->net_if_lock);
+		/* Attach Android module */
+		ret = brcmf_android_attach(drvr);
+		if (ret)
+			goto fail_bus;
+		/* Link to bus module */
+		drvr->hdrlen = 0;
+		drvr->bus_if = dev_get_drvdata(&pdev->dev);
+		drvr->bus_if->drvr = drvr;
+		drvr->settings = devinfo->settings;
+		brcmf_fweh_attach(drvr);
+		g_drvr = drvr;
+	}
+	bus->drvr = g_drvr;
+#endif
+
 	ret = brcmf_fw_map_chip_to_name(devinfo->ci->chip, devinfo->ci->chiprev,
 					brcmf_pcie_fwnames,
 					ARRAY_SIZE(brcmf_pcie_fwnames),
@@ -1825,6 +1883,9 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (ret == 0)
 		return 0;
 fail_bus:
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	kfree(drvr);
+#endif
 	kfree(bus->msgbuf);
 	kfree(bus);
 fail:
@@ -1905,6 +1966,7 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 	if (!retry && config->pm_state == BRCMF_CFG80211_PM_STATE_SUSPENDING)
 		brcmf_err("timed out wait for cfg80211 suspended\n");
 
+	brcmf_android_wake_lock_waive(bus->drvr, true);
 	brcmf_bus_change_state(bus, BRCMF_BUS_DOWN);
 
 	devinfo->mbdata_completed = false;
@@ -1919,6 +1981,7 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 	}
 
 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
+	brcmf_android_wake_lock_waive(bus->drvr, false);
 
 	return 0;
 }

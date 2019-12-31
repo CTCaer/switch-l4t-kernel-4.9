@@ -54,3 +54,5 @@ brcmfmac-$(CONFIG_BRCM_TRACING) += \
 		tracepoint.o
 brcmfmac-$(CONFIG_OF) += \
 		of.o
+brcmfmac-$(CPTCFG_BRCMFMAC_ANDROID) += \
+		android.o

@@ -21,6 +21,7 @@
 #include <linux/firmware.h>
 #include <brcmu_wifi.h>
 #include <brcmu_utils.h>
+#include <linux/regulator/consumer.h>
 #include "core.h"
 #include "bus.h"
 #include "debug.h"
@@ -67,7 +68,7 @@ MODULE_PARM_DESC(feature_disable, "Disable features");
 
 static char brcmf_firmware_path[BRCMF_FW_ALTPATH_LEN];
 module_param_string(alternative_fw_path, brcmf_firmware_path,
-		    BRCMF_FW_ALTPATH_LEN, S_IRUSR);
+		    BRCMF_FW_ALTPATH_LEN, 0600);
 MODULE_PARM_DESC(alternative_fw_path, "Alternative firmware path");
 
 static int brcmf_fcmode;
@@ -103,6 +104,7 @@ MODULE_PARM_DESC(ignore_probe_fail, "always succeed probe for debugging");
 
 static struct brcmfmac_platform_data *brcmfmac_pdata;
 struct brcmf_mp_global_t brcmf_mp_global;
+struct regulator *wifi_regulator;
 
 void brcmf_c_set_joinpref_default(struct brcmf_if *ifp)
 {
@@ -511,6 +513,9 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
 #ifdef DEBUG
 	settings->ignore_probe_fail = !!brcmf_ignore_probe_fail;
 #endif
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	brcmf_mp_attach();
+#endif
 
 	if (bus_type == BRCMF_BUSTYPE_SDIO)
 		settings->bus.sdio.txglomsz = brcmf_sdiod_txglomsz;
@@ -554,8 +559,24 @@ static int __init brcmf_common_pd_probe(struct platform_device *pdev)
 
 	brcmfmac_pdata = dev_get_platdata(&pdev->dev);
 
-	if (brcmfmac_pdata->power_on)
+	if (brcmfmac_pdata && brcmfmac_pdata->power_on) {
 		brcmfmac_pdata->power_on();
+	} else {
+		if (!wifi_regulator) {
+			wifi_regulator = regulator_get(&pdev->dev, "wlreg_on");
+			if (!wifi_regulator) {
+				brcmf_err("cannot get wifi regulator\n");
+				return -ENODEV;
+			}
+		}
+		if (regulator_enable(wifi_regulator)) {
+			brcmf_err("WL_REG_ON state unknown, Power off forcely\n");
+			regulator_disable(wifi_regulator);
+			return -EIO;
+		}
+		wifi_card_detect(true);
+	}
+
 
 	return 0;
 }
@@ -564,8 +585,14 @@ static int brcmf_common_pd_remove(struct platform_device *pdev)
 {
 	brcmf_dbg(INFO, "Enter\n");
 
-	if (brcmfmac_pdata->power_off)
+	if (brcmfmac_pdata && brcmfmac_pdata->power_off) {
 		brcmfmac_pdata->power_off();
+	} else if (wifi_regulator) {
+		regulator_disable(wifi_regulator);
+		wifi_card_detect(false);
+		regulator_put(wifi_regulator);
+		wifi_regulator = NULL;
+	}
 
 	return 0;
 }
@@ -574,6 +601,20 @@ static struct platform_driver brcmf_pd = {
 	.remove		= brcmf_common_pd_remove,
 	.driver		= {
 		.name	= BRCMFMAC_PDATA_NAME,
+	}
+};
+
+static const struct of_device_id wifi_device_dt_match[] = {
+	{ .compatible = "brcm,android-fmac", },
+	{},
+};
+
+static struct platform_driver brcmf_platform_dev_driver = {
+	.probe          = brcmf_common_pd_probe,
+	.remove         = brcmf_common_pd_remove,
+	.driver         = {
+		.name	= "brcmfmac",
+		.of_match_table = wifi_device_dt_match,
 	}
 };
 
@@ -589,6 +630,12 @@ static int __init brcmfmac_module_init(void)
 	if (err == -ENODEV)
 		brcmf_dbg(INFO, "No platform data available.\n");
 
+	if (err) {
+		err = platform_driver_register(&brcmf_platform_dev_driver);
+		if (err)
+			brcmf_err("platform_driver_register failed\n");
+	}
+
 	/* Initialize global module parameters */
 	brcmf_mp_attach();
 
@@ -598,6 +645,8 @@ static int __init brcmfmac_module_init(void)
 		brcmf_debugfs_exit();
 		if (brcmfmac_pdata)
 			platform_driver_unregister(&brcmf_pd);
+		if (wifi_regulator)
+			platform_driver_unregister(&brcmf_platform_dev_driver);
 	}
 
 	return err;
@@ -608,9 +657,11 @@ static void __exit brcmfmac_module_exit(void)
 	brcmf_core_exit();
 	if (brcmfmac_pdata)
 		platform_driver_unregister(&brcmf_pd);
+	if (wifi_regulator)
+		platform_driver_unregister(&brcmf_platform_dev_driver);
 	brcmf_debugfs_exit();
 }
 
-module_init(brcmfmac_module_init);
+late_initcall(brcmfmac_module_init);
 module_exit(brcmfmac_module_exit);
 

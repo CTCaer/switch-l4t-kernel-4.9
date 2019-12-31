@@ -41,7 +41,7 @@ struct brcmf_mp_global_t {
 };
 
 extern struct brcmf_mp_global_t brcmf_mp_global;
-
+extern struct regulator *wifi_regulator;
 /**
  * struct brcmf_mp_device - Device module paramaters.
  *

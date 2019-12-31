@@ -20,11 +20,14 @@
 #include <linux/firmware.h>
 #include <linux/module.h>
 #include <linux/bcm47xx_nvram.h>
+#include <linux/wakelock.h>
 
 #include "debug.h"
 #include "firmware.h"
 #include "core.h"
 #include "common.h"
+#include "bus.h"
+#include "android.h"
 
 #define BRCMF_FW_MAX_NVRAM_SIZE			64000
 #define BRCMF_FW_NVRAM_DEVPATH_LEN		19	/* devpath0=pcie/1/4/ */
@@ -492,8 +495,19 @@ static void brcmf_fw_request_code_done(const struct firmware *fw, void *ctx)
 {
 	struct brcmf_fw *fwctx = ctx;
 	int ret = 0;
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	struct brcmf_bus *bus_if = dev_get_drvdata(fwctx->dev);
+#endif
 
 	brcmf_dbg(TRACE, "enter: dev=%s\n", dev_name(fwctx->dev));
+
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	if (!brcmf_android_in_reset(bus_if->drvr)) {
+		fwctx->done(fwctx->dev, ret, fw, NULL, 0);
+		kfree(fwctx);
+		return;
+	}
+#endif
 	if (!fw) {
 		ret = -ENOENT;
 		goto fail;
@@ -516,6 +530,10 @@ fail:
 	brcmf_dbg(TRACE, "failed: dev=%s\n", dev_name(fwctx->dev));
 done:
 	fwctx->done(fwctx->dev, ret, fw, NULL, 0);
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+	if (fw)
+		release_firmware(fw);
+#endif
 	kfree(fwctx);
 }
 

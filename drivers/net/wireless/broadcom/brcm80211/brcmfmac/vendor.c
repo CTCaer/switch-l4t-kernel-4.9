@@ -15,6 +15,7 @@
  */
 
 #include <linux/vmalloc.h>
+#include <linux/wakelock.h>
 #include <net/cfg80211.h>
 #include <net/netlink.h>
 
@@ -26,6 +27,113 @@
 #include "cfg80211.h"
 #include "vendor.h"
 #include "fwil.h"
+#include "android.h"
+
+enum andr_vendor_subcmd {
+	GSCAN_SUBCMD_GET_CAPABILITIES = 0x1000,
+	GSCAN_SUBCMD_SET_CONFIG,
+	GSCAN_SUBCMD_SET_SCAN_CONFIG,
+	GSCAN_SUBCMD_ENABLE_GSCAN,
+	GSCAN_SUBCMD_GET_SCAN_RESULTS,
+	GSCAN_SUBCMD_SCAN_RESULTS,
+	GSCAN_SUBCMD_SET_HOTLIST,
+	GSCAN_SUBCMD_SET_SIGNIFICANT_CHANGE_CONFIG,
+	GSCAN_SUBCMD_ENABLE_FULL_SCAN_RESULTS,
+	GSCAN_SUBCMD_GET_CHANNEL_LIST,
+	ANDR_WIFI_SUBCMD_GET_FEATURE_SET,
+	ANDR_WIFI_SUBCMD_GET_FEATURE_SET_MATRIX,
+	ANDR_WIFI_RANDOM_MAC_OUI,
+	ANDR_WIFI_NODFS_CHANNELS,
+	ANDR_WIFI_SET_COUNTRY
+};
+
+enum gscan_attributes {
+	GSCAN_ATTRIBUTE_NUM_BUCKETS = 10,
+	GSCAN_ATTRIBUTE_BASE_PERIOD,
+	GSCAN_ATTRIBUTE_BUCKETS_BAND,
+	GSCAN_ATTRIBUTE_BUCKET_ID,
+	GSCAN_ATTRIBUTE_BUCKET_PERIOD,
+	GSCAN_ATTRIBUTE_BUCKET_NUM_CHANNELS,
+	GSCAN_ATTRIBUTE_BUCKET_CHANNELS,
+	GSCAN_ATTRIBUTE_NUM_AP_PER_SCAN,
+	GSCAN_ATTRIBUTE_REPORT_THRESHOLD,
+	GSCAN_ATTRIBUTE_NUM_SCANS_TO_CACHE,
+	GSCAN_ATTRIBUTE_BAND = GSCAN_ATTRIBUTE_BUCKETS_BAND,
+
+	GSCAN_ATTRIBUTE_ENABLE_FEATURE = 20,
+	GSCAN_ATTRIBUTE_SCAN_RESULTS_COMPLETE,
+	GSCAN_ATTRIBUTE_FLUSH_FEATURE,
+	GSCAN_ATTRIBUTE_ENABLE_FULL_SCAN_RESULTS,
+	GSCAN_ATTRIBUTE_REPORT_EVENTS,
+	GSCAN_ATTRIBUTE_NUM_OF_RESULTS = 30,
+	GSCAN_ATTRIBUTE_FLUSH_RESULTS,
+	GSCAN_ATTRIBUTE_SCAN_RESULTS,
+	GSCAN_ATTRIBUTE_SCAN_ID,
+	GSCAN_ATTRIBUTE_SCAN_FLAGS,
+	GSCAN_ATTRIBUTE_AP_FLAGS,
+	GSCAN_ATTRIBUTE_NUM_CHANNELS,
+	GSCAN_ATTRIBUTE_CHANNEL_LIST,
+	GSCAN_ATTRIBUTE_CH_BUCKET_BITMASK
+};
+
+enum andr_wifi_attr {
+	ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET,
+	ANDR_WIFI_ATTRIBUTE_FEATURE_SET,
+	ANDR_WIFI_ATTRIBUTE_RANDOM_MAC_OUI,
+	ANDR_WIFI_ATTRIBUTE_NODFS_SET,
+	ANDR_WIFI_ATTRIBUTE_COUNTRY,
+	ANDR_WIFI_ATTRIBUTE_ND_OFFLOAD_VALUE,
+	ANDR_WIFI_ATTRIBUTE_TCPACK_SUP_VALUE
+};
+
+#define GSCAN_BG_BAND_MASK	0x1
+#define GSCAN_A_BAND_MASK	0x2
+#define GSCAN_DFS_MASK		0x4
+#define GSCAN_ABG_BAND_MASK	(GSCAN_A_BAND_MASK | GSCAN_BG_BAND_MASK)
+#define GSCAN_BAND_MASK		(GSCAN_ABG_BAND_MASK | GSCAN_DFS_MASK)
+
+/* Basic infrastructure mode */
+#define WIFI_FEATURE_INFRA		0x0001
+/* Support for 5 GHz Band */
+#define WIFI_FEATURE_INFRA_5G		0x0002
+/* Support for GAS/ANQP */
+#define WIFI_FEATURE_HOTSPOT		0x0004
+/* Wifi-Direct */
+#define WIFI_FEATURE_P2P		0x0008
+/* Soft AP */
+#define WIFI_FEATURE_SOFT_AP		0x0010
+/* Google-Scan APIs */
+#define WIFI_FEATURE_GSCAN		0x0020
+/* Neighbor Awareness Networking */
+#define WIFI_FEATURE_NAN		0x0040
+/* Device-to-device RTT */
+#define WIFI_FEATURE_D2D_RTT		0x0080
+/* Device-to-AP RTT */
+#define WIFI_FEATURE_D2AP_RTT		0x0100
+/* Batched Scan (legacy) */
+#define WIFI_FEATURE_BATCH_SCAN		0x0200
+/* Preferred network offload */
+#define WIFI_FEATURE_PNO		0x0400
+/* Support for two STAs */
+#define WIFI_FEATURE_ADDITIONAL_STA	0x0800
+/* Tunnel directed link setup */
+#define WIFI_FEATURE_TDLS		0x1000
+/* Support for TDLS off channel */
+#define WIFI_FEATURE_TDLS_OFFCHANNEL	0x2000
+/* Enhanced power reporting */
+#define WIFI_FEATURE_EPR		0x4000
+/* Support for AP STA Concurrency */
+#define WIFI_FEATURE_AP_STA		0x8000
+/* Support for Linkstats */
+#define WIFI_FEATURE_LINKSTAT		0x10000
+/* WiFi PNO enhanced */
+#define WIFI_FEATURE_HAL_EPNO		0x40000
+/* RSSI Monitor */
+#define WIFI_FEATURE_RSSI_MONITOR	0x80000
+/* ND offload configure */
+#define WIFI_FEATURE_CONFIG_NDO		0x200000
+/* Invalid Feature */
+#define WIFI_FEATURE_INVALID		0xFFFFFFFF
 
 static int brcmf_cfg80211_vndr_cmds_dcmd_handler(struct wiphy *wiphy,
 						 struct wireless_dev *wdev,
@@ -55,6 +163,8 @@ static int brcmf_cfg80211_vndr_cmds_dcmd_handler(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
+	brcmf_android_wake_lock(ifp->drvr);
+
 	len -= cmdhdr->offset;
 	ret_len = cmdhdr->len;
 	if (ret_len > 0 || len > 0) {
@@ -68,8 +178,10 @@ static int brcmf_cfg80211_vndr_cmds_dcmd_handler(struct wiphy *wiphy,
 		}
 		payload = max_t(unsigned int, ret_len, len) + 1;
 		dcmd_buf = vzalloc(payload);
-		if (NULL == dcmd_buf)
+		if (!dcmd_buf) {
+			brcmf_android_wake_unlock(ifp->drvr);
 			return -ENOMEM;
+		}
 
 		memcpy(dcmd_buf, (void *)cmdhdr + cmdhdr->offset, len);
 		*(char *)(dcmd_buf + len)  = '\0';
@@ -115,6 +227,191 @@ static int brcmf_cfg80211_vndr_cmds_dcmd_handler(struct wiphy *wiphy,
 
 exit:
 	vfree(dcmd_buf);
+	brcmf_android_wake_unlock(ifp->drvr);
+	return ret;
+}
+
+static int
+brcmf_cfg80211_gscan_get_channel_list_handler(struct wiphy *wiphy,
+					      struct wireless_dev *wdev,
+					      const void *data, int len)
+{
+	struct brcmf_cfg80211_vif *vif;
+	struct brcmf_if *ifp;
+	struct sk_buff *reply;
+	int ret, gscan_band, i;
+	struct ieee80211_supported_band *band_2g, *band_5g;
+	uint *channels;
+	uint num_channels = 0;
+
+	vif = container_of(wdev, struct brcmf_cfg80211_vif, wdev);
+	ifp = vif->ifp;
+
+	brcmf_android_wake_lock(ifp->drvr);
+
+	brcmf_dbg(TRACE, "ifidx=%d, enter\n", ifp->ifidx);
+
+	if (nla_type(data) == GSCAN_ATTRIBUTE_BAND) {
+		gscan_band = nla_get_u32(data);
+		if ((gscan_band & GSCAN_BAND_MASK) == 0) {
+			ret = -EINVAL;
+			goto exit;
+		}
+	} else {
+		ret =  -EINVAL;
+		goto exit;
+	}
+
+	band_2g = wiphy->bands[NL80211_BAND_2GHZ];
+	band_5g = wiphy->bands[NL80211_BAND_5GHZ];
+	channels = vzalloc((band_2g->n_channels + band_5g->n_channels) *
+			   sizeof(uint));
+	if (!channels) {
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	if (gscan_band & GSCAN_BG_BAND_MASK) {
+		for (i = 0; i < band_2g->n_channels; i++) {
+			if (band_2g->channels[i].flags &
+			    IEEE80211_CHAN_DISABLED)
+				continue;
+			if (!(gscan_band & GSCAN_DFS_MASK) &&
+			    (band_2g->channels[i].flags &
+			     (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_NO_IR)))
+				continue;
+
+			channels[num_channels] =
+			    band_2g->channels[i].center_freq;
+			num_channels++;
+		}
+	}
+	if (gscan_band & GSCAN_A_BAND_MASK) {
+		for (i = 0; i < band_5g->n_channels; i++) {
+			if (band_5g->channels[i].flags &
+			    IEEE80211_CHAN_DISABLED)
+				continue;
+			if (!(gscan_band & GSCAN_DFS_MASK) &&
+			    (band_5g->channels[i].flags &
+			     (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_NO_IR)))
+				continue;
+
+			channels[num_channels] =
+			    band_5g->channels[i].center_freq;
+			num_channels++;
+		}
+	}
+
+	reply =
+	    cfg80211_vendor_cmd_alloc_reply_skb(wiphy, ((num_channels + 1) *
+							sizeof(uint)));
+	nla_put_u32(reply, GSCAN_ATTRIBUTE_NUM_CHANNELS, num_channels);
+	nla_put(reply, GSCAN_ATTRIBUTE_CHANNEL_LIST,
+		num_channels * sizeof(uint), channels);
+	ret = cfg80211_vendor_cmd_reply(reply);
+
+	vfree(channels);
+exit:
+	brcmf_android_wake_unlock(ifp->drvr);
+
+	return ret;
+}
+
+static int
+brcmf_cfg80211_andr_get_feature_set_handler(struct wiphy *wiphy,
+					    struct wireless_dev *wdev,
+					    const void *data, int len)
+{
+	struct brcmf_cfg80211_vif *vif;
+	struct brcmf_if *ifp;
+	struct sk_buff *reply;
+	int ret;
+	int feature_set = 0;
+	char caps[256];
+
+	vif = container_of(wdev, struct brcmf_cfg80211_vif, wdev);
+	ifp = vif->ifp;
+
+	brcmf_android_wake_lock(ifp->drvr);
+
+	brcmf_dbg(TRACE, "ifidx=%d, enter\n", ifp->ifidx);
+
+	ret = brcmf_fil_iovar_data_get(ifp, "cap", caps, sizeof(caps));
+	if (ret) {
+		brcmf_err("get capa error, ret = %d\n", ret);
+		goto exit;
+	}
+
+	if (strnstr(caps, "sta", sizeof(caps)))
+		feature_set |= WIFI_FEATURE_INFRA;
+	if (strnstr(caps, "dualband", sizeof(caps)))
+		feature_set |= WIFI_FEATURE_INFRA_5G;
+	if (strnstr(caps, "p2p", sizeof(caps)))
+		feature_set |= WIFI_FEATURE_P2P;
+	if (wdev->iftype == NL80211_IFTYPE_AP ||
+	    wdev->iftype == NL80211_IFTYPE_P2P_GO)
+		feature_set |= WIFI_FEATURE_SOFT_AP;
+	if (strnstr(caps, "tdls", sizeof(caps)))
+		feature_set |= WIFI_FEATURE_TDLS;
+	if (strnstr(caps, "vsdb", sizeof(caps)))
+		feature_set |= WIFI_FEATURE_TDLS_OFFCHANNEL;
+	if (strnstr(caps, "nan", sizeof(caps))) {
+		feature_set |= WIFI_FEATURE_NAN;
+		if (strnstr(caps, "rttd2d", sizeof(caps)))
+			feature_set |= WIFI_FEATURE_D2D_RTT;
+	}
+	/* TODO:
+	 * RTT_SUPPORT
+	 * LINKSTAT_SUPPORT
+	 * PNO_SUPPORT
+	 * GSCAN_SUPPORT
+	 * RSSI_MONITOR_SUPPORT
+	 * WL11U
+	 * NDO_CONFIG_SUPPORT
+	 */
+	reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, sizeof(int));
+	nla_put_nohdr(reply, sizeof(int), &feature_set);
+	ret = cfg80211_vendor_cmd_reply(reply);
+exit:
+	brcmf_android_wake_unlock(ifp->drvr);
+
+	return ret;
+}
+
+static int
+brcmf_cfg80211_andr_set_country_handler(struct wiphy *wiphy,
+					struct wireless_dev *wdev,
+					const void *data, int len)
+{
+	struct brcmf_cfg80211_vif *vif;
+	struct brcmf_if *ifp;
+	struct net_device *ndev;
+	int ret;
+	char *country_code;
+
+	vif = container_of(wdev, struct brcmf_cfg80211_vif, wdev);
+	ifp = vif->ifp;
+	ndev = ifp->ndev;
+
+	brcmf_android_wake_lock(ifp->drvr);
+
+	brcmf_dbg(TRACE, "ifidx=%d, enter\n", ifp->ifidx);
+
+	if (nla_type(data) == ANDR_WIFI_ATTRIBUTE_COUNTRY) {
+		country_code = nla_data(data);
+		brcmf_err("country=%s\n", country_code);
+		if (strlen(country_code) != 2)
+			return -EINVAL;
+	} else {
+		return -EINVAL;
+	}
+
+	ret = brcmf_set_country(ndev, country_code);
+	if (ret)
+		brcmf_err("set country code %s failed, ret=%d\n",
+			  country_code, ret);
+
+	brcmf_android_wake_unlock(ifp->drvr);
 
 	return ret;
 }
@@ -169,6 +466,7 @@ brcmf_wiphy_phy_temp_evt_handler(struct brcmf_if *ifp,
 	return 0;
 }
 
+
 const struct wiphy_vendor_command brcmf_vendor_cmds[] = {
 	{
 		{
@@ -179,6 +477,33 @@ const struct wiphy_vendor_command brcmf_vendor_cmds[] = {
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = brcmf_cfg80211_vndr_cmds_dcmd_handler
 	},
+	{
+		{
+			.vendor_id = GOOGLE_OUI,
+			.subcmd = GSCAN_SUBCMD_GET_CHANNEL_LIST
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			 WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = brcmf_cfg80211_gscan_get_channel_list_handler
+	},
+	{
+		{
+			.vendor_id = GOOGLE_OUI,
+			.subcmd = ANDR_WIFI_SET_COUNTRY
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = brcmf_cfg80211_andr_set_country_handler
+	},
+	{
+		{
+			.vendor_id = GOOGLE_OUI,
+			.subcmd = ANDR_WIFI_SUBCMD_GET_FEATURE_SET
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = brcmf_cfg80211_andr_get_feature_set_handler
+	},
 };
 
 const struct nl80211_vendor_cmd_info brcmf_vendor_events[] = {
@@ -187,3 +512,9 @@ const struct nl80211_vendor_cmd_info brcmf_vendor_events[] = {
 		.subcmd = BRCMF_VNDR_EVTS_PHY_TEMP,
 	},
 };
+
+void brcmf_set_vndr_cmd(struct wiphy *wiphy)
+{
+	wiphy->vendor_commands = brcmf_vendor_cmds;
+	wiphy->n_vendor_commands = ARRAY_SIZE(brcmf_vendor_cmds);
+}

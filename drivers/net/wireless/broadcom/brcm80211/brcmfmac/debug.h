@@ -41,6 +41,7 @@
 #define BRCMF_PCIE_VAL		0x00080000
 #define BRCMF_FWCON_VAL		0x00100000
 #define BRCMF_ULP_VAL		0x00200000
+#define BRCMF_ANDROID_VAL	0x01000000
 
 /* set default print format */
 #undef pr_fmt

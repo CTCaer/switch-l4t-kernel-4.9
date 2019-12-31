@@ -2497,7 +2497,12 @@ void brcmf_p2p_detach(struct brcmf_p2p_info *p2p)
 	if (vif != NULL) {
 		brcmf_p2p_cancel_remain_on_channel(vif->ifp);
 		brcmf_p2p_deinit_discovery(p2p);
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+		/* The rtnl_lock is held already in devinet_ioctl() */
+		brcmf_remove_interface(vif->ifp, true);
+#else
 		brcmf_remove_interface(vif->ifp, false);
+#endif
 	}
 	/* just set it all to zero */
 	memset(p2p, 0, sizeof(*p2p));

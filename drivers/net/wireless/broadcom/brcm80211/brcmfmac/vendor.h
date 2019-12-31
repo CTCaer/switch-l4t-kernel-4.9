@@ -18,6 +18,7 @@
 #define _vendor_h_
 
 #define BROADCOM_OUI	0x001018
+#define GOOGLE_OUI	0x001A11
 
 enum brcmf_vndr_cmds {
 	BRCMF_VNDR_CMDS_UNSPEC,
@@ -79,5 +80,6 @@ extern const struct nl80211_vendor_cmd_info brcmf_vendor_events[];
 s32 brcmf_wiphy_phy_temp_evt_handler(struct brcmf_if *ifp,
 				     const struct brcmf_event_msg *e,
 				     void *data);
+void brcmf_set_vndr_cmd(struct wiphy *wiphy);
 
 #endif /* _vendor_h_ */

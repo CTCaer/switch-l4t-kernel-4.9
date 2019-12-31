@@ -85,3 +85,17 @@ config BRCMDBG
 	select WANT_DEV_COREDUMP
 	---help---
 	  Selecting this enables additional code for debug purposes.
+
+config BRCMFMAC_ANDROID
+	bool "brcmfmac android support"
+	depends on BRCMFMAC
+	---help---
+	  If you say Y here, the FMAC driver will support Android mode
+
+config BRCM_INSMOD_NO_FW
+	bool "insmod module without loading firmware"
+	depends on BRCMFMAC_ANDROID
+	---help---
+	  If you say Y here, the FMAC driver will not load firmware when
+	  inserting the module, it only create wlan interface. Firmware
+	  will be loaded when wlan interface up.

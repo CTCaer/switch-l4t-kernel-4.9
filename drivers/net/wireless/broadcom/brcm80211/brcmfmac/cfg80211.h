@@ -461,4 +461,10 @@ void brcmf_set_mpc(struct brcmf_if *ndev, int mpc);
 void brcmf_abort_scanning(struct brcmf_cfg80211_info *cfg);
 void brcmf_cfg80211_free_netdev(struct net_device *ndev);
 
+int brcmf_crit_proto_start(struct net_device *ndev);
+int brcmf_crit_proto_stop(struct net_device *ndev);
+int brcmf_setup_wiphybands(struct wiphy *wiphy);
+#ifdef CPTCFG_BRCM_INSMOD_NO_FW
+int brcmf_cfg80211_register_if(struct brcmf_pub *drvr);
+#endif
 #endif /* BRCMFMAC_CFG80211_H */
