@@ -332,6 +332,11 @@ struct tegra_thermtrip_pmic_data {
 	u8 pmu_i2c_addr;
 };
 
+#define NR_SMC_REGS		6
+struct pmc_smc_regs {
+	u64 args[NR_SMC_REGS];
+};
+
 void tegra_pmc_config_thermal_trip(struct tegra_thermtrip_pmic_data *data);
 void tegra_pmc_enable_thermal_trip(void);
 void tegra_pmc_lock_thermal_shutdown(void);
@@ -363,5 +368,7 @@ u32 tegra_pmc_get_se_context_buffer_address(void);
 void tegra_pmc_writel_relaxed(u32 value, unsigned long offset);
 u32 tegra_pmc_readl(unsigned long offset);
 void tegra_pmc_writel(u32 value, unsigned long offset);
+
+void pmc_send_smc(u32 func, struct pmc_smc_regs *regs);
 
 #endif /* __SOC_TEGRA_PMC_H__ */
