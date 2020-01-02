@@ -381,16 +381,11 @@
 #define PMC_SHORT_LOW_PERIOD_EN	BIT(1)
 #define PMC_LED_SOFT_BLINK_1CYCLE_NS	32000000
 
-#define NR_SMC_REGS		6
 #define PMC_READ		0xaa
 #define PMC_WRITE		0xbb
 #define TEGRA_SIP_PMC_COMMAND_FID 0xC2FFFE00
 
-struct pmc_smc_regs {
-	u64 args[NR_SMC_REGS];
-};
-
-static void send_smc(u32 func, struct pmc_smc_regs *regs)
+void pmc_send_smc(u32 func, struct pmc_smc_regs *regs)
 {
 	u32 ret = func;
 
@@ -4847,7 +4842,7 @@ u32 tegra_pmc_readl(unsigned long offset)
 		regs.args[3] = 0;
 		regs.args[4] = 0;
 		regs.args[5] = 0;
-		send_smc(TEGRA_SIP_PMC_COMMAND_FID, &regs);
+		pmc_send_smc(TEGRA_SIP_PMC_COMMAND_FID, &regs);
 		return (u32)regs.args[0];
 	}
 	return readl(pmc->base + offset);
@@ -4865,7 +4860,7 @@ void tegra_pmc_writel(u32 value, unsigned long offset)
 		regs.args[3] = 0;
 		regs.args[4] = 0;
 		regs.args[5] = 0;
-		send_smc(TEGRA_SIP_PMC_COMMAND_FID, &regs);
+		pmc_send_smc(TEGRA_SIP_PMC_COMMAND_FID, &regs);
 	} else {
 		writel(value, pmc->base + offset);
 	}
