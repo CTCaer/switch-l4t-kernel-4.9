@@ -1390,6 +1390,27 @@ static unsigned int tegra_sdhci_get_max_clock(struct sdhci_host *host)
 	return clk_round_rate(pltfm_host->clk, UINT_MAX) / 2;
 }
 
+static unsigned int tegra210_sdhci_get_max_clock(struct sdhci_host *host)
+{
+    u32 reg;
+    struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+    
+    /* 
+     * Tegra 210 does not report max current limits for SDMMC.
+     * Additionally, MAX77620 does not have regulator current limits.
+     * Override SDHCI_MAX_CURRENT register values here.
+    */
+    reg = sdhci_readl(host, SDHCI_TEGRA_VENDOR_MISC_CTRL_1);
+    if (!reg)
+        sdhci_writel(host, 0xC8C8C8, SDHCI_TEGRA_VENDOR_MISC_CTRL_1);
+
+    /*
+     * DDR modes require the host to run at double the card frequency, so
+     * the maximum rate we can support is half of the module input clock.
+     */
+    return clk_round_rate(pltfm_host->clk, UINT_MAX) / 2;
+}
+
 static unsigned int tegra_sdhci_get_timeout_clock(struct sdhci_host *host)
 {
 	/*
@@ -1973,6 +1994,41 @@ static const struct sdhci_tegra_soc_data soc_data_tegra124 = {
 	.pdata = &sdhci_tegra124_pdata,
 };
 
+static const struct sdhci_ops tegra210_sdhci_ops = {
+	.get_ro     = tegra_sdhci_get_ro,
+	.read_b     = tegra_sdhci_readb,
+	.read_w     = tegra_sdhci_readw,
+	.read_l     = tegra_sdhci_readl,
+	.write_b    = tegra_sdhci_writeb,
+	.write_w    = tegra_sdhci_writew,
+	.write_l    = tegra_sdhci_writel,
+	.set_clock  = tegra_sdhci_set_clock,
+	.set_bus_width = tegra_sdhci_set_bus_width,
+	.reset      = tegra_sdhci_reset,
+	.set_uhs_signaling = tegra_sdhci_set_uhs_signaling,
+	.voltage_switch = tegra_sdhci_voltage_switch,
+	.get_max_clock = tegra210_sdhci_get_max_clock,
+	.get_timeout_clock = tegra_sdhci_get_timeout_clock,
+	.get_max_tuning_loop_counter = tegra_sdhci_get_max_tuning_loop_counter,
+	.skip_retuning = tegra_sdhci_skip_retuning,
+	.post_tuning = tegra_sdhci_post_tuning,
+	.voltage_switch_pre = tegra_sdhci_signal_voltage_switch_pre,
+	.voltage_switch_post = tegra_sdhci_signal_voltage_switch_post,
+	.hs400_enhanced_strobe = tegra_sdhci_hs400_enhanced_strobe,
+	.post_init = tegra_sdhci_post_init,
+	.suspend = tegra_sdhci_suspend,
+	.resume = tegra_sdhci_resume,
+	.complete = tegra_sdhci_complete,
+	.runtime_suspend = tegra_sdhci_runtime_suspend,
+	.runtime_resume = tegra_sdhci_runtime_resume,
+	.platform_resume = tegra_sdhci_post_resume,
+	.card_event = tegra_sdhci_card_event,
+	.dump_vendor_regs = tegra_sdhci_dump_vendor_regs,
+	.pre_regulator_config	= tegra_sdhci_pre_regulator_config,
+	.voltage_switch_req	= tegra_sdhci_voltage_switch_req,
+	.pad_autocalib		= tegra_sdhci_pad_autocalib,
+};
+
 static const struct sdhci_pltfm_data sdhci_tegra210_pdata = {
 	.quirks = SDHCI_QUIRK_BROKEN_TIMEOUT_VAL |
 		  SDHCI_QUIRK_SINGLE_POWER_WRITE |
@@ -1989,7 +2045,7 @@ static const struct sdhci_pltfm_data sdhci_tegra210_pdata = {
 		SDHCI_QUIRK2_NO_CALC_MAX_BUSY_TO |
 		SDHCI_QUIRK2_NON_STD_TUN_CARD_CLOCK |
 		SDHCI_QUIRK2_HOST_OFF_CARD_ON,
-	.ops  = &tegra_sdhci_ops,
+	.ops  = &tegra210_sdhci_ops,
 };
 
 static const struct sdhci_tegra_soc_data soc_data_tegra210 = {
