@@ -353,7 +353,7 @@ int nv_brcmf_android_set_im_mode(struct brcmf_pub *drvr,
 	int mode = 0;
 	int error = 0;
 	struct brcmf_if *ifp =	netdev_priv(ndev);
-	int ampdu_mpdu;
+	int ampdu_mpdu = 0;
 	int ampdu_rx_tid = -1;
 	int i;
 #ifdef VSDB_BW_ALLOCATE_ENABLE
