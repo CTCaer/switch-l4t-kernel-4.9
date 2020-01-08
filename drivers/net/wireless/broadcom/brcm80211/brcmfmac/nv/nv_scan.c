@@ -615,7 +615,7 @@ wifi_scan_work_func(struct work_struct *work)
 	}
 skip_time_check:
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0))
+#if 0 //(LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0))
 		// TODO wait_event_interruptible_hrtimeout issue in 4.9 version
 		/* block if "wait for tx" feature specified by scan rule */
 		TEGRA_SCAN_TX_PKT_WAIT(scan_rule)
@@ -809,7 +809,7 @@ wifi_scan_request(wl_cfg80211_scan_funcptr_t scan_func,
 	struct wifi_scan_policy *scan_policy;
 	struct wifi_scan_rule *scan_rule;
 
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 7, 0))
+#if 1 //(LINUX_VERSION_CODE > KERNEL_VERSION(4, 7, 0))
         struct cfg80211_scan_info info = {0};
 #endif
 	WIFI_SCAN_DEBUG("%s\n", __func__);
@@ -1118,7 +1118,7 @@ wifi_scan_request(wl_cfg80211_scan_funcptr_t scan_func,
 			" for original request %p\n",
 			__func__,
 			request);
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 7, 0))
+#if 1 //(LINUX_VERSION_CODE > KERNEL_VERSION(4, 7, 0))
 		info.aborted = false;
 		cfg80211_scan_done(request, &info);
 #else
@@ -1149,7 +1149,7 @@ wifi_scan_request_done(struct cfg80211_scan_request *request, bool aborted)
 			scan_arg.request_and_channels.request);
 	struct wifi_scan_work *next_scan_work = NULL;
 	int err = -1;
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 7, 0))
+#if 1 //(LINUX_VERSION_CODE > KERNEL_VERSION(4, 7, 0))
         struct cfg80211_scan_info info = {0};
 #endif
 
@@ -1176,7 +1176,7 @@ wifi_scan_request_done(struct cfg80211_scan_request *request, bool aborted)
 				" for original request %p\n",
 				__func__,
 				scan_work->original_scan_request);
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 7, 0))
+#if 1 //(LINUX_VERSION_CODE > KERNEL_VERSION(4, 7, 0))
 			info.aborted = false;
 			cfg80211_scan_done(scan_work->original_scan_request, &info);
 #else
