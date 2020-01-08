@@ -854,4 +854,3 @@ CONFIG_TEGRA_CAMERA_RTCPU=y
 CONFIG_TEGRA_PM_IRQ=y
 CONFIG_TEGRA_PMC_AO_WAKE=y
 CONFIG_MMC_PARANOID_SD_INIT=y
->>>>>>> 4dab0b57161b... Initial Linux Defconfig:arch/arm64/configs/tegra_linux_defconfig_cypress_wifi
