@@ -256,10 +256,11 @@ static int snd_em28xx_capture_open(struct snd_pcm_substream *substream)
 {
 	struct em28xx *dev = snd_pcm_substream_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct usb_device *udev = interface_to_usbdev(dev->intf);
 	int nonblock, ret = 0;
 
 	if (!dev) {
-		dev_err(&dev->udev->dev,
+		dev_err(&udev->dev,
 			"BUG: em28xx can't find device struct. Can't proceed with open\n");
 		return -ENODEV;
 	}
