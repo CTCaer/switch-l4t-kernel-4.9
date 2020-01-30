@@ -750,6 +750,12 @@ static int sdcardfs_fillattr(struct vfsmount *mnt, struct inode *inode,
 	stat->atime = lower_stat->atime;
 	stat->mtime = lower_stat->mtime;
 	stat->ctime = lower_stat->ctime;
+	if (stat->mtime.tv_nsec > 999999999
+			&& stat->mtime.tv_nsec != UTIME_OMIT
+			&& stat->mtime.tv_nsec != UTIME_NOW) {
+		stat->mtime.tv_sec = stat->mtime.tv_sec + stat->mtime.tv_nsec / 1000000000;
+		stat->mtime.tv_nsec = stat->mtime.tv_nsec % 1000000000;
+	}
 	stat->blksize = lower_stat->blksize;
 	stat->blocks = lower_stat->blocks;
 	data_put(top);
