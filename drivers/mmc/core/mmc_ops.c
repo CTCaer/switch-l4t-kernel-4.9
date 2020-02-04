@@ -55,6 +55,18 @@ static const u8 tuning_blk_pattern_8bit[] = {
 	0xff, 0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee,
 };
 
+struct mmc_busy_data {
+	struct mmc_card *card;
+	bool retry_crc_err;
+	enum mmc_busy_cmd busy_cmd;
+};
+
+struct mmc_op_cond_busy_data {
+	struct mmc_host *host;
+	u32 ocr;
+	struct mmc_command *cmd;
+};
+
 static inline int __mmc_send_status(struct mmc_card *card, u32 *status,
 				    bool ignore_crc)
 {
@@ -489,61 +501,101 @@ int __mmc_switch_cmdq_mode(struct mmc_command *cmd, u8 set, u8 index, u8 value,
 }
 EXPORT_SYMBOL(__mmc_switch_cmdq_mode);
 
-int mmc_poll_for_busy(struct mmc_card *card, unsigned int timeout_ms,
-			bool send_status, bool ignore_crc)
+static int mmc_busy_cb(void *cb_data, bool *busy)
 {
-	struct mmc_host *host = card->host;
-	int err;
-	unsigned long timeout;
+	struct mmc_busy_data *data = cb_data;
+	struct mmc_host *host = data->card->host;
 	u32 status = 0;
-	bool expired = false;
-	bool busy = false;
+	int err;
 
-	/* We have an unspecified cmd timeout, use the fallback value. */
-	if (!timeout_ms)
-		timeout_ms = MMC_OPS_TIMEOUT_MS;
-
-	/*
-	 * In cases when not allowed to poll by using CMD13 or because we aren't
-	 * capable of polling by using ->card_busy(), then rely on waiting the
-	 * stated timeout to be sufficient.
-	 */
-	if (!send_status && !host->ops->card_busy) {
-		mmc_delay(timeout_ms);
+	if (data->busy_cmd != MMC_BUSY_IO && host->ops->card_busy) {
+		*busy = host->ops->card_busy(host);
 		return 0;
 	}
+
+	err = mmc_send_status(data->card, &status);
+	if (data->retry_crc_err && err == -EILSEQ) {
+		*busy = true;
+		return 0;
+	}
+	if (err)
+		return err;
+
+	switch (data->busy_cmd) {
+	case MMC_BUSY_CMD6:
+		err = mmc_switch_status_error(host, status);
+		break;
+	case MMC_BUSY_ERASE:
+		err = R1_STATUS(status) ? -EIO : 0;
+		break;
+	case MMC_BUSY_HPI:
+	case MMC_BUSY_EXTR_SINGLE:
+	case MMC_BUSY_IO:
+		break;
+	default:
+		err = -EINVAL;
+	}
+
+	if (err)
+		return err;
+
+	*busy = !mmc_ready_for_data(status);
+	return 0;
+}
+
+int __mmc_poll_for_busy(struct mmc_host *host, unsigned int timeout_ms,
+			int (*busy_cb)(void *cb_data, bool *busy),
+			void *cb_data)
+{
+	int err;
+	unsigned long timeout;
+	unsigned int udelay = 32, udelay_max = 32768;
+	bool expired = false;
+	bool busy = false;
 
 	timeout = jiffies + msecs_to_jiffies(timeout_ms) + 1;
 	do {
 		/*
-		 * Due to the possibility of being preempted after
-		 * sending the status command, check the expiration
-		 * time first.
+		 * Due to the possibility of being preempted while polling,
+		 * check the expiration time first.
 		 */
 		expired = time_after(jiffies, timeout);
-		if (send_status) {
-			err = __mmc_send_status(card, &status, ignore_crc);
-			if (err)
-				return err;
-		}
-		if (host->ops->card_busy) {
-			if (!host->ops->card_busy(host))
-				break;
-			busy = true;
-		}
 
-		/* Timeout if the device never leaves the program state. */
-		if (expired &&
-		    (R1_CURRENT_STATE(status) == R1_STATE_PRG || busy)) {
-			pr_err("%s: Card stuck in programming state! %s\n",
+		err = (*busy_cb)(cb_data, &busy);
+		if (err)
+			return err;
+
+		/* Timeout if the device still remains busy. */
+		if (expired && busy) {
+			pr_err("%s: Card stuck being busy! %s\n",
 				mmc_hostname(host), __func__);
 			return -ETIMEDOUT;
 		}
-	} while (R1_CURRENT_STATE(status) == R1_STATE_PRG || busy);
 
-	err = mmc_switch_status_error(host, status);
+		/* Throttle the polling rate to avoid hogging the CPU. */
+		if (busy) {
+			usleep_range(udelay, udelay * 2);
+			if (udelay < udelay_max)
+				udelay *= 2;
+		}
+	} while (busy);
 
-	return err;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(__mmc_poll_for_busy);
+
+int mmc_poll_for_busy(struct mmc_card *card, unsigned int timeout_ms,
+		      bool retry_crc_err, enum mmc_busy_cmd busy_cmd)
+{
+
+	struct mmc_host *host = card->host;
+	struct mmc_busy_data cb_data;
+
+	cb_data.card = card;
+	cb_data.retry_crc_err = retry_crc_err;
+	cb_data.busy_cmd = busy_cmd;
+
+	return __mmc_poll_for_busy(host, timeout_ms, &mmc_busy_cb, &cb_data);
 }
 
 /**

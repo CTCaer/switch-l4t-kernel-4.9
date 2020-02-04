@@ -19,6 +19,7 @@ enum mmc_busy_cmd {
 	MMC_BUSY_ERASE,
 	MMC_BUSY_HPI,
 	MMC_BUSY_EXTR_SINGLE,
+	MMC_BUSY_IO,
 };
 
 struct mmc_host;
@@ -43,8 +44,11 @@ int mmc_bus_test(struct mmc_card *card, u8 bus_width);
 int mmc_send_hpi_cmd(struct mmc_card *card, u32 *status);
 int mmc_can_ext_csd(struct mmc_card *card);
 int mmc_switch_status_error(struct mmc_host *host, u32 status);
+int __mmc_poll_for_busy(struct mmc_host *host, unsigned int timeout_ms,
+			int (*busy_cb)(void *cb_data, bool *busy),
+			void *cb_data);
 int mmc_poll_for_busy(struct mmc_card *card, unsigned int timeout_ms,
-			bool send_status, bool ignore_crc);
+		      bool retry_crc_err, enum mmc_busy_cmd busy_cmd);
 int __mmc_switch(struct mmc_card *card, u8 set, u8 index, u8 value,
 		unsigned int timeout_ms, bool use_busy_signal, bool send_status,
 		bool ignore_crc);
