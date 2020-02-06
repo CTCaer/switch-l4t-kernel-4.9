@@ -241,6 +241,11 @@ struct fts_hw_platform_data {
 	const char *fw_name;
 	int x_axis_max;
 	int y_axis_max;
+	int coord_factor;
+	int x_axis_real_max;
+	int y_axis_real_max;
+	int x_axis_edge_offset;
+	int y_axis_edge_offset;
 };
 
 /*

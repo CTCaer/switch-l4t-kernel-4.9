@@ -76,6 +76,11 @@ struct fts_i2c_platform_data {
 	unsigned gpio_scl;
 	unsigned gpio_sda;
 	int switch_gpio;
+	int coord_factor;
+	int x_axis_real_max;
+	int y_axis_real_max;
+	int x_axis_edge_offset;
+	int y_axis_edge_offset;
 };
 
 // #define FTS_SUPPORT_TA_MODE // DE version don't need.

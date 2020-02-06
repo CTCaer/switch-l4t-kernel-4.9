@@ -2030,6 +2030,45 @@ static void fts_nop_event_handler(struct fts_ts_info *info, unsigned
 }
 
 /**
+  * Adjust coordinates based on actual hw margins.
+  */
+static void fts_coordinates_factor(struct fts_ts_info *info, int *x, int *y)
+{
+	unsigned int x_work;
+	unsigned int y_work;
+	unsigned int x_adj;
+	unsigned int y_adj;
+
+	x_work = *x;
+	y_work = *y;
+
+	// Ensure minimum value.
+	x_work = max(x_work, info->board->x_axis_edge_offset);
+	y_work = max(y_work, info->board->y_axis_edge_offset);
+	
+	// Ensure maximum value.
+	x_work = min(x_work, info->board->x_axis_real_max);
+	y_work = min(y_work, info->board->y_axis_real_max);
+	
+	// Adjust with edge offset.
+	x_work -= info->board->x_axis_edge_offset;
+	y_work -= info->board->y_axis_edge_offset;
+
+	// Calculate coordinates factor.
+	x_adj = (info->board->x_axis_max * 1000) /
+		(info->board->x_axis_real_max - info->board->x_axis_edge_offset);
+	y_adj = (info->board->x_axis_max * 1000) /
+		(info->board->y_axis_real_max - info->board->y_axis_edge_offset);
+	
+	// Calculate the adjusted coordinates.
+	x_work = x_work * x_adj / 1000;
+	y_work = y_work * y_adj / 1000;
+
+	*x = x_work;
+	*y = y_work;
+}
+
+/**
   * Event handler for enter and motion events (EVT_ID_ENTER_POINT,
   * EVT_ID_MOTION_POINT )
   * report to the linux input system touches with their coordinated and
@@ -2061,6 +2100,9 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 
 	if (y == info->board->y_axis_max)
 		y--;
+
+	if (info->board->coord_factor)
+		fts_coordinates_factor(info, &x, &y);
 
 	input_mt_slot(info->input_dev, touchId);
 	switch (touchType) {
@@ -3780,6 +3822,21 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	}
 	bdata->x_axis_max = coords[0];
 	bdata->y_axis_max = coords[1];
+
+	bdata->coord_factor = 0;
+	if (!of_property_read_u32_array(np, "st,max-real-coords", coords, 2)) {
+		bdata->coord_factor = 1;
+		bdata->x_axis_real_max = coords[0];
+		bdata->y_axis_real_max = coords[1];
+
+		if (!of_property_read_u32_array(np, "st,edge-offset", coords, 2)) {
+			bdata->x_axis_edge_offset = coords[0];
+			bdata->y_axis_edge_offset = coords[1];
+		} else {
+			bdata->x_axis_edge_offset = 0;
+			bdata->y_axis_edge_offset = 0;
+		}
+	}
 
 	return OK;
 }
