@@ -713,6 +713,45 @@ static void fts_debug_msg_event_handler(struct fts_ts_info *info,
 	       data[4], data[5], data[6], data[7]);
 }
 
+/**
+  * Adjust coordinates based on actual hw margins.
+  */
+static void fts_coordinates_factor(struct fts_ts_info *info, int *x, int *y)
+{
+	unsigned int x_work;
+	unsigned int y_work;
+	unsigned int x_adj;
+	unsigned int y_adj;
+
+	x_work = *x;
+	y_work = *y;
+
+	// Ensure minimum value.
+	x_work = max((unsigned int) x_work, (unsigned int) info->board->x_axis_edge_offset);
+	y_work = max((unsigned int) y_work, (unsigned int) info->board->y_axis_edge_offset);
+	
+	// Ensure maximum value.
+	x_work = min((unsigned int) x_work, (unsigned int) info->board->x_axis_real_max);
+	y_work = min((unsigned int) y_work, (unsigned int) info->board->y_axis_real_max);
+	
+	// Adjust with edge offset.
+	x_work -= info->board->x_axis_edge_offset;
+	y_work -= info->board->y_axis_edge_offset;
+
+	// Calculate coordinates factor.
+	x_adj = (info->board->max_x * 1000) /
+		(info->board->x_axis_real_max - info->board->x_axis_edge_offset);
+	y_adj = (info->board->max_y * 1000) /
+		(info->board->y_axis_real_max - info->board->y_axis_edge_offset);
+	
+	// Calculate the adjusted coordinates.
+	x_work = x_work * x_adj / 1000;
+	y_work = y_work * y_adj / 1000;
+
+	*x = x_work;
+	*y = y_work;
+}
+
 static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 					      unsigned char data[],
 					      unsigned char LeftEvent)
@@ -843,6 +882,9 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 						& 0xF);
 
 			z = data[4 + EventNum * FTS_EVENT_SIZE];
+
+			if (info->board->coord_factor)
+				fts_coordinates_factor(info, &x, &y);
 			
 			// Should fix in calibration in future. Workaround for touch starting too early
 			if (z >= 53)
@@ -1278,6 +1320,21 @@ static int fts_parse_dt(struct i2c_client *client)
 	}
 	pdata->max_x = coords[0];
 	pdata->max_y = coords[1];
+
+	pdata->coord_factor = 0;
+	if (!of_property_read_u32_array(np, "stm,max-real-coords", coords, 2)) {
+		pdata->coord_factor = 1;
+		pdata->x_axis_real_max = coords[0];
+		pdata->y_axis_real_max = coords[1];
+
+		if (!of_property_read_u32_array(np, "stm,edge-offset", coords, 2)) {
+			pdata->x_axis_edge_offset = coords[0];
+			pdata->y_axis_edge_offset = coords[1];
+		} else {
+			pdata->x_axis_edge_offset = 0;
+			pdata->y_axis_edge_offset = 0;
+		}
+	}
 
 	if (of_property_read_u32_array(np, "stm,num_lines", lines, 2))
 		tsp_debug_err(dev, "skipped to get num_lines property\n");
