@@ -727,21 +727,21 @@ static void fts_coordinates_factor(struct fts_ts_info *info, int *x, int *y)
 	y_work = *y;
 
 	// Ensure minimum value.
-	x_work = max(x_work, info->board->x_axis_edge_offset);
-	y_work = max(y_work, info->board->y_axis_edge_offset);
+	x_work = max((unsigned int) x_work, (unsigned int) info->board->x_axis_edge_offset);
+	y_work = max((unsigned int) y_work, (unsigned int) info->board->y_axis_edge_offset);
 	
 	// Ensure maximum value.
-	x_work = min(x_work, info->board->x_axis_real_max);
-	y_work = min(y_work, info->board->y_axis_real_max);
+	x_work = min((unsigned int) x_work, (unsigned int) info->board->x_axis_real_max);
+	y_work = min((unsigned int) y_work, (unsigned int) info->board->y_axis_real_max);
 	
 	// Adjust with edge offset.
 	x_work -= info->board->x_axis_edge_offset;
 	y_work -= info->board->y_axis_edge_offset;
 
 	// Calculate coordinates factor.
-	x_adj = (info->board->x_axis_max * 1000) /
+	x_adj = (info->board->max_x * 1000) /
 		(info->board->x_axis_real_max - info->board->x_axis_edge_offset);
-	y_adj = (info->board->x_axis_max * 1000) /
+	y_adj = (info->board->max_y * 1000) /
 		(info->board->y_axis_real_max - info->board->y_axis_edge_offset);
 	
 	// Calculate the adjusted coordinates.
