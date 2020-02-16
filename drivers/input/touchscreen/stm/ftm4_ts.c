@@ -53,15 +53,15 @@
 #include <linux/trustedui.h>
 #endif
 
+#include <linux/input/mt.h>
+#include "ftm4_ts.h"
+
 #ifdef CONFIG_OF
 #ifndef USE_OPEN_CLOSE
 #define USE_OPEN_CLOSE
 #undef CONFIG_PM
 #endif
 #endif
-
-#include <linux/input/mt.h>
-#include "ftm4_ts.h"
 
 static struct i2c_driver fts_i2c_driver;
 
