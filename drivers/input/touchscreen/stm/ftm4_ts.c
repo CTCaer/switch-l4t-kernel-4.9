@@ -84,8 +84,6 @@ static void fts_irq_enable(struct fts_ts_info *info, bool enable);
 static void fts_reset_work(struct work_struct *work);
 void fts_recovery_cx(struct fts_ts_info *info);
 void fts_release_all_finger(struct fts_ts_info *info);
-static int fts_suspend(struct i2c_client *client, pm_message_t mesg);
-static int fts_resume(struct i2c_client *client);
 
 int fts_write_reg(struct fts_ts_info *info,
 		  unsigned char *reg, unsigned short num_com)
@@ -269,6 +267,62 @@ static int fts_product_info_read(struct fts_ts_info *info)
 	int i = 0;
 
 	memset(&info->prd_info, 0, sizeof(struct fts_prd_info));
+
+	fts_command(info,LOCKDOWN_READ);
+
+	while (retry--) {
+		fts_delay(5);
+
+		ret = fts_read_reg(info, &addr[0], 1, &data[0], FTS_EVENT_SIZE);
+		if (ret < 0) {
+			tsp_debug_err(info->dev, "ftm4_reg_read fail\n");
+			goto error;
+		}
+
+		if (data[0] == EVENTID_LOCKDOWN_CODE) {
+			total_length = data[1];
+			offset = data[2];
+
+			tsp_debug_dbg(info->dev, "Total length : %d |  offset : %d\n", total_length, offset);
+
+			if (total_length == FTS_LOCKDOWNCODE_SIZE) {
+				for (i = 0; i < 4; i++) {
+					if (offset+i >= FTS_LOCKDOWNCODE_SIZE) {
+						strncpy(&info->prd_info.product_id[0], &prd_info[0], 3);
+						info->prd_info.chip_rev = (prd_info[3] >> 4) & 0xF;
+						info->prd_info.fpc_rev = prd_info[3] & 0xF;
+						info->prd_info.t_sensor_rev = prd_info[4];
+						info->prd_info.site = prd_info[5];
+						info->prd_info.inspector_no = prd_info[6];
+						strncpy(&info->prd_info.date[0], &prd_info[7], 6);
+
+						info->fts_command(info, SENSEON);
+						info->fts_interrupt_set(info, INT_ENABLE);
+						return 0;
+					}
+					prd_info[offset+i] = data[i+3];
+					tsp_debug_dbg(info->dev, "[fts_lockdown_read] code [0x%02X]\n", prd_info[offset+i]);
+				}
+			}
+		} else if ((data[0] == EVENTID_ERROR) && (data[1] == EVENTID_ERROR_LOCKDOWN)) {
+			switch (data[2] & 0x0F) {
+			case 0x01:
+				tsp_debug_err(info->dev, "[fts_lockdown_read] Error - no lockdown code");
+				goto error;
+			case 0x02:
+				tsp_debug_err(info->dev, "[fts_lockdown_read] Error - Data Corrupted");
+				goto error;
+			case 0x03:
+				tsp_debug_err(info->dev, "[fts_lockdown_read] Error - Command format invalid");
+				goto error;
+			}
+		}
+	}
+
+	tsp_debug_err(info->dev, "[fts_lockdown_read] Error - Time over, retry =%d", retry);
+error:
+	info->fts_command(info, SENSEON);
+	info->fts_interrupt_set(info, INT_ENABLE);
 
 	return -EINVAL;
 }
@@ -785,10 +839,10 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 			info->fts_power_state );
 #endif
 
-	if (info->fts_power_state == FTS_POWER_STATE_LOWPOWER)
-		EventID = data[EventNum * FTS_EVENT_SIZE] & 0xFF;
-	else
-		EventID = data[EventNum * FTS_EVENT_SIZE] & 0x0F;
+		if (info->fts_power_state == FTS_POWER_STATE_LOWPOWER)
+			EventID = data[EventNum * FTS_EVENT_SIZE] & 0xFF;
+		else
+			EventID = data[EventNum * FTS_EVENT_SIZE] & 0x0F;
 
 		if ((EventID >= 3) && (EventID <= 5)) {
 			LastLeftEvent = 0;
@@ -1522,7 +1576,6 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 	struct fts_ts_info *info = NULL;
 	static char fts_ts_phys[64] = { 0 };
 	int i = 0;
-	static int is = 0;
 
 /*
 	tsp_debug_info(&client->dev, "FTS Driver [12%s] %s %s\n",
@@ -1892,9 +1945,34 @@ static int fts_stop_device(struct fts_ts_info *info)
 
 	mutex_lock(&info->device_mutex);
 
+	if (info->touch_stopped) {
+		tsp_debug_err(&info->client->dev,
+					"%s already power off\n", __func__);
+		goto out;
+	}
+
 	if (info->lowpower_mode) {
 		info->fts_power_state = FTS_POWER_STATE_LOWPOWER;
+		fts_command(info, FLUSHBUFFER);
+
+		fts_command(info, FTS_CMD_LOWPOWER_MODE);
+		fts_command(info, FLUSHBUFFER);
+
+		fts_release_all_finger(info);
+#ifdef FTS_SUPPORT_NOISE_PARAM
+		fts_get_noise_param(info);
+#endif
 	} else {
+		fts_command(info, FLUSHBUFFER);
+		fts_release_all_finger(info);
+#ifdef FTS_SUPPORT_NOISE_PARAM
+		fts_get_noise_param(info);
+#endif
+		info->touch_stopped = true;
+
+		if (info->board->power)
+			info->board->power(info, false);
+
 		info->fts_power_state = FTS_POWER_STATE_POWERDOWN;
 	}
  out:
@@ -1935,11 +2013,31 @@ static int fts_start_device(struct fts_ts_info *info)
 	}
 
 	fts_release_all_finger(info);
+
+	if (info->lowpower_mode) {
+		/* low power mode command is sent after LCD OFF. */
+		/* turn on touch power @ LCD ON */
+		if (info->touch_stopped)
+			goto tsp_power_on;
+
+		info->reinit_done = false;
+		fts_reinit(info);
+		info->reinit_done = true;
+	} else {
+tsp_power_on:
+		if (info->board->power)
+			info->board->power(info, true);
+		info->touch_stopped = false;
+		info->reinit_done = false;
+
+		fts_reinit(info);
+		info->reinit_done = true;
+	}
+
 	info->fts_power_state = FTS_POWER_STATE_ACTIVE;
 	mutex_unlock(&info->device_mutex);
 	fts_command(info, SENSEON);
 	fts_command(info, FLUSHBUFFER);
-
 
 	return 0;
 }
@@ -2028,38 +2126,6 @@ static int fts_pm_resume(struct device *dev)
 	return 0;
 }
 #endif
-
-static int fts_suspend(struct i2c_client *client, pm_message_t mesg)
-{
-	struct fts_ts_info *info = i2c_get_clientdata(client);
-
-	tsp_debug_info(&info->client->dev, "%s power state : %d\n",
-			__func__, info->fts_power_state);
-
-	fts_stop_device(info);
-
-	return 0;
-}
-
-static int fts_resume(struct i2c_client *client)
-{
-	struct fts_ts_info *info = i2c_get_clientdata(client);
-
-	tsp_debug_info(&info->client->dev, "%s power state : %d\n",
-			__func__, info->fts_power_state);
-	/* if resume is called from active state, the i2c bus is not
-	 * switched to AP, skipping resume routine */
-	if (info->fts_power_state == FTS_POWER_STATE_ACTIVE) {
-		tsp_debug_info(&info->client->dev,
-				"%s: calling resume from active state, "
-				"skipping\n", __func__);
-		return 0;
-	}
-
-	fts_start_device(info);
-
-	return 0;
-}
 
 static const struct i2c_device_id fts_device_id[] = {
 	{FTS_TS_DRV_NAME, 0},

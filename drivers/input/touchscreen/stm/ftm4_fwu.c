@@ -36,6 +36,9 @@
 
 #define FTS64FILE_SIGNATURE 0xaaaa5555
 
+#define FTS_SKIP_FW_UPDATE
+#define FTS_DONT_SAVE_TUNING
+
 enum {
 	BUILT_IN = 0,
 	UMS,
@@ -452,6 +455,7 @@ uint32_t convU8toU32(uint8_t *src)
 	return tmpData;
 }
 
+#ifndef FTS_SKIP_FW_UPDATE
 static int parseBinFile(struct fts_ts_info *info, uint8_t *data,
 	int fw_size,
 	struct FW_FTB_HEADER *fw_header,
@@ -579,6 +583,7 @@ static int parseBinFile(struct fts_ts_info *info, uint8_t *data,
 
 	return file_type;
 }
+#endif
 
 static int fts_check_erase_done(struct fts_ts_info *info)
 {
@@ -720,6 +725,7 @@ int fw_download(struct fts_ts_info *info, uint8_t *pFilename,
 	return true;
 }
 
+#ifndef FTS_SKIP_FW_UPDATE
 static int fts_fw_compare(struct fts_ts_info *info, const struct firmware *fw)
 {
 	u32 bin_fw_ver_addr_1 = 0;
@@ -780,16 +786,20 @@ error:
 
 	return update;
 }
+#endif
 
 void fts_fw_init(struct fts_ts_info *info)
 {
 	tsp_debug_info(info->dev, "%s\n", __func__);
 
 	info->fts_command(info, FTS_CMD_TRIM_LOW_POWER_OSCILLATOR);
-//	fts_delay(200);
-//	info->fts_command(info, FTS_CMD_SAVE_CX_TUNING);
-//	fts_delay(230);
-//	fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CXTUNE_VALUE, 0x00);
+
+#ifndef FTS_DONT_SAVE_TUNING
+	fts_delay(200);
+	info->fts_command(info, FTS_CMD_SAVE_CX_TUNING);
+	fts_delay(230);
+	fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CXTUNE_VALUE, 0x00);
+#endif
 
 	fts_get_afe_info(info);
 
@@ -802,6 +812,7 @@ void fts_fw_init(struct fts_ts_info *info)
 	info->fts_interrupt_set(info, INT_ENABLE);
 }
 
+#ifndef FTS_SKIP_FW_UPDATE
 static int fts_fw_check(struct fts_ts_info *info)
 {
 	int retval = 0;
@@ -942,23 +953,29 @@ out:
 		release_firmware(fw_entry);
 	return retval;
 }
+#endif
 
 int fts_fw_verify_update(struct fts_ts_info *info)
 {
+#ifndef FTS_SKIP_FW_UPDATE
 	int retry = 0;
+#endif
 
 	info->fts_irq_enable(info, false);
-//  Autotune
+	// Autotune
 	fts_fw_init(info);
-//  Skip over update
-//	while (retry++ < FTS_FW_UPDATE_RETRY) {
-//		tsp_debug_info(info->dev,
-//			"[fw_update] try:%d\n", retry);
-//		if (0 == fts_fw_update(info)) {
-//			info->fts_irq_enable(info, true);
-//			return 0;
-//		}
-//	}
+
+#ifndef FTS_SKIP_FW_UPDATE
+	while (retry++ < FTS_FW_UPDATE_RETRY) {
+		tsp_debug_info(info->dev,
+			"[fw_update] try:%d\n", retry);
+		if (0 == fts_fw_update(info)) {
+			info->fts_irq_enable(info, true);
+			return 0;
+		}
+	}
+#endif
+
 	info->fts_irq_enable(info, true);
 	return 0;
 }
