@@ -1945,9 +1945,34 @@ static int fts_stop_device(struct fts_ts_info *info)
 
 	mutex_lock(&info->device_mutex);
 
+	if (info->touch_stopped) {
+		tsp_debug_err(&info->client->dev,
+					"%s already power off\n", __func__);
+		goto out;
+	}
+
 	if (info->lowpower_mode) {
 		info->fts_power_state = FTS_POWER_STATE_LOWPOWER;
+		fts_command(info, FLUSHBUFFER);
+
+		fts_command(info, FTS_CMD_LOWPOWER_MODE);
+		fts_command(info, FLUSHBUFFER);
+
+		fts_release_all_finger(info);
+#ifdef FTS_SUPPORT_NOISE_PARAM
+		fts_get_noise_param(info);
+#endif
 	} else {
+		fts_command(info, FLUSHBUFFER);
+		fts_release_all_finger(info);
+#ifdef FTS_SUPPORT_NOISE_PARAM
+		fts_get_noise_param(info);
+#endif
+		info->touch_stopped = true;
+
+		if (info->board->power)
+			info->board->power(info, false);
+
 		info->fts_power_state = FTS_POWER_STATE_POWERDOWN;
 	}
  out:
@@ -1988,11 +2013,31 @@ static int fts_start_device(struct fts_ts_info *info)
 	}
 
 	fts_release_all_finger(info);
+
+	if (info->lowpower_mode) {
+		/* low power mode command is sent after LCD OFF. */
+		/* turn on touch power @ LCD ON */
+		if (info->touch_stopped)
+			goto tsp_power_on;
+
+		info->reinit_done = false;
+		fts_reinit(info);
+		info->reinit_done = true;
+	} else {
+tsp_power_on:
+		if (info->board->power)
+			info->board->power(info, true);
+		info->touch_stopped = false;
+		info->reinit_done = false;
+
+		fts_reinit(info);
+		info->reinit_done = true;
+	}
+
 	info->fts_power_state = FTS_POWER_STATE_ACTIVE;
 	mutex_unlock(&info->device_mutex);
 	fts_command(info, SENSEON);
 	fts_command(info, FLUSHBUFFER);
-
 
 	return 0;
 }
