@@ -16,6 +16,7 @@
 struct max77620_onoff {
 	struct input_dev *input;
 	int irq_f, irq_r;
+	bool pressed;
 	unsigned int code;
 };
 
@@ -60,8 +61,12 @@ static irqreturn_t max77620_onoff_falling(int irq, void *data)
 {
 	struct max77620_onoff *onoff = data;
 
-	input_report_key(onoff->input, onoff->code, 0);
-	input_sync(onoff->input);
+	if (onoff->pressed) {
+		input_report_key(onoff->input, onoff->code, 0);
+		input_sync(onoff->input);
+
+		onoff->pressed = false;
+	}
 
 	return IRQ_HANDLED;
 }
@@ -70,8 +75,12 @@ static irqreturn_t max77620_onoff_rising(int irq, void *data)
 {
 	struct max77620_onoff *onoff = data;
 
-	input_report_key(onoff->input, onoff->code, 1);
-	input_sync(onoff->input);
+	if (!onoff->pressed) {
+		input_report_key(onoff->input, onoff->code, 1);
+		input_sync(onoff->input);
+
+		onoff->pressed = true;
+	}
 
 	return IRQ_HANDLED;
 }
@@ -122,7 +131,6 @@ static int max77620_onoff_probe(struct platform_device *pdev)
 	onoff->irq_f = regmap_irq_get_virq(chip->onoff_irq_data, 2);
 	onoff->irq_r = regmap_irq_get_virq(chip->onoff_irq_data, 3);
 
-
 	ret = devm_request_any_context_irq(dev, onoff->irq_f, max77620_onoff_falling,
 					     IRQF_ONESHOT, "en0-down", onoff);
 	if (ret < 0)
@@ -136,16 +144,16 @@ static int max77620_onoff_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, onoff);
 	input_set_drvdata(onoff->input, onoff);
 	device_init_wakeup(dev, 1);
+
 	return input_register_device(onoff->input);
 }
 
 static int __maybe_unused max77620_onoff_suspend(struct device *dev)
 {
 	struct max77620_onoff *onoff = dev_get_drvdata(dev);
-
-	if (device_may_wakeup(dev)) {
+	
+	if (device_may_wakeup(dev))
 		return enable_irq_wake(onoff->irq_f);
-	}
 
 	return 0;
 }
@@ -153,10 +161,12 @@ static int __maybe_unused max77620_onoff_suspend(struct device *dev)
 static int __maybe_unused max77620_onoff_resume(struct device *dev)
 {	
 	struct max77620_onoff *onoff = dev_get_drvdata(dev);
+	
+	// Ignore any release event to prevent confusing userspace after leaving sleep
+	onoff->pressed = false;
 
-	if (device_may_wakeup(dev)) {
+	if (device_may_wakeup(dev))
 		return disable_irq_wake(onoff->irq_f);
-	}
 
 	return 0;
 }
