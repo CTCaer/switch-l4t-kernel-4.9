@@ -672,7 +672,9 @@ static void bm92t_event_handler2(struct work_struct *work)
 
 			if (!(vdm[5] == 0x7e && vdm[6] == 0x05 &&
 				vdm[15] == 0x03 && vdm[16] == 0x20)) {
-				dev_dbg(dev, "unexpected VDM\n");
+				bm92t_extcon_cable_update(info,
+						EXTCON_USB, true);
+				dev_dbg(dev, "unexpected VDM, PD only\n");
 				goto ret;
 			}
 			bm92t_send_vdm(info, vdm_id_phase2_msg,
@@ -715,7 +717,6 @@ static void bm92t_event_handler2(struct work_struct *work)
 		}
 		break;
 	case HPD_HANDLED:
-		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, true);
 		if (bm92t_is_success(alert_data, status1_data) &&
 			((status1_data & 0xff) == 0x80)) {
 			bm92t_send_vdm(info, vdm_query_device_msg,
@@ -776,6 +777,8 @@ static void bm92t_event_handler2(struct work_struct *work)
 			dev_dbg(dev, "cmd done in VDM_CHECK_USBHUB_SENT\n");
 		break;
 	case VDM_ACCEPT_CHECK_USBHUB_SENT:
+		msleep(1000); // Wait for the switch to be fully seated so dp link training can run correctly
+		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, true);
 		if (alert_data & ALERT_CMD_DONE) {
 			/* check incoming VDM */
 			err = bm92t_read_reg(info, INCOMING_VDM,
