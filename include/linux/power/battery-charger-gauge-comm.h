@@ -94,6 +94,7 @@ int battery_charging_system_reset_after(struct battery_charger_dev *bc_dev,
 	int after_sec);
 int battery_charging_system_power_on_usb_event(
 	struct battery_charger_dev *bc_dev);
+bool battery_gauge_present(void);
 int battery_gauge_get_battery_temperature(struct battery_gauge_dev *bg_dev,
 	int *temp);
 int battery_gauge_get_battery_current(struct battery_gauge_dev *bg_dev,

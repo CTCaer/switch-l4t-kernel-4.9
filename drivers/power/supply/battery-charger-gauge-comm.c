@@ -290,6 +290,12 @@ static const struct attribute_group battery_sysfs_attr_group = {
 	.attrs = battery_sysfs_attributes,
 };
 
+bool battery_gauge_present(void)
+{
+	return !list_empty(&gauge_list);
+}
+EXPORT_SYMBOL_GPL(battery_gauge_present);
+
 int battery_gauge_get_charging_current(struct battery_charger_dev *bc_dev)
 {
 	struct battery_gauge_dev *bg_dev;
