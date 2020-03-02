@@ -167,7 +167,6 @@ struct bq2419x_charger_platform_data {
 	u32 *input_voltage_soc_limit;
 	u32 auto_recharge_time_supend;
 	u32 auto_rechg_power_on_time;
-	bool enable_full_plug_detection;
 	int n_soc_profile;
 };
 
