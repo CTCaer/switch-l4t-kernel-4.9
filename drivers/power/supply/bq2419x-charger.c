@@ -2138,12 +2138,7 @@ static int bq2419x_probe(struct i2c_client *client,
 		dev_err(bq2419x->dev, "SYS_STAT_REG rd failed %d\n", ret);
 		return ret;
 	}
-
-
-	if (bq2419x->charger_pdata->enable_full_plug_detection)
-		bq2419x_extcon_charger_cable_update(bq2419x, val);
-	else
-		bq2419x_extcon_cable_update(bq2419x, val);
+	ret = bq2419x_extcon_cable_update(bq2419x, val);
 
 	mutex_init(&bq2419x->mutex);
 
