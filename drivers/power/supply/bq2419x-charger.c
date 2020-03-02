@@ -696,6 +696,7 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 	old_current_limit = bq2419x->in_current_limit;
 	bq2419x->last_charging_current = max_uA;
 	if ((val & BQ2419x_VBUS_STAT) == BQ2419x_VBUS_UNKNOWN) {
+		dev_info(bq2419x->dev, "Connected to unknown VBUS source 0x%x", val);
 		in_current_limit = 500;
 		bq2419x->cable_connected = 0;
 		bq2419x->chg_status = BATTERY_DISCHARGING;
@@ -716,6 +717,7 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 		battery_charger_thermal_stop_monitoring(
 				bq2419x->bc_dev);
 	} else {
+		dev_info(bq2419x->dev, "Connected to known safe VBUS source 0x%x", val);
 		in_current_limit = max_uA/1000;
 		bq2419x->cable_connected = 1;
 		bq2419x->chg_status = BATTERY_CHARGING;
@@ -2018,6 +2020,9 @@ static int bq2419x_probe(struct i2c_client *client,
 	struct device_node *vbus_np = NULL;
 	int ret = 0;
 	int val = 0;
+
+	if (!battery_gauge_present())
+		return -EPROBE_DEFER;
 
 	if (client->dev.platform_data)
 		pdata = client->dev.platform_data;
