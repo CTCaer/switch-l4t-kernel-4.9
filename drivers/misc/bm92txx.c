@@ -71,6 +71,7 @@
 #define DATA_ROLE_UFP   1
 #define DATA_ROLE_DFP   2
 
+#define NON_PD_CHARGING_CURRENT_LIMIT_UA 2000000u
 #define PD_CHARGING_CURRENT_LIMIT_UA 1500000u
 
 enum bm92t_state_type {
@@ -121,6 +122,7 @@ struct bm92t_info {
 	struct dentry *debugfs_root;
 #endif
 	struct regulator *batt_chg_reg;
+	int charging_current_limit;
 	bool charging_enabled;
 	unsigned int fw_type;
 	unsigned int fw_revision;
@@ -300,8 +302,10 @@ static void bm92t_power_work(struct work_struct *work)
 	struct bm92t_info *info = container_of(
 		to_delayed_work(work), struct bm92t_info, power_work);
 
-	bm92t_set_current_limit(info, PD_CHARGING_CURRENT_LIMIT_UA);
-	info->charging_enabled = true;
+	bm92t_set_current_limit(info, info->charging_current_limit);
+
+	if (info->charging_current_limit > 0)
+		info->charging_enabled = true;
 }
 
 static inline void bm92t_swap_data_role(struct bm92t_info *info,
@@ -336,7 +340,7 @@ static void
 	unsigned char dr;
 
 	if (info->state > INIT_STATE)
-		goto ret;
+		return;
 
 	dev_info(&info->i2c_client->dev,
 		 "extcon cable is set to init state\n");
@@ -350,16 +354,20 @@ static void
 	dr = (status1_data & STATUS1_DR_MASK) >> STATUS1_DR_SHIFT;
 
 	if (dr == DATA_ROLE_UFP) {
+		info->charging_current_limit = NON_PD_CHARGING_CURRENT_LIMIT_UA;
 		bm92t_extcon_cable_update(info, EXTCON_USB, true);
-		goto ret;
 	} else if (dr == DATA_ROLE_DFP) {
-		bm92t_set_current_limit(info, PD_CHARGING_CURRENT_LIMIT_UA);
-		info->charging_enabled = true;
+		info->charging_current_limit = PD_CHARGING_CURRENT_LIMIT_UA;
 		bm92t_extcon_cable_update(info,
 			EXTCON_USB_HOST, true);
 		bm92t_state_machine(info, HPD_HANDLED);
 	}
-ret:
+
+	bm92t_set_current_limit(info, info->charging_current_limit);
+
+	if (info->charging_current_limit)
+		info->charging_enabled = true;
+
 	return;
 }
 
@@ -374,6 +382,10 @@ static void
 
 	bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 	bm92t_extcon_cable_update(info, EXTCON_USB, true);
+	
+	info->charging_current_limit = NON_PD_CHARGING_CURRENT_LIMIT_UA;
+	bm92t_set_current_limit(info, info->charging_current_limit);
+	info->charging_enabled = true;
 }
 
 static bool bm92t_check_pdo(struct bm92t_info *info)
@@ -587,11 +599,11 @@ static void bm92t_event_handler2(struct work_struct *work)
 	/* Check if cable removed */
 	if (alert_data & ALERT_PLUGPULL) {
 		if (!(status1_data & STATUS1_INSERT)) {
+			info->charging_current_limit = 0;
 			cancel_delayed_work(&info->power_work);
-			if (info->charging_enabled) {
-				bm92t_set_current_limit(info, 0);
-				info->charging_enabled = false;
-			}
+			if (info->charging_enabled)
+				bm92t_set_current_limit(info, info->charging_current_limit);
+
 
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
@@ -605,10 +617,15 @@ static void bm92t_event_handler2(struct work_struct *work)
 	case INIT_STATE:
 		if (alert_data & ALERT_CONTR) {
 			if (!bm92t_check_pdo(info)) {
-				dev_err(dev, "Power Nego failed\n");
+				dev_err(dev, "Power Nego failed, non PD supply\n");
 				bm92t_state_machine(info, INIT_STATE);
 				bm92t_extcon_cable_update(info,
 					EXTCON_USB, true);
+
+				
+				info->charging_current_limit = NON_PD_CHARGING_CURRENT_LIMIT_UA;
+				schedule_delayed_work(&info->power_work,
+						msecs_to_jiffies(2000));
 				goto ret;
 			}
 			bm92t_send_rdo(info);
@@ -641,6 +658,8 @@ static void bm92t_event_handler2(struct work_struct *work)
 		if (bm92t_is_success(alert_data, status1_data)) {
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, true);
 			msleep(550); /* reguired? */
+			
+			info->charging_current_limit = PD_CHARGING_CURRENT_LIMIT_UA;
 			schedule_delayed_work(&info->power_work,
 				msecs_to_jiffies(2000));
 			cmd = DR_SWAP_CMD;
@@ -1002,6 +1021,18 @@ static int bm92t_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, info);
 
 	info->i2c_client = client;
+
+	info->batt_chg_reg = devm_regulator_get(&client->dev, "pd_bat_chg");
+	if (IS_ERR(info->batt_chg_reg)) {
+		err = PTR_ERR(info->batt_chg_reg);
+		if (err == -EPROBE_DEFER)
+			return err;
+
+		dev_info(&client->dev,
+				"pd_bat_chg reg not registered: %d\n", err);
+		info->batt_chg_reg = NULL;
+	}
+
 	if (client->dev.of_node) {
 		info->pdata = bm92t_parse_dt(client);
 		if (IS_ERR(info->pdata)) {
@@ -1070,13 +1101,6 @@ static int bm92t_probe(struct i2c_client *client,
 			destroy_workqueue(info->event_wq);
 			return -EBUSY;
 		}
-	}
-	info->batt_chg_reg = devm_regulator_get(&client->dev, "pd_bat_chg");
-	if (IS_ERR(info->batt_chg_reg)) {
-		err = PTR_ERR(info->batt_chg_reg);
-		dev_info(&client->dev,
-				"pd_bat_chg reg not registered: %d\n", err);
-		info->batt_chg_reg = NULL;
 	}
 
 	schedule_delayed_work(&info->oneshot_work, msecs_to_jiffies(5000));
