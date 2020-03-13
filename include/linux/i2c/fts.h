@@ -34,6 +34,7 @@ struct fts_touchkey {
 struct fts_i2c_platform_data {
 	bool factory_flatform;
 	bool recovery_mode;
+	bool force_retune;
 	bool support_hover;
 	bool support_mshover;
 	int max_x;
