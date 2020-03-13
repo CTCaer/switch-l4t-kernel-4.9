@@ -687,11 +687,18 @@ static int fts_init(struct fts_ts_info *info)
 					__func__);
 
 
-	rc  = fts_fw_verify_update(info);
-	if (rc  < 0)
-		tsp_debug_err(&info->client->dev, "%s: Failed to firmware update\n",
-				__func__);
-
+	if (info->board->force_retune) {
+		rc  = fts_fw_verify_update(info);
+		if (rc  < 0)
+			tsp_debug_err(&info->client->dev, "%s: Failed to firmware update\n",
+					__func__);
+	} else {
+		regAdd[0] = FTS_CMD_AUTO_CALIBRATION;
+		regAdd[1] = 1;
+		
+		rc = fts_write_reg(info, &regAdd[0], 2);
+		
+	}
 #ifdef FEATURE_FTS_PRODUCTION_CODE
 		info->digital_rev = FTS_DIGITAL_REV_2;
 		rc = info->fts_get_channel_info(info);
@@ -744,6 +751,7 @@ static int fts_init(struct fts_ts_info *info)
 
 
 	memset(val, 0x0, 4);
+	memset(regAdd, 0x0, 8);
 	regAdd[0] = READ_STATUS;
 	fts_read_reg(info, regAdd, 1, (unsigned char *)val, 4);
 	tsp_debug_err(&info->client->dev,
@@ -815,6 +823,7 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 	unsigned char TouchID = 0, EventID = 0, status = 0;
 	unsigned char LastLeftEvent = 0;
 	int x = 0, y = 0, z = 0;
+	int tmp = 0;
 	int bw = 0, bh = 0, palm = 0;
 	int orient = 0;
 
@@ -935,23 +944,23 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 				(data[3 + EventNum * FTS_EVENT_SIZE]
 						& 0xF);
 
-			z = data[4 + EventNum * FTS_EVENT_SIZE];
+			z = data[4 + EventNum * FTS_EVENT_SIZE] | (data[5 + EventNum * FTS_EVENT_SIZE] << 8);
+			z <<= 6;
+
+			tmp = 0x40;
+			if ((data[6 + EventNum * FTS_EVENT_SIZE] & 0x3F) != 1 && (data[6 + EventNum * FTS_EVENT_SIZE] & 0x3F) != 0x3F)
+				tmp = data[6 + EventNum * FTS_EVENT_SIZE] & 0x3F;
+
+			z /= tmp + 0x40;
+			bw = bh = z;
 
 			if (info->board->coord_factor)
 				fts_coordinates_factor(info, &x, &y);
 			
-			// Should fix in calibration in future. Workaround for touch starting too early
-			if (z >= 53)
-				z -= 53;
-			else
-				break;
-
-			bw = data[6 + EventNum * FTS_EVENT_SIZE];
-			bh = data[7 + EventNum * FTS_EVENT_SIZE];
 
 			orient = data[5 + EventNum * FTS_EVENT_SIZE];
 
-			if (z == 255) {
+			if (z >= 255) {
 				tsp_debug_info(&info->client->dev,
 						"%s: Palm Detected\n", __func__);
 				tsp_debug_info(&info->client->dev, "%s: "
@@ -980,18 +989,7 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 					 ABS_MT_POSITION_Y, y);
 
 			input_report_abs(info->input_dev,
-					 ABS_MT_TOUCH_MAJOR, max(bw,
-								 bh));
-
-			input_report_abs(info->input_dev,
-					 ABS_MT_TOUCH_MINOR, min(bw,
-								 bh));
-
-			input_report_abs(info->input_dev,
 					 ABS_MT_PRESSURE, z);
-
-			input_report_abs(info->input_dev,
-					 ABS_MT_ORIENTATION, orient);
 
 			info->finger[TouchID].lx = x;
 			info->finger[TouchID].ly = y;
@@ -1422,6 +1420,8 @@ static int fts_parse_dt(struct i2c_client *client)
 	else
 		tsp_debug_err(dev, "Failed to get vio_gpio gpio\n");
 
+	pdata->force_retune = of_property_read_bool(np, "stm,force_retune");
+	
 	pdata->power = fts_power_ctrl;
 
 	/* Optional parmeters(those values are not mandatory)
@@ -1662,15 +1662,6 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 		tsp_debug_err(&info->client->dev, "FTS fts_init fail!\n");
 		goto err_fts_init;
 	}
-
-	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MAJOR,
-				 0, 255, 0, 0);
-	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MINOR,
-				 0, 255, 0, 0);
-	input_set_abs_params(info->input_dev, ABS_MT_DISTANCE,
-				 0, 255, 0, 0);
-	input_set_abs_params(info->input_dev, ABS_MT_ORIENTATION,
-				 0, 255, 0, 0);
 
 	input_set_drvdata(info->input_dev, info);
 	i2c_set_clientdata(client, info);
