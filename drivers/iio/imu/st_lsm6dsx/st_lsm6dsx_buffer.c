@@ -366,8 +366,9 @@ static int st_lsm6dsx_update_fifo(struct iio_dev *iio_dev, bool enable)
 	if (!hw->irq) {
 		if (enable) {
 			hw->poll_thread = kthread_run(st_lsm6dsx_poll_thread, hw, "st_lsm6dsx_poll");
-		} else {
+		} else if (hw->poll_thread != NULL) {
 			kthread_stop(hw->poll_thread);
+			hw->poll_thread = NULL;
 		}
 	}
 
@@ -470,10 +471,9 @@ int st_lsm6dsx_fifo_setup(struct st_lsm6dsx_hw *hw)
 			return err;
 		}
 	} else {
-		hw->poll_thread = kthread_run(st_lsm6dsx_poll_thread, hw, "st_lsm6dsx_poll");
-		if (IS_ERR(hw->poll_thread))
-			return -EIO;
+		hw->poll_thread = NULL;
 	}
+
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
 		buffer = devm_iio_kfifo_allocate(hw->dev);
 		if (!buffer)
