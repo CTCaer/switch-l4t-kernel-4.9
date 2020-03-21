@@ -28,7 +28,6 @@
 #include <linux/debugfs.h>
 #include <linux/extcon.h>
 #include <linux/regulator/consumer.h>
-#include "bm92txx.h"
 
 #define ALERT_STATUS    0x2
 #define STATUS1         0x3
@@ -99,14 +98,8 @@ enum bm92t_extcon_cable_type {
 	USB_DISP_DP
 };
 
-enum bm92t_vdm_id_type {
-	VDM_IDENTIFICATION_PHASE1 = 0,
-	VDM_IDENTIFICATION_PHASE2,
-};
-
 struct bm92t_info {
 	struct i2c_client *i2c_client;
-	struct bm92t_platform_data *pdata;
 
 	struct work_struct work;
 	struct workqueue_struct *event_wq;
@@ -115,15 +108,11 @@ struct bm92t_info {
 	int state;
 
 	struct extcon_dev edev;
-	struct delayed_work oneshot_work;
-	struct delayed_work power_work;
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_root;
 #endif
 	struct regulator *batt_chg_reg;
-	int charging_current_limit;
-	bool charging_enabled;
 	unsigned int fw_type;
 	unsigned int fw_revision;
 };
@@ -145,10 +134,6 @@ static const char * const states[] = {
 	"VDM_ACCEPT_LED_ON_SENT",
 	"VDM_CHECK_USBHUB_SENT",
 	"VDM_ACCEPT_CHECK_USBHUB_SENT"
-};
-
-struct bm92t_platform_data bm92t_dflt_pdata = {
-	.irq_gpio = -1,
 };
 
 static const unsigned int bm92t_extcon_cable[] = {
@@ -297,97 +282,6 @@ static inline bool bm92t_is_success(const short alert_data,
 	return alert_data & ALERT_CMD_DONE;
 }
 
-static void bm92t_power_work(struct work_struct *work)
-{
-	struct bm92t_info *info = container_of(
-		to_delayed_work(work), struct bm92t_info, power_work);
-
-	bm92t_set_current_limit(info, info->charging_current_limit);
-
-	if (info->charging_current_limit > 0)
-		info->charging_enabled = true;
-}
-
-static inline void bm92t_swap_data_role(struct bm92t_info *info,
-					const short status1_data)
-{
-	unsigned char dr =
-		(status1_data & STATUS1_DR_MASK) >> STATUS1_DR_SHIFT;
-
-	dev_info(&info->i2c_client->dev, "DataRole is %s\n",
-		 (dr == 2) ? "DFP" : "UFP ");
-
-	switch (dr) {
-	case DATA_ROLE_DFP:
-		bm92t_extcon_cable_update(info,
-			EXTCON_USB_HOST, true);
-		break;
-	case DATA_ROLE_UFP:
-		bm92t_extcon_cable_update(info,
-			EXTCON_USB, true);
-		break;
-	}
-}
-
-static void
-	bm92t_extcon_cable_set_init_state(struct work_struct *work)
-{
-	struct bm92t_info *info = container_of(
-		to_delayed_work(work), struct bm92t_info, oneshot_work);
-
-	unsigned short status1_data;
-	int err;
-	unsigned char dr;
-
-	if (info->state > INIT_STATE)
-		return;
-
-	dev_info(&info->i2c_client->dev,
-		 "extcon cable is set to init state\n");
-
-	err = bm92t_read_reg(info, STATUS1,
-			 (unsigned char *) &status1_data, sizeof(status1_data));
-
-	dev_info(&info->i2c_client->dev, "addr: 0x%02x, val: 0x%04x\n",
-		STATUS1, status1_data);
-
-	dr = (status1_data & STATUS1_DR_MASK) >> STATUS1_DR_SHIFT;
-
-	if (dr == DATA_ROLE_UFP) {
-		info->charging_current_limit = NON_PD_CHARGING_CURRENT_LIMIT_UA;
-		bm92t_extcon_cable_update(info, EXTCON_USB, true);
-	} else if (dr == DATA_ROLE_DFP) {
-		info->charging_current_limit = PD_CHARGING_CURRENT_LIMIT_UA;
-		bm92t_extcon_cable_update(info,
-			EXTCON_USB_HOST, true);
-		bm92t_state_machine(info, HPD_HANDLED);
-	}
-
-	bm92t_set_current_limit(info, info->charging_current_limit);
-
-	if (info->charging_current_limit)
-		info->charging_enabled = true;
-
-	return;
-}
-
-static void
-	bm92t_extcon_cable_set_init_state2(struct work_struct *work)
-{
-	struct bm92t_info *info = container_of(
-		to_delayed_work(work), struct bm92t_info, oneshot_work);
-
-	dev_info(&info->i2c_client->dev,
-		 "extcon cable is set to init state\n");
-
-	bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
-	bm92t_extcon_cable_update(info, EXTCON_USB, true);
-	
-	info->charging_current_limit = NON_PD_CHARGING_CURRENT_LIMIT_UA;
-	bm92t_set_current_limit(info, info->charging_current_limit);
-	info->charging_enabled = true;
-}
-
 static bool bm92t_check_pdo(struct bm92t_info *info)
 {
 	int err;
@@ -448,123 +342,6 @@ static void bm92t_event_handler(struct work_struct *work)
 	unsigned short cmd;
 	unsigned short alert_data;
 	unsigned short status1_data;
-
-	info = container_of(work, struct bm92t_info, work);
-	dev = &info->i2c_client->dev;
-
-	/* read status registers at 02h, 03h and 04h */
-	err = bm92t_read_reg(info, ALERT_STATUS,
-			     (unsigned char *) &alert_data,
-			     sizeof(alert_data));
-	if (err < 0)
-		goto ret;
-	err = bm92t_read_reg(info, STATUS1,
-			     (unsigned char *) &status1_data,
-			     sizeof(status1_data));
-	dev_info_ratelimited(dev, "AlertStatus = 0x%04x, Status1 = 0x%04x\n",
-		alert_data, status1_data);
-
-	if (!err && !(status1_data & 0x3)) {
-		/* Check initialization completed */
-		if (alert_data & ALERT_CMD_DONE && !status1_data) {
-			bm92t_state_machine(info, INIT_STATE);
-			goto ret;
-		}
-
-		/* Check if cable removed */
-		if (alert_data & ALERT_PLUGPULL) {
-			if (!(status1_data & STATUS1_INSERT)) {
-				cancel_delayed_work(&info->power_work);
-				if (info->charging_enabled) {
-					bm92t_set_current_limit(info, 0);
-					info->charging_enabled = false;
-				}
-
-				if (info->state == INIT_STATE)
-					bm92t_extcon_cable_update(info,
-						EXTCON_USB, false);
-				else if (info->state >= DR_SWAP_SENT)
-					bm92t_extcon_cable_update(info,
-						EXTCON_USB_HOST, false);
-
-				bm92t_state_machine(info, INIT_STATE);
-			}
-			goto ret;
-		}
-
-		/* Check if we are in the last state */
-		if (info->state != HPD_HANDLED) {
-			/* Check Power Negotiation */
-			if (alert_data & ALERT_PDO) {
-				bm92t_state_machine(info, NEW_PDO);
-				goto ret;
-			}
-
-			if ((alert_data & ALERT_CONTR) &&
-			    (info->state == NEW_PDO)) {
-				msleep(550);
-				cmd = SYS_RDY_CMD;
-				err = bm92t_send_cmd(info, &cmd);
-				bm92t_state_machine(info, SYS_RDY_SENT);
-				goto ret;
-			}
-
-			if ((alert_data & ALERT_CONTR) &&
-				(info->state == INIT_STATE)) {
-				bm92t_swap_data_role(info, status1_data);
-				goto ret;
-			}
-
-			/* Check System Ready */
-			if (bm92t_is_success(alert_data, status1_data) &&
-			    (info->state == SYS_RDY_SENT)) {
-				schedule_delayed_work(&info->power_work,
-					msecs_to_jiffies(500));
-				cmd = DR_SWAP_CMD;
-				err = bm92t_send_cmd(info, &cmd);
-				bm92t_state_machine(info, DR_SWAP_SENT);
-				goto ret;
-			}
-
-			/* Send Data-role swap */
-			if (bm92t_is_success(alert_data, status1_data) &&
-			    ((status1_data & 0xff) == 0x80) &&
-			    (info->state == DR_SWAP_SENT)) {
-				bm92t_swap_data_role(info, status1_data);
-
-				cmd = DP_MODE_CMD;
-				err = bm92t_send_cmd(info, &cmd);
-				msleep(100); /* WAR: may not need to wait */
-				bm92t_state_machine(info, ENTER_DP_MODE);
-				goto ret;
-			}
-
-			/* Handle HPD */
-			if (bm92t_is_success(alert_data, status1_data) &&
-			    (info->state == ENTER_DP_MODE)) {
-				err = bm92t_handle_hpd(info);
-				if (!err)
-					bm92t_state_machine(info, HPD_HANDLED);
-				else
-					bm92t_state_machine(info, INIT_STATE);
-				goto ret;
-			}
-		}
-	} else
-		dev_err(&info->i2c_client->dev, "Internal error occurred.\n");
-
-ret:
-	enable_irq(info->i2c_client->irq);
-}
-
-static void bm92t_event_handler2(struct work_struct *work)
-{
-	int err;
-	struct bm92t_info *info;
-	struct device *dev;
-	unsigned short cmd;
-	unsigned short alert_data;
-	unsigned short status1_data;
 	unsigned char vdm[28], pdo[4], rdo[4];
 
 	info = container_of(work, struct bm92t_info, work);
@@ -599,33 +376,27 @@ static void bm92t_event_handler2(struct work_struct *work)
 	/* Check if cable removed */
 	if (alert_data & ALERT_PLUGPULL) {
 		if (!(status1_data & STATUS1_INSERT)) {
-			info->charging_current_limit = 0;
-			cancel_delayed_work(&info->power_work);
-			if (info->charging_enabled)
-				bm92t_set_current_limit(info, info->charging_current_limit);
+			bm92t_set_current_limit(info, 0);
 
 
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
 			bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
 			bm92t_state_machine(info, INIT_STATE);
+			goto ret;
 		}
-		goto ret;
 	}
 
 	switch (info->state) {
 	case INIT_STATE:
-		if (alert_data & ALERT_CONTR) {
+		if ((alert_data & ALERT_CONTR) || (alert_data == 0 && (status1_data & STATUS1_INSERT))) {
 			if (!bm92t_check_pdo(info)) {
 				dev_err(dev, "Power Nego failed, non PD supply\n");
 				bm92t_state_machine(info, INIT_STATE);
 				bm92t_extcon_cable_update(info,
 					EXTCON_USB, true);
 
-				
-				info->charging_current_limit = NON_PD_CHARGING_CURRENT_LIMIT_UA;
-				schedule_delayed_work(&info->power_work,
-						msecs_to_jiffies(2000));
+				bm92t_set_current_limit(info, NON_PD_CHARGING_CURRENT_LIMIT_UA);
 				goto ret;
 			}
 			bm92t_send_rdo(info);
@@ -657,11 +428,10 @@ static void bm92t_event_handler2(struct work_struct *work)
 	case SYS_RDY_SENT:
 		if (bm92t_is_success(alert_data, status1_data)) {
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, true);
-			msleep(550); /* reguired? */
+			msleep(550); /* required? */
 			
-			info->charging_current_limit = PD_CHARGING_CURRENT_LIMIT_UA;
-			schedule_delayed_work(&info->power_work,
-				msecs_to_jiffies(2000));
+			bm92t_set_current_limit(info, PD_CHARGING_CURRENT_LIMIT_UA);
+
 			cmd = DR_SWAP_CMD;
 			err = bm92t_send_cmd(info, &cmd);
 			bm92t_state_machine(info, DR_SWAP_SENT);
@@ -980,31 +750,6 @@ static const struct of_device_id bm92t_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, bm92t_of_match);
 
-static struct bm92t_platform_data *bm92t_parse_dt(struct i2c_client *client)
-{
-	struct device_node *np = client->dev.of_node;
-	struct bm92t_platform_data *pdata;
-	int num;
-
-	dev_info(&client->dev, "%s: %s\n", __func__, np->full_name);
-	num = sizeof(*pdata);
-	pdata = devm_kzalloc(&client->dev, num, GFP_KERNEL);
-	if (!pdata) {
-		dev_err(&client->dev, "Failed to allocate pdata\n");
-		return ERR_PTR(-ENOMEM);
-	}
-
-	if (client->dev.platform_data)
-		memcpy(pdata, client->dev.platform_data, sizeof(*pdata));
-	else
-		memcpy(pdata, &bm92t_dflt_pdata, sizeof(*pdata));
-
-	pdata->disable_power_nego = of_property_read_bool(np,
-						"disable-power-nego");
-
-	return pdata;
-}
-
 static int bm92t_probe(struct i2c_client *client,
 		       const struct i2c_device_id *id)
 {
@@ -1013,15 +758,17 @@ static int bm92t_probe(struct i2c_client *client,
 	unsigned short reg_value;
 
 	dev_info(&client->dev, "%s\n", __func__);
+
 	info = devm_kzalloc(&client->dev, sizeof(*info), GFP_KERNEL);
 	if (info == NULL) {
 		dev_err(&client->dev, "%s: kzalloc error\n", __func__);
 		return -ENOMEM;
 	}
+
 	i2c_set_clientdata(client, info);
 
 	info->i2c_client = client;
-
+	
 	info->batt_chg_reg = devm_regulator_get(&client->dev, "pd_bat_chg");
 	if (IS_ERR(info->batt_chg_reg)) {
 		err = PTR_ERR(info->batt_chg_reg);
@@ -1032,23 +779,7 @@ static int bm92t_probe(struct i2c_client *client,
 				"pd_bat_chg reg not registered: %d\n", err);
 		info->batt_chg_reg = NULL;
 	}
-
-	if (client->dev.of_node) {
-		info->pdata = bm92t_parse_dt(client);
-		if (IS_ERR(info->pdata)) {
-			err = PTR_ERR(info->pdata);
-			dev_err(&client->dev,
-				"Failed to parse OF node: %d\n", err);
-			return err;
-		}
-	} else if (client->dev.platform_data)
-		info->pdata = client->dev.platform_data;
-	else {
-		info->pdata  = &bm92t_dflt_pdata;
-		dev_info(&client->dev,
-			 "%s No platform data. Using defaults.\n",
-			 __func__);
-	}
+	bm92t_set_current_limit(info, NON_PD_CHARGING_CURRENT_LIMIT_UA);
 
 	/* initialized state */
 	info->state = INIT_STATE;
@@ -1082,17 +813,11 @@ static int bm92t_probe(struct i2c_client *client,
 		info->fw_type, info->fw_revision);
 
 	if (info->fw_revision <= 0x644) {
-		INIT_WORK(&info->work, bm92t_event_handler);
-		INIT_DELAYED_WORK(&info->oneshot_work,
-			bm92t_extcon_cable_set_init_state);
-	} else {
-		INIT_WORK(&info->work, bm92t_event_handler2);
-		INIT_DELAYED_WORK(&info->oneshot_work,
-			bm92t_extcon_cable_set_init_state2);
+		return -EINVAL;
 	}
 
-	INIT_DELAYED_WORK(&info->power_work, bm92t_power_work);
-
+	INIT_WORK(&info->work, bm92t_event_handler);
+	
 	if (client->irq) {
 		if (request_irq(client->irq, bm92t_interrupt_handler,
 				IRQF_TRIGGER_LOW, "bm92t",
@@ -1103,12 +828,12 @@ static int bm92t_probe(struct i2c_client *client,
 		}
 	}
 
-	schedule_delayed_work(&info->oneshot_work, msecs_to_jiffies(5000));
-
 #ifdef CONFIG_DEBUG_FS
 	bm92t_debug_init(info);
 #endif
 
+	disable_irq(info->i2c_client->irq);
+	queue_work(info->event_wq, &info->work);
 	dev_info(&client->dev, "bm92txx driver loading done\n");
 	return 0;
 }
