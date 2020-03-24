@@ -61,6 +61,42 @@ static const struct reg_sequence init_list[] = {
 	{RT5640_PR_BASE + 0x23,	0x1804},
 };
 
+static const struct reg_sequence eq_init_list[] = {
+	/* EQ LPF Bandwidth  (LPF:a1)  from 0.88 to -0.58 */
+	{RT5640_PR_BASE + RT5640_EQ_BW_LOP,  0xed87},
+	/* EQ LPF Gain       (LPF:H0)  from 0.06 to  0.00 */
+	{RT5640_PR_BASE + RT5640_EQ_GN_LOP,  0x0000},
+	/* EQ HPF2 Cutoff    (HPF2:a1) from 1.00 to  0.99 */
+	{RT5640_PR_BASE + RT5640_EQ_FC_HIP2, 0x1fb4},
+	/* EQ HPF2 Bandwidth (HPF2:a2) from 0.00 to  0.01 */
+	{RT5640_PR_BASE + RT5640_EQ_BW_HIP2, 0x004b},
+	/* EQ HPF2 Gain      (HPF2:H0) from 1.00 to  0.99 */
+	{RT5640_PR_BASE + RT5640_EQ_GN_HIP2, 0x1fb4},
+	/* Reset val */
+	{RT5640_PR_BASE + RT5640_EQ_PRE_VOL, 0x0800},
+	/* Reset val */
+	{RT5640_PR_BASE + RT5640_EQ_PST_VOL, 0x0800},
+	/* Enable LPF (1st order Butterworth) and HPF2 (2nd order Butterworth) */
+	{RT5640_EQ_CTRL2,                    0x00c1},
+	/* Enable for DAC and update EQ parameters */
+	{RT5640_EQ_CTRL1,                    0x6041},
+	/* Enable DRC/AGC Compression Function */
+	{RT5640_DRC_AGC_2,                   0x1f80},
+	/* DRC/AGC Limiter Level: -13.5dBFS */
+	{RT5640_DRC_AGC_3,                   0x0480},
+	/* DRC/AGC recovery: 5.46s, DRC/AGC Sample Rate Change 48kHz, DRC/AGC attack: 170ms */
+	/* Update all DRC/AGC Parameters, enable DRC to DAC Path */
+	{RT5640_DRC_AGC_1,                   0x6b30},
+};
+
+static const struct reg_sequence eq_deinit_list[] = {
+	/* Disable hardware EQ */
+	{RT5640_EQ_CTRL2,                    0x0000},
+	{RT5640_EQ_CTRL1,                    0x6000},
+	/* Reset compressor to defaults */
+	{RT5640_DRC_AGC_1,                   0x2206},
+};
+
 static const struct reg_sequence irq_jd_init_list[] = {
 	{RT5640_GPIO_CTRL1,	0x8400},/* set GPIO1 to IRQ */
 	{RT5640_GPIO_CTRL3,	0x0004},/* set GPIO1 output */
@@ -986,6 +1022,36 @@ static void rt5640_pmu_depop(struct snd_soc_codec *codec)
 		RT5640_CHPUMP_INT_REG1, 0x0700, 0x0400);
 }
 
+static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
+			   struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
+	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
+	int ret;
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		ret = regmap_register_patch(rt5640->regmap, eq_init_list,
+						ARRAY_SIZE(eq_init_list));
+		if (ret != 0)
+			dev_warn(codec->dev, "Failed to apply regmap patch: %d\n", ret);
+
+		break;
+	case SND_SOC_DAPM_PRE_PMD:
+		ret = regmap_register_patch(rt5640->regmap, eq_deinit_list,
+						ARRAY_SIZE(eq_deinit_list));
+		if (ret != 0)
+			dev_warn(codec->dev, "Failed to apply regmap patch: %d\n", ret);
+
+		break;
+	default:
+		return 0;
+	}
+
+	return 0;
+}
+
+
 static int rt5640_hp_event(struct snd_soc_dapm_widget *w,
 			   struct snd_kcontrol *kcontrol, int event)
 {
@@ -1270,7 +1336,8 @@ static const struct snd_soc_dapm_widget rt5640_dapm_widgets[] = {
 	SND_SOC_DAPM_SUPPLY("HP R Amp", RT5640_PWR_ANLG1,
 		RT5640_PWR_HP_R_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("Improve SPK Amp Drv", RT5640_PWR_DIG1,
-		RT5640_PWR_CLS_D_BIT, 0, NULL, 0),
+		RT5640_PWR_CLS_D_BIT, 0, rt5640_spk_event,
+		SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMU),
 
 	/* Output Switch */
 	SND_SOC_DAPM_SWITCH("Speaker L Playback", SND_SOC_NOPM, 0, 0,
