@@ -4,7 +4,7 @@
  *
  * Mini version only supports clock switching and periodic training.
  *
- * Copyright (c) 2018-2019 Kostas Missos <ctcaer@gmail.com>
+ * Copyright (c) 2018-2020 Kostas Missos <ctcaer@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -634,6 +634,36 @@ inline void _ccfifo_write(u32 addr, u32 data_val, u32 delay)
 	ccfifo_writel(data_val, addr, delay);
 }
 
+static bool _wait_emc_status(u32 reg_offset, u32 bit_mask, bool updated_state, s32 emc_channel)
+{
+	u32 i;
+	bool err = true;
+
+	for (i = 0; i < EMC_STATUS_UPDATE_TIMEOUT; i++)
+	{
+		if (emc_channel)
+		{
+			if (emc_channel != 1)
+				goto done;
+
+			if (((EMC_CH1(reg_offset) & bit_mask) != 0) == updated_state)
+			{
+				err = false;
+				break;
+			}
+		}
+		else if (((EMC(reg_offset) & bit_mask) != 0) == updated_state)
+		{
+			err = false;
+			break;
+		}
+		udelay(1);
+	}
+
+done:
+	return err;
+}
+
 static void _request_mmr_data(u32 data, bool dual_channel)
 {
 	u32 emc_cfg;
@@ -647,9 +677,9 @@ static void _request_mmr_data(u32 data, bool dual_channel)
 
 	// Get data.
 	EMC(EMC_MRR) = data;
-	wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_MRR_DIVLD, true, EMC_CH0);
+	_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_MRR_DIVLD, true, EMC_CH0);
 	if (dual_channel)
-		wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_MRR_DIVLD, true, EMC_CH1);
+		_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_MRR_DIVLD, true, EMC_CH1);
 
 	if (emc_cfg & EMC_CFG_DRAM_ACPD)
 	{
@@ -1233,16 +1263,13 @@ static u32 _minerva_periodic_compensation_handler(struct emc_table *src_emc_entr
 	else
 	{
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D0U0_INDEX] = 0;
-		udelay(1); // Avoid unaligned access on O2.
-		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D0U1_INDEX] = 0;
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U0_INDEX] = 0;
-		udelay(1); // Avoid unaligned access on O2.
-		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U1_INDEX] = 0;
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U0_INDEX] = 0;
-		udelay(1); // Avoid unaligned access on O2.
-		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U1_INDEX] = 0;
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D1U0_INDEX] = 0;
 		udelay(1); // Avoid unaligned access on O2.
+		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D0U1_INDEX] = 0;
+		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U1_INDEX] = 0;
+		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U1_INDEX] = 0;
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D1U1_INDEX] = 0;
 
 		for (i = 0; i < dst_emc_entry->ptfv_list[PTFV_DVFS_SAMPLES_INDEX]; i++)
@@ -1283,25 +1310,25 @@ u32 __do_periodic_emc_compensation_icosa(
 
 		if (dram_dev_num == TWO_RANK)
 		{
-			wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_POWERDOWN_MASK, 0, EMC_CH0);
+			_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_POWERDOWN_MASK, 0, EMC_CH0);
 			if (channel1_enabled)
-				wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_POWERDOWN_MASK, 0, EMC_CH1);
+				_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_POWERDOWN_MASK, 0, EMC_CH1);
 		}
 		else
 		{
-			wait_for_update(EMC_EMC_STATUS, 0x10, 0, 0);
+			_wait_emc_status(EMC_EMC_STATUS, 0x10, 0, 0);
 			if (channel1_enabled)
-				wait_for_update(EMC_EMC_STATUS, 0x10, 0, EMC_CH1);
+				_wait_emc_status(EMC_EMC_STATUS, 0x10, 0, EMC_CH1);
 		}
 
-		wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_SELF_REFRESH_MASK, 0, EMC_CH0);
+		_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_SELF_REFRESH_MASK, 0, EMC_CH0);
 		if (channel1_enabled)
-			wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_SELF_REFRESH_MASK, 0, EMC_CH1);
+			_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_SELF_REFRESH_MASK, 0, EMC_CH1);
 
 		/* Wait for request FIFO to get empty. */
-		// wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_REQ_FIFO_EMPTY, 0, EMC_CH0); //v1.6
+		// _wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_REQ_FIFO_EMPTY, 0, EMC_CH0); //v1.6
 		// if (channel1_enabled)
-		// 	wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_REQ_FIFO_EMPTY, 0, EMC_CH1); //v1.6
+		// 	_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_REQ_FIFO_EMPTY, 0, EMC_CH1); //v1.6
 
 		emc_cfg_update = EMC(EMC_CFG_UPDATE);
 		EMC(EMC_CFG_UPDATE) = (emc_cfg_update & 0xFFFFF9FF) | 0x400;
@@ -1438,7 +1465,7 @@ void emc_set_clock_icosa(struct emc_table *next_timing,
 	dst_clock_period = 1000000000 / next_timing->rate ; // In picoseconds.
 
 	if (WARN(dram_type != DRAM_TYPE_LPDDR4, "MTC Error: DRAM is not LPDDR4\n"))
-		goto out;
+		return;
 
 	fsp_for_src_freq = !fsp_for_src_freq;
 
@@ -1490,20 +1517,20 @@ void emc_set_clock_icosa(struct emc_table *next_timing,
 	if (next_timing->periodic_training) {
 		if (dram_dev_num == TWO_RANK)
 		{
-			wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_POWERDOWN_MASK, false, EMC_CH0);
+			_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_POWERDOWN_MASK, false, EMC_CH0);
 			if (channel1_enabled)
-				wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_POWERDOWN_MASK, false, EMC_CH1);
+				_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_POWERDOWN_MASK, false, EMC_CH1);
 		}
 		else
 		{
-			wait_for_update(EMC_EMC_STATUS, 0x10, false, EMC_CH0);
+			_wait_emc_status(EMC_EMC_STATUS, 0x10, false, EMC_CH0);
 			if (channel1_enabled)
-				wait_for_update(EMC_EMC_STATUS, 0x10, false, EMC_CH1);
+				_wait_emc_status(EMC_EMC_STATUS, 0x10, false, EMC_CH1);
 		}
 
-		wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_SELF_REFRESH_MASK, false, EMC_CH0);
+		_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_SELF_REFRESH_MASK, false, EMC_CH0);
 		if (channel1_enabled)
-			wait_for_update(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_SELF_REFRESH_MASK, false, EMC_CH1);
+			_wait_emc_status(EMC_EMC_STATUS, EMC_EMC_STATUS_DRAM_IN_SELF_REFRESH_MASK, false, EMC_CH1);
 
 		// Reset clock tree delays.
 		next_timing->current_dram_clktree_c0d0u0 = next_timing->trained_dram_clktree_c0d0u0;
@@ -2237,6 +2264,5 @@ void emc_set_clock_icosa(struct emc_table *next_timing,
 	emc_cc_dbg(STEPS, "Step 32: Update alt timing\n");
 	tegra210_update_emc_alt_timing(next_timing);
 
-out:;
 	/* Done! Pain and Suffering.. */
 }
