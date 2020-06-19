@@ -18,7 +18,7 @@ include $(srctree)/arch/arm64/boot/dts/Makefile
 
 OBJCOPYFLAGS_Image :=-O binary -R .note -R .note.gnu.build-id -R .comment -S
 
-targets := Image Image.gz zImage
+targets := Image Image.gz zImage Image.fit
 
 DTB_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES))
 ifneq ($(DTB_NAMES),)
@@ -27,6 +27,14 @@ else
 DTB_LIST := $(dtb-y)
 endif
 DTB_OBJS := $(addprefix $(obj)/dts/,$(DTB_LIST))
+
+quiet_cmd_lzmaimage = BUILD   $@
+cmd_lzmaimage = lzma -z -f -k $<
+
+quiet_cmd_fitimage = BUILD   $@
+cmd_fitimage = $(CONFIG_SHELL) $(srctree)/chromeos/scripts/generate-its-script.sh \
+	       -a $(ARCH) $(obj)/Image.lzma $(obj)/dts/tegra210-smaug.dtb | \
+	       $(objtree)/scripts/dtc/dtc -I dts -O dtb -p 1024 > $@
 
 $(obj)/Image: vmlinux FORCE
 	$(call if_changed,objcopy)
@@ -54,6 +62,9 @@ $(obj)/Image.gz-dtb: $(obj)/Image.gz $(DTB_OBJS) FORCE
 
 $(obj)/zImage: $(obj)/Image FORCE
 	$(call if_changed,gzip)
+
+$(obj)/Image.fit: $(obj)/Image.lzma $(DTB_OBJS) FORCE
+	$(call if_changed,fitimage)
 
 install:
 	$(CONFIG_SHELL) $(srctree)/$(src)/install.sh $(KERNELRELEASE) \
