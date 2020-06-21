@@ -693,11 +693,20 @@ static int fts_init(struct fts_ts_info *info)
 			tsp_debug_err(&info->client->dev, "%s: Failed to firmware update\n",
 					__func__);
 	} else {
-		regAdd[0] = FTS_CMD_AUTO_CALIBRATION;
-		regAdd[1] = 1;
-		
+		fts_command(info, SENSEOFF);
+		fts_delay(50);
+
+		/* Execute MS CX auto calibration. */
+		fts_command(info, CX_TUNNING);
+		fts_delay(400);
+
+		/* Execute SS CX auto calibration. */
+		fts_command(info, SELF_AUTO_TUNE);
+		fts_delay(100);
+
+		/* Enable auto calibration. */
 		rc = fts_write_reg(info, &regAdd[0], 2);
-		
+		fts_delay(50);
 	}
 #ifdef FEATURE_FTS_PRODUCTION_CODE
 		info->digital_rev = FTS_DIGITAL_REV_2;
@@ -745,10 +754,6 @@ static int fts_init(struct fts_ts_info *info)
 	info->lowpower_mode = false;
 	info->lowpower_flag = 0x00;
 	info->fts_power_state = FTS_POWER_STATE_ACTIVE;
-
-	fts_command(info, 0x91);//Sleep out
-	fts_command(info, FORCECALIBRATION);
-
 
 	memset(val, 0x0, 4);
 	memset(regAdd, 0x0, 8);
@@ -1437,8 +1442,8 @@ static int fts_parse_dt(struct i2c_client *client)
 				"skipped to get model_name property\n");
 
 	pdata->max_width = 28;
-	pdata->support_hover = true;
-	pdata->support_mshover = true;
+	pdata->support_hover = false;
+	pdata->support_mshover = false;
 #ifdef FTS_SUPPORT_TA_MODE
 	pdata->register_cb = fts_tsp_register_callback;
 #endif
@@ -1974,6 +1979,7 @@ static int fts_stop_device(struct fts_ts_info *info)
 
 static int fts_start_device(struct fts_ts_info *info)
 {
+	unsigned char regAdd[8];
 	tsp_debug_err(&info->client->dev, "%s %s\n",
 			__func__,
 			info->lowpower_mode ?
@@ -2027,6 +2033,24 @@ tsp_power_on:
 
 	info->fts_power_state = FTS_POWER_STATE_ACTIVE;
 	mutex_unlock(&info->device_mutex);
+
+	fts_command(info, SENSEOFF);
+	fts_delay(50);
+
+	/* Execute MS CX auto calibration. */
+	fts_command(info, CX_TUNNING);
+	fts_delay(400);
+
+	/* Execute SS CX auto calibration. */
+	fts_command(info, SELF_AUTO_TUNE);
+	fts_delay(100);
+
+	/* Enable auto calibration. */
+	regAdd[0] = FTS_CMD_AUTO_CALIBRATION;
+	regAdd[1] = 1;
+	fts_write_reg(info, &regAdd[0], 2);
+	fts_delay(50);
+
 	fts_command(info, SENSEON);
 	fts_command(info, FLUSHBUFFER);
 
