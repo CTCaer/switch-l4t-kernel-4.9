@@ -454,6 +454,8 @@ int st_lsm6dsx_fifo_setup(struct st_lsm6dsx_hw *hw)
 		switch (irq_type) {
 		case IRQF_TRIGGER_HIGH:
 		case IRQF_TRIGGER_RISING:
+		case IRQF_TRIGGER_LOW:
+		case IRQF_TRIGGER_FALLING:
 			break;
 		default:
 			dev_info(hw->dev, "mode %lx unsupported\n", irq_type);
