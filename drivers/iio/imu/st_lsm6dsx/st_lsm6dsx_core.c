@@ -496,6 +496,26 @@ static ssize_t st_lsm6dsx_sysfs_scale_avail(struct device *dev,
 	return len;
 }
 
+/**
+ * st_lsm6dsx_sysfs_scale() - calling this function will show current
+ *                    accel scaling.
+ *
+ * Deprecated in favor of IIO per coordinate scaling API.
+ *
+ */
+static ssize_t st_lsm6dsx_sysfs_scale(struct device *dev,
+					    struct device_attribute *attr,
+					    char *buf)
+{
+	struct st_lsm6dsx_sensor *sensor = iio_priv(dev_get_drvdata(dev));
+
+	return sprintf(buf, "0.%06u\n", sensor->gain);
+}
+
+/* Deprecated: kept for userspace backward compatibility. */
+static IIO_DEVICE_ATTR(in_accel_scale, 0444, st_lsm6dsx_sysfs_scale, NULL, 0);
+static IIO_DEVICE_ATTR(in_anglvel_scale, 0444, st_lsm6dsx_sysfs_scale, NULL, 0);
+
 static IIO_DEV_ATTR_SAMP_FREQ_AVAIL(st_lsm6dsx_sysfs_sampling_frequency_avail);
 static IIO_DEVICE_ATTR(in_accel_scale_available, 0444,
 		       st_lsm6dsx_sysfs_scale_avail, NULL, 0);
@@ -505,6 +525,7 @@ static IIO_DEVICE_ATTR(in_anglvel_scale_available, 0444,
 static struct attribute *st_lsm6dsx_acc_attributes[] = {
 	&iio_dev_attr_sampling_frequency_available.dev_attr.attr,
 	&iio_dev_attr_in_accel_scale_available.dev_attr.attr,
+	&iio_dev_attr_in_accel_scale.dev_attr.attr, /* deprecated */
 	NULL,
 };
 
@@ -523,6 +544,7 @@ static const struct iio_info st_lsm6dsx_acc_info = {
 static struct attribute *st_lsm6dsx_gyro_attributes[] = {
 	&iio_dev_attr_sampling_frequency_available.dev_attr.attr,
 	&iio_dev_attr_in_anglvel_scale_available.dev_attr.attr,
+	&iio_dev_attr_in_anglvel_scale.dev_attr.attr, /* deprecated */
 	NULL,
 };
 
