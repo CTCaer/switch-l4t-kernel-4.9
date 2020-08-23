@@ -1652,7 +1652,7 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 	input_set_abs_params(info->input_dev, ABS_MT_POSITION_Y,
 			     0, info->board->max_y, 0, 0);
 	input_set_abs_params(info->input_dev, ABS_MT_PRESSURE,
-			     0, 202, 0, 0);
+			     0, 254, 0, 0);
 
 	mutex_init(&info->device_mutex);
 	mutex_init(&info->i2c_mutex);
