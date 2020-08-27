@@ -961,9 +961,36 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 
 			if (info->board->coord_factor)
 				fts_coordinates_factor(info, &x, &y);
-			
 
-			orient = data[5 + EventNum * FTS_EVENT_SIZE];
+			switch (((data[7 + EventNum * FTS_EVENT_SIZE] & 0x80) >> 5) | (data[6 + EventNum * FTS_EVENT_SIZE] >> 6))
+			{
+			case 0:
+				orient =  0;
+				break;
+			case 1:
+				orient =  45000;
+				break;
+			case 2:
+				orient =  90000;
+				break;
+			case 3:
+				orient = -45000;
+				break;
+			case 4:
+				orient =  22500;
+				break;
+			case 5:
+				orient =  67500;
+				break;
+			case 6:
+				orient = -22500;
+				break;
+			case 7:
+				orient = -67500;
+				break;
+			default:
+				break;
+			}
 
 			if (z >= 255) {
 				tsp_debug_info(&info->client->dev,
@@ -995,6 +1022,9 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 
 			input_report_abs(info->input_dev,
 					 ABS_MT_PRESSURE, z);
+
+			input_report_abs(info->input_dev,
+					 ABS_MT_ORIENTATION, orient);
 
 			info->finger[TouchID].lx = x;
 			info->finger[TouchID].ly = y;
@@ -1653,6 +1683,9 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 			     0, info->board->max_y, 0, 0);
 	input_set_abs_params(info->input_dev, ABS_MT_PRESSURE,
 			     0, 254, 0, 0);
+
+	input_set_abs_params(info->input_dev, ABS_MT_ORIENTATION,
+				 -67500, 90000, 0, 0);
 
 	mutex_init(&info->device_mutex);
 	mutex_init(&info->i2c_mutex);
