@@ -451,7 +451,9 @@ cifs_reconnect(struct TCP_Server_Info *server)
 	list_for_each_safe(tmp, tmp2, &retry_list) {
 		mid_entry = list_entry(tmp, struct mid_q_entry, qhead);
 		list_del_init(&mid_entry->qhead);
-		mid_entry->callback(mid_entry);
+		if (mid_entry->callback) {
+			mid_entry->callback(mid_entry);
+		}
 	}
 
 	do {
@@ -796,7 +798,9 @@ static void clean_demultiplex_info(struct TCP_Server_Info *server)
 			mid_entry = list_entry(tmp, struct mid_q_entry, qhead);
 			cifs_dbg(FYI, "Callback mid 0x%llx\n", mid_entry->mid);
 			list_del_init(&mid_entry->qhead);
-			mid_entry->callback(mid_entry);
+			if (mid_entry->callback) {
+				mid_entry->callback(mid_entry);
+			}
 		}
 		/* 1/8th of sec is more than enough time for them to exit */
 		msleep(125);
@@ -972,8 +976,14 @@ cifs_demultiplex_thread(void *p)
 							mid_entry->resp_buf,
 							server);
 
-			if (!mid_entry->multiRsp || mid_entry->multiEnd)
-				mid_entry->callback(mid_entry);
+			if (!mid_entry->multiRsp || mid_entry->multiEnd) {
+				if (mid_entry->callback) {
+					mid_entry->callback(mid_entry);
+				} else {
+					cifs_dbg(VFS, "SMB null callback\n");
+					break;
+				}
+			}
 		} else if (server->ops->is_oplock_break &&
 			   server->ops->is_oplock_break(buf, server)) {
 			cifs_dbg(FYI, "Received oplock break\n");
