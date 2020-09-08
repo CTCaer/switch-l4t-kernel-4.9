@@ -1,7 +1,7 @@
 /*
  * IOMMU driver for SMMU on Tegra 3 series SoCs and later.
  *
- * Copyright (c) 2011-2017, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2020, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -878,7 +878,7 @@ static size_t __smmu_iommu_unmap_largepage(struct smmu_as *as, dma_addr_t iova)
 }
 
 static int __smmu_iommu_map_pfn_default(struct smmu_as *as, dma_addr_t iova,
-				unsigned long pfn, unsigned long prot)
+				unsigned long pfn, ulong prot, bool flush)
 {
 	struct smmu_device *smmu = as->smmu;
 	u32 *pte;
@@ -913,22 +913,24 @@ static int __smmu_iommu_map_pfn_default(struct smmu_as *as, dma_addr_t iova,
 	trace_smmu_set_pte(as->asid, iova, PFN_PHYS(pfn), PAGE_SIZE, attrs);
 
 	FLUSH_CPU_DCACHE(pte, page, sizeof(*pte));
-	flush_ptc_and_tlb(smmu, as, iova, pte, page, 0);
+	if (flush)
+		flush_ptc_and_tlb(smmu, as, iova, pte, page, 0);
 	put_signature(as, iova, pfn);
 	return 0;
 }
 
 static int __smmu_iommu_map_page(struct smmu_as *as, dma_addr_t iova,
-				 phys_addr_t pa, unsigned long prot)
+				 phys_addr_t pa, ulong prot, bool flush)
 {
 	unsigned long pfn = __phys_to_pfn(pa);
 
-	return __smmu_iommu_map_pfn(as, iova, pfn, prot);
+	return __smmu_iommu_map_pfn(as, iova, pfn, prot, flush);
 }
 
 static int __smmu_iommu_map_largepage_default(struct smmu_as *as, dma_addr_t iova,
-				 phys_addr_t pa, unsigned long prot)
+				 phys_addr_t pa, unsigned long prot, bool flush)
 {
+	struct smmu_device *smmu = as->smmu;
 	int pdn = SMMU_ADDR_TO_PDN(iova);
 	u32 *pdir = (u32 *)page_address(as->pdir_page);
 	int attrs = _PDE_ATTR;
@@ -956,7 +958,8 @@ static int __smmu_iommu_map_largepage_default(struct smmu_as *as, dma_addr_t iov
 	trace_smmu_set_pte(as->asid, iova, pa, SZ_4M, attrs);
 
 	FLUSH_CPU_DCACHE(&pdir[pdn], as->pdir_page, sizeof pdir[pdn]);
-	flush_ptc_and_tlb(as->smmu, as, iova, &pdir[pdn], as->pdir_page, 1);
+	if (flush)
+		flush_ptc_and_tlb(smmu, as, iova, &pdir[pdn], as->pdir_page, 1);
 
 	return 0;
 }
@@ -964,11 +967,10 @@ static int __smmu_iommu_map_largepage_default(struct smmu_as *as, dma_addr_t iov
 static int smmu_iommu_map(struct iommu_domain *domain, unsigned long iova,
 			  phys_addr_t pa, size_t bytes, unsigned long prot)
 {
+	int (*fn)(struct smmu_as *, dma_addr_t, phys_addr_t, ulong, bool);
 	struct smmu_as *as = domain_to_as(domain, iova);
 	unsigned long flags;
 	int err;
-	int (*fn)(struct smmu_as *as, dma_addr_t iova, phys_addr_t pa,
-		  unsigned long prot);
 
 	dev_dbg(as->smmu->dev, "[%d] %pad:%pap\n", as->asid, &iova, &pa);
 
@@ -986,11 +988,87 @@ static int smmu_iommu_map(struct iommu_domain *domain, unsigned long iova,
 	}
 
 	spin_lock_irqsave(&as->lock, flags);
-	err = fn(as, iova, pa, prot);
+	err = fn(as, iova, pa, prot, true);
 	spin_unlock_irqrestore(&as->lock, flags);
 	return err;
 }
 
+static size_t smmu_iommu_map_sg(struct iommu_domain *domain, unsigned long iova,
+				struct scatterlist *sg, uint nents, ulong prot)
+{
+	int (*fn)(struct smmu_as *, dma_addr_t, phys_addr_t, ulong, bool);
+	unsigned int min_pagesz = 1 << __ffs(domain->pgsize_bitmap);
+	struct smmu_as *as = domain_to_as(domain, iova);
+	unsigned long orig_iova = iova, npages;
+	size_t total_length = 0;
+	struct scatterlist *s;
+	unsigned int i;
+	bool flush_all;
+	int ret;
+
+	if (!as) {
+		pr_err("domain_to_as failed!\n");
+		return 0;
+	}
+
+	for_each_sg(sg, s, nents, i)
+		total_length += s->length;
+
+	/* Execute an entire flush if number of pages is above threshold */
+	npages = total_length >> SMMU_PAGE_SHIFT;
+	flush_all = npages > smmu_flush_all_th_map_pages;
+
+	for_each_sg(sg, s, nents, i) {
+		phys_addr_t paddr = page_to_phys(sg_page(s)) + s->offset;
+		unsigned long merge = iova | paddr;
+		size_t size = s->length;
+
+		/* Make sure everything is aligned to the min page size */
+		if (!IS_ALIGNED(s->offset, min_pagesz) ||
+		    !IS_ALIGNED(merge | size, min_pagesz))
+			goto out_err;
+
+		while (size) {
+			size_t pgsize = iommu_pgsize(domain, merge, size);
+			unsigned long flags;
+
+#if IS_ENABLED(CONFIG_TEGRA_IOMMU_SMMU_NO4MB)
+			WARN_ON_ONCE(pgsize == SZ_4M);
+#endif
+			switch (pgsize) {
+			case SZ_4K:
+				fn = __smmu_iommu_map_page;
+				break;
+			case SZ_4M:
+				fn = __smmu_iommu_map_largepage;
+				break;
+			default:
+				goto out_err;
+			}
+
+			spin_lock_irqsave(&as->lock, flags);
+			/* Note that we may flush_all at the end */
+			ret = fn(as, iova, paddr, prot, !flush_all);
+			spin_unlock_irqrestore(&as->lock, flags);
+			if (ret)
+				goto out_err;
+
+			iova += pgsize;
+			paddr += pgsize;
+			size -= pgsize;
+		}
+	}
+
+	if (flush_all)
+		flush_ptc_and_tlb_as(as, orig_iova, iova);
+
+	return iova - orig_iova;
+
+out_err:
+	iommu_unmap(domain, orig_iova, iova - orig_iova);
+
+	return 0;
+}
 
 /* Remap a 4MB large page entry to 1024 * 4KB pages entries */
 static int __smmu_iommu_remap_largepage(struct smmu_as *as, dma_addr_t iova)
@@ -1568,7 +1646,7 @@ static struct iommu_ops smmu_iommu_ops_default = {
 	.attach_dev	= smmu_iommu_attach_dev,
 	.detach_dev	= smmu_iommu_detach_dev,
 	.map		= smmu_iommu_map,
-	.map_sg		= default_iommu_map_sg,
+	.map_sg		= smmu_iommu_map_sg,
 	.unmap		= smmu_iommu_unmap,
 	.iova_to_phys	= smmu_iommu_iova_to_phys,
 	.add_device	= smmu_iommu_add_device,
@@ -2304,10 +2382,13 @@ struct smmu_as *(*smmu_as_alloc)(void) = smmu_as_alloc_default;
 void (*smmu_as_free)(struct smmu_domain *dom, unsigned long as_alloc_bitmap) = smmu_as_free_default;
 void (*smmu_domain_free)(struct smmu_device *smmu, struct smmu_as *as)
 	= __smmu_domain_free;
-int (*__smmu_iommu_map_pfn)(struct smmu_as *as, dma_addr_t iova, unsigned long pfn, unsigned long prot) = __smmu_iommu_map_pfn_default;
-int (*__smmu_iommu_map_largepage)(struct smmu_as *as, dma_addr_t iova, phys_addr_t pa, unsigned long prot) = __smmu_iommu_map_largepage_default;
+int (*__smmu_iommu_map_pfn)(struct smmu_as *, dma_addr_t, ulong,
+			    ulong, bool) = __smmu_iommu_map_pfn_default;
+int (*__smmu_iommu_map_largepage)(struct smmu_as *, dma_addr_t, phys_addr_t,
+			ulong, bool) = __smmu_iommu_map_largepage_default;
 size_t (*__smmu_iommu_unmap)(struct smmu_as *as, dma_addr_t iova, size_t bytes) = __smmu_iommu_unmap_default;
-size_t (*__smmu_iommu_map_sg)(struct iommu_domain *domain, unsigned long iova, struct scatterlist *sgl, unsigned int npages, unsigned long prot) = default_iommu_map_sg;
+size_t (*__smmu_iommu_map_sg)(struct iommu_domain *, ulong,
+			struct scatterlist *, uint, ulong) = smmu_iommu_map_sg;
 int (*__tegra_smmu_suspend)(struct device *dev) = tegra_smmu_suspend_default;
 int (*__tegra_smmu_resume)(struct device *dev) = tegra_smmu_resume_default;
 int (*__tegra_smmu_probe)(struct platform_device *pdev, struct smmu_device *smmu) = tegra_smmu_probe_default;
