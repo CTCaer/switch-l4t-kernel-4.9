@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2017, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014-2020, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -275,8 +275,10 @@ extern int (*__tegra_smmu_probe)(struct platform_device *pdev,
 extern struct iommu_ops *smmu_iommu_ops;
 extern const struct file_operations *smmu_debugfs_stats_fops;
 
-extern int (*__smmu_iommu_map_pfn)(struct smmu_as *as, dma_addr_t iova, unsigned long pfn, unsigned long prot);
-extern int (*__smmu_iommu_map_largepage)(struct smmu_as *as, dma_addr_t iova, phys_addr_t pa, unsigned long prot);
+extern int (*__smmu_iommu_map_pfn)(struct smmu_as *, dma_addr_t,
+				   ulong, ulong, bool);
+extern int (*__smmu_iommu_map_largepage)(struct smmu_as *, dma_addr_t,
+					 phys_addr_t, ulong, bool);
 extern size_t (*__smmu_iommu_unmap)(struct smmu_as *as, dma_addr_t iova, size_t bytes);
 extern size_t (*__smmu_iommu_map_sg)(struct iommu_domain *domain, unsigned long iova, struct scatterlist *sgl, unsigned int npages, unsigned long prot);
 
