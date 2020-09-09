@@ -136,6 +136,13 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 
+ifdef CONFIG_BT_BCM
+fw-shipped-m += brcm/BCM4356A3.hcd
+endif
+ifdef CONFIG_BRCMFMAC_PCIE
+fw-shipped-m += brcm/brcmfmac4356-pcie.bin
+endif
+
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 quiet_cmd_ihex  = IHEX    $@
