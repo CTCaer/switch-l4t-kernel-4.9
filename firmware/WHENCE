@@ -852,3 +852,46 @@ Licence:
 Found in hex form in kernel source.
 
 --------------------------------------------------------------------------
+
+Driver: btbcm: Broadcom 4356A3 UART BT
+
+File: brcm/BCM4356A3.hcd
+
+License:
+  Copyright (c) 2017-2019 Cypress Semiconductor Corp.
+
+  This file contains firmware data derived from proprietary unpublished
+  source code, Copyright (c) 2017-2019 Cypress Semiconductor Corp.
+
+  Permission is hereby granted for the distribution of this firmware data
+  in hexadecimal or equivalent format, provided this copyright notice is
+  accompanying it.
+
+Version: CYW4356A3_001.004.009.0092.0095.
+
+Found in hex form in kernel source.
+
+--------------------------------------------------------------------------
+
+Driver: brcmfmac: Broadcom 4356A3 PCIE WiFi
+
+File: brcm/brcmfmac4356-pcie.bin
+
+License:
+  Copyright (c) 2017-2019 Cypress Semiconductor Corp.
+
+  This file contains firmware data derived from proprietary unpublished
+  source code, Copyright (c) 2017-2019 Cypress Semiconductor Corp.
+
+  Permission is hereby granted for the distribution of this firmware data
+  in hexadecimal or equivalent format, provided this copyright notice is
+  accompanying it.
+
+Version: 7.35.252.96 (r723441), Ucode Ver: 1020.228.
+Features: pcie ag msgbuf splitrx pktctx keepalive sr proptxstatus
+  ampduhostreorder dlystat rxdesens clm_4356a3_ntd noclminc ntdds3 btcdyn
+  trfmgmt pspretend btafh pktfilter wowlpf gtkoe aoe tcpkaoe aloe
+
+Found in hex form in kernel source.
+
+--------------------------------------------------------------------------
