@@ -91,10 +91,6 @@
 #define DATA_ROLE_UFP   1
 #define DATA_ROLE_DFP   2
 
-#define PD_09V_CHARGING_CURRENT_LIMIT_UA 1500000u
-#define PD_12V_CHARGING_CURRENT_LIMIT_UA 1200000u
-#define PD_15V_CHARGING_CURRENT_LIMIT_UA 1200000u
-
 #define PDO_TYPE_FIXED 0
 #define PDO_TYPE_BATT  1
 #define PDO_TYPE_VAR   2
@@ -104,6 +100,20 @@
 #define PDO_INFO_EXT_POWER (1 << 7)
 #define PDO_INFO_HP_CAP    (1 << 8)
 #define PDO_INFO_DR_POWER  (1 << 9)
+
+#define PD_09V_CHARGING_CURRENT_LIMIT_UA 1500000u
+#define PD_12V_CHARGING_CURRENT_LIMIT_UA 1200000u
+#define PD_15V_CHARGING_CURRENT_LIMIT_UA 1200000u
+
+#define PD_INPUT_VOLTAGE_LIMIT_MAX_MV 15000u
+#define PD_INPUT_CURRENT_LIMIT_MIN_MA 1500u
+#define PD_INPUT_CURRENT_LIMIT_MAX_MA 3000u
+
+#define DOCK_ID_VOLTAGE_MV 5000u
+#define DOCK_ID_CURRENT_MA 500u
+#define DOCK_INPUT_VOLTAGE_MV 15000u
+#define DOCK_INPUT_CURRENT_LIMIT_MIN_MA 2600u
+#define DOCK_INPUT_CURRENT_LIMIT_MAX_MA 3000u
 
 enum bm92t_state_type {
 	INIT_STATE = 0,
@@ -436,14 +446,14 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 
 	/* Check for dock mode */
 	if (pdos_no == 2 &&
-		(pdo[0].volt * 50) == 5000  &&
-		(pdo[0].amp * 10)  == 500)
+		(pdo[0].volt * 50) == DOCK_ID_VOLTAGE_MV  &&
+		(pdo[0].amp * 10)  == DOCK_ID_CURRENT_MA)
 	{
 		/* Only accept 15V, >= 2.6A for dock mode. */
 		if (pdo[1].type == PDO_TYPE_FIXED &&
-			(pdo[1].volt * 50) == 15000 &&
-			(pdo[1].amp * 10) >= 2600 &&
-			(pdo[1].amp * 10) <= 3000)
+			(pdo[1].volt * 50) == DOCK_INPUT_VOLTAGE_MV &&
+			(pdo[1].amp * 10)  >= DOCK_INPUT_CURRENT_LIMIT_MIN_MA &&
+			(pdo[1].amp * 10)  <= DOCK_INPUT_CURRENT_LIMIT_MAX_MA)
 		{
 			dev_info(dev, "Adapter in dock mode\n");
 			info->pdo_no = 2;
@@ -460,9 +470,9 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 	{
 		/* Only accept up to 15V, <= 3A for charger mode. */
 		if (pdo[i].type == PDO_TYPE_FIXED &&
-			(pdo[i].volt * 50) <= 15000 &&
-			(pdo[i].amp * 10) >= 1500 &&
-			(pdo[i].amp * 10) <= 3000)
+			(pdo[i].volt * 50) <= PD_INPUT_VOLTAGE_LIMIT_MAX_MV &&
+			(pdo[i].amp * 10)  >= PD_INPUT_CURRENT_LIMIT_MIN_MA &&
+			(pdo[i].amp * 10)  <= PD_INPUT_CURRENT_LIMIT_MAX_MA)
 		{
 			info->pdo_no = i + 1;
 			memcpy(&info->pdo, &pdo[i], sizeof(struct pd_object));
