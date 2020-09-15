@@ -91,7 +91,6 @@
 #define DATA_ROLE_UFP   1
 #define DATA_ROLE_DFP   2
 
-#define NON_PD_CHARGING_CURRENT_LIMIT_UA 1500000u
 #define PD_09V_CHARGING_CURRENT_LIMIT_UA 1500000u
 #define PD_12V_CHARGING_CURRENT_LIMIT_UA 1200000u
 #define PD_15V_CHARGING_CURRENT_LIMIT_UA 1200000u
@@ -160,7 +159,6 @@ struct bm92t_info {
 #endif
 	struct regulator *batt_chg_reg;
 	bool charging_enabled;
-	unsigned int charging_limit;
 	unsigned int fw_type;
 	unsigned int fw_revision;
 
@@ -354,25 +352,6 @@ static void bm92t_extcon_cable_update(struct bm92t_info *info,
 	}
 }
 
-static void bm92t_pdo_current_update(struct bm92t_info *info)
-{
-	if (info->pdo_no)
-	{
-		switch (info->pdo.volt * 50)
-		{
-		case 9000:
-			info->charging_limit = PD_09V_CHARGING_CURRENT_LIMIT_UA;
-			break;
-		case 12000:
-			info->charging_limit = PD_12V_CHARGING_CURRENT_LIMIT_UA;
-			break;
-		case 15000:
-			info->charging_limit = PD_15V_CHARGING_CURRENT_LIMIT_UA;
-			break;
-		}
-	}
-}
-
 static inline void bm92t_state_machine(struct bm92t_info *info, int state)
 {
 	info->state = state;
@@ -388,14 +367,26 @@ static void bm92t_power_work(struct work_struct *work)
 {
 	struct bm92t_info *info = container_of(
 		to_delayed_work(work), struct bm92t_info, power_work);
+	unsigned int charging_limit;
 
-	bm92t_set_current_limit(info, info->charging_limit);
+	switch (info->pdo.volt * 50)
+	{
+	case 9000:
+		charging_limit = PD_09V_CHARGING_CURRENT_LIMIT_UA;
+		break;
+	case 12000:
+		charging_limit = PD_12V_CHARGING_CURRENT_LIMIT_UA;
+		break;
+	case 15000:
+	default:
+		charging_limit = PD_15V_CHARGING_CURRENT_LIMIT_UA;
+		break;
+	}
+
+	bm92t_set_current_limit(info, charging_limit);
 	info->charging_enabled = true;
 
-	if (info->pdo_no)
-		extcon_set_cable_state_(&info->edev, EXTCON_USB_PD, true);
-	else
-		bm92t_extcon_cable_update(info, EXTCON_USB, true);
+	extcon_set_cable_state_(&info->edev, EXTCON_USB_PD, true);
 }
 
 static void
@@ -595,8 +586,11 @@ static void bm92t_event_handler(struct work_struct *work)
 	if (alert_data & ALERT_PLUGPULL) {
 		if (!(status1_data & STATUS1_INSERT)) {
 			cancel_delayed_work(&info->power_work);
-			bm92t_set_current_limit(info, 0);
-			bm92t_extcon_cable_update(info, EXTCON_USB_PD, false);
+			if (info->charging_enabled) {
+				bm92t_set_current_limit(info, 0);
+				info->charging_enabled = false;
+				bm92t_extcon_cable_update(info, EXTCON_USB_PD, false);
+			}
 
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
@@ -611,11 +605,9 @@ static void bm92t_event_handler(struct work_struct *work)
 		if ((alert_data & ALERT_CONTR) || info->first_init) {
 			info->first_init = false;
 			if (!bm92t_check_pdo(info)) {
-				dev_err(dev, "Power Nego failed, non PD supply\n");
+				dev_err(dev, "Power Negotiation failed\n");
 				bm92t_state_machine(info, INIT_STATE);
-				info->charging_limit = NON_PD_CHARGING_CURRENT_LIMIT_UA;
-				schedule_delayed_work(&info->power_work,
-					msecs_to_jiffies(2000));
+				bm92t_extcon_cable_update(info, EXTCON_USB, true);
 				goto ret;
 			}
 			bm92t_send_rdo(info);
@@ -650,7 +642,6 @@ static void bm92t_event_handler(struct work_struct *work)
 		if (bm92t_is_success(alert_data)) {
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, true);
 			msleep(550); /* required? */
-			bm92t_pdo_current_update(info);
 			schedule_delayed_work(&info->power_work,
 				msecs_to_jiffies(2000));
 
