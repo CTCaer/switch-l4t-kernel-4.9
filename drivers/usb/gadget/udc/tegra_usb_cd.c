@@ -93,6 +93,10 @@ static int tegra_usb_cd_update_charging_current(struct tegra_usb_cd *ucd)
 {
 	int max_ua = 0, ret = 0;
 
+#if IS_ENABLED(CONFIG_USB_TEGRA_CD_NO_USERSPACE)
+	ucd->sdp_cdp_current_limit_ma = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
+#endif
+
 	switch (ucd->connect_type) {
 	case EXTCON_NONE:
 		dev_info(ucd->dev, "disconnected USB cable/charger\n");
@@ -393,6 +397,9 @@ static int tegra_usb_cd_probe(struct platform_device *pdev)
 	if (!IS_ERR(vbus_reg)) {
 		dev_info(&pdev->dev, "USB charging enabled\n");
 		ucd->vbus_reg = vbus_reg;
+	} else if (PTR_ERR(vbus_reg) == -EPROBE_DEFER) {
+		dev_info(&pdev->dev, "USB charger not ready\n");
+		return PTR_ERR(vbus_reg);
 	}
 
 	/* setup HW ops */
