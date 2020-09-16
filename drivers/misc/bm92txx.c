@@ -412,6 +412,7 @@ static void
 	bm92t_extcon_cable_update(info, EXTCON_USB, true);
 	
 	disable_irq(info->i2c_client->irq);
+	msleep(2000); // WAR: Allow USB device enumeration at boot.
 	queue_work(info->event_wq, &info->work);
 }
 
