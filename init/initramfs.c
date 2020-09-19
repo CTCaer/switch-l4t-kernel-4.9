@@ -613,7 +613,7 @@ static int __init skip_initramfs_param(char *str)
 {
 	if (*str)
 		return 0;
-#ifdef CONFIG_DIAG_KERNEL
+#if defined(CONFIG_DIAG_KERNEL) || defined(CONFIG_IGNORE_SAR)
 	pr_info("Diag kernel: ignore skip_initramfs to disable system as root\n");
 	do_skip_initramfs = 0;
 #else
