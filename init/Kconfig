@@ -2290,4 +2290,14 @@ config DIAG_KERNEL
 
 	  If unsure, say N.
 
+config IGNORE_SAR
+	bool "Ignore system-as-root parameters"
+	default n
+	help
+	  Ignore system-as-root parameters to allow booting an image with an
+          initramfs even when skip initramfs is passed. This should only be
+          enabled when building a standalone recovery.
+
+	  If unsure, say N.
+
 source "kernel/Kconfig.locks"
