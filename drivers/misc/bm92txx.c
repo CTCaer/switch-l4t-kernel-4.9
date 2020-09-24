@@ -295,6 +295,10 @@ enum bm92t_state_type {
 	DR_SWAP_SENT,
 	VDM_DISC_ID_SENT,
 	VDM_ACCEPT_DISC_ID_SENT,
+	VDM_DISC_SVID_SENT,
+	VDM_ACCEPT_DISC_SVID_SENT,
+	VDM_DISC_MODE_SENT,
+	VDM_ACCEPT_DISC_MODE_SENT,
 	VDM_ENTER_ND_ALT_MODE_SENT,
 	VDM_ACCEPT_ENTER_NIN_ALT_MODE_SENT,
 	DP_DISCOVER_MODE,
@@ -307,7 +311,10 @@ enum bm92t_state_type {
 	VDM_ACCEPT_ND_LED_ON_SENT,
 	VDM_ND_LED_CUSTOM_SENT,
 	VDM_ACCEPT_ND_LED_CUSTOM_SENT,
+	VDM_EXIT_DP_MODE_SENT,
+	VDM_ACCEPT_EXIT_DP_MODE_SENT,
 	NINTENDO_CONFIG_HANDLED,
+	NORMAL_CONFIG_HANDLED
 };
 
 struct __attribute__((packed)) pd_object {
@@ -383,6 +390,10 @@ static const char * const states[] = {
 	"DR_SWAP_SENT",
 	"VDM_DISC_ID_SENT",
 	"VDM_ACCEPT_DISC_ID_SENT",
+	"VDM_DISC_SVID_SENT",
+	"VDM_ACCEPT_DISC_SVID_SENT",
+	"VDM_DISC_MODE_SENT",
+	"VDM_ACCEPT_DISC_MODE_SENT",
 	"VDM_ENTER_ND_ALT_MODE_SENT",
 	"VDM_ACCEPT_ENTER_NIN_ALT_MODE_SENT",
 	"DP_DISCOVER_MODE",
@@ -395,7 +406,10 @@ static const char * const states[] = {
 	"VDM_ACCEPT_ND_LED_ON_SENT",
 	"VDM_ND_LED_CUSTOM_SENT",
 	"VDM_ACCEPT_ND_LED_CUSTOM_SENT",
+	"VDM_EXIT_DP_MODE_SENT",
+	"VDM_ACCEPT_EXIT_DP_MODE_SENT",
 	"NINTENDO_CONFIG_HANDLED",
+	"NORMAL_CONFIG_HANDLED"
 };
 
 static const unsigned int bm92t_extcon_cable[] = {
@@ -422,6 +436,15 @@ static const struct bm92t_extcon_cables bm92t_extcon_cable_names[] = {
 
 unsigned char vdm_discover_id_msg[6] = {OUTGOING_VDM_REG,
 	0x04, VDM_CMD_DISC_ID, VDM_STRUCTURED, 0x00, 0xFF};
+
+unsigned char vdm_discover_svid_msg[6] = {OUTGOING_VDM_REG,
+	0x04, VDM_CMD_DISC_SVID, VDM_STRUCTURED, 0x00, 0xFF};
+
+unsigned char vdm_discover_mode_msg[6] = {OUTGOING_VDM_REG,
+	0x04, VDM_CMD_DISC_MODE, VDM_STRUCTURED, 0x01, 0xFF}; /* DisplayPort Alt Mode */
+
+unsigned char vdm_exit_dp_alt_mode_msg[6] = {OUTGOING_VDM_REG,
+	0x04, VDM_CMD_EXIT_MODE, VDM_STRUCTURED | 1, 0x01, 0xFF}; /* DisplayPort Alt Mode*/
 
 unsigned char vdm_enter_nin_alt_mode_msg[6] = {OUTGOING_VDM_REG,
 	0x04, VDM_CMD_ENTER_MODE, VDM_STRUCTURED | 1, 0x7E, 0x05}; /* Nintendo Alt Mode */
@@ -525,15 +548,42 @@ static inline bool bm92t_is_dfp(const short status1_data)
 static int bm92t_handle_dp_config_enter(struct bm92t_info *info)
 {
 	int err;
+	bool cfg_valid = false;
 	unsigned char msg[5];
-	unsigned short hpd[3] = { 0x0460, 0x0006, 0x0008 };
+	unsigned char cfg[6] = {OUTGOING_VDM_REG, 0x04, 0x06, 0x00, 0x00, 0x00};
 	unsigned short cmd = DP_START_CMD;
 
-	err = bm92t_read_reg(info, INCOMING_VDM,
+	err = bm92t_read_reg(info, INCOMING_VDM_REG,
 			     msg, sizeof(msg));
-	if (!err && msg[0] == 4 && (msg[3] & 0x08) == 0x08) {
-		err = bm92t_write_reg(info, (unsigned char *) hpd,
-				      sizeof(hpd));
+
+	/* Prepare configuration */
+	if (info->cable.is_nintendo_dock) {
+		 /* Dock reports plug but uses Receptactle */
+		if (msg[3] & VDO_DP_UFP_PIN_D) {
+			cfg[3] = 0x00;
+			cfg[4] = VDO_DP_UFP_PIN_D;
+			cfg_valid = true;
+		}
+	} else if (!(msg[1] & VDO_DP_RECEPTACLE) && /* Plug */
+				 msg[2] & VDO_DP_UFP_PIN_D)
+	{
+		cfg[3] = VDO_DP_UFP_PIN_D;
+		cfg[4] = 0x00;
+		cfg_valid = true;
+	} else if (msg[1] & VDO_DP_RECEPTACLE && /* Receptactle */
+			   msg[3] & VDO_DP_UFP_PIN_D)
+	{
+		cfg[3] = 0x00;
+		cfg[4] = VDO_DP_UFP_PIN_D;
+		cfg_valid = true;
+	}
+
+	/* Check that UFP_U/UFP_D Pin D assignment is supported */
+	if (!err && msg[0] == 4 && cfg_valid) {
+		/* Set DP configuration */
+		err = bm92t_write_reg(info, (unsigned char *)cfg,
+				      sizeof(cfg));
+		/* Configure and enter DP Alt mode */
 		if (!err)
 			bm92t_send_cmd(info, &cmd);
 		else {
@@ -541,7 +591,9 @@ static int bm92t_handle_dp_config_enter(struct bm92t_info *info)
 			return -ENODEV;
 		}
 	} else {
-		dev_err(&info->i2c_client->dev, "Cannot handle HPD event.\n");
+		dev_err(&info->i2c_client->dev,
+			"Cannot handle DP configure (%d: %02X %02X %02X).\n",
+			msg[0], msg[1], msg[2], msg[3]);
 		return -ENODEV;
 	}
 
@@ -977,6 +1029,14 @@ static void bm92t_event_handler(struct work_struct *work)
 		if (alert_data & ALERT_SRC_PLUGIN) {
 			dev_info(dev, "Source/OTG HUB plug-in\n");
 			info->first_init = false;
+			if (bm92t_is_dfp(status1_data)) {
+				/* Reset cable info */
+				memset(&info->cable, 0, sizeof(struct bm92t_device));
+
+				bm92t_send_vdm(info, vdm_discover_id_msg,
+					sizeof(vdm_discover_id_msg));
+				bm92t_state_machine(info, VDM_DISC_ID_SENT);
+			}
 			goto ret;
 		}
 
@@ -1100,11 +1160,84 @@ static void bm92t_event_handler(struct work_struct *work)
 				  info->cable.vdo.vid == VID_NINTENDO &&
 				  info->cable.vdo.pid == PID_NIN_DOCK)) {
 				dev_err(dev, "VID/PID not recognized\n");
+				bm92t_send_vdm(info, vdm_discover_svid_msg,
+					sizeof(vdm_discover_svid_msg));
+				bm92t_state_machine(info, VDM_DISC_SVID_SENT);
 				goto ret;
 			}
+
+			info->cable.is_nintendo_dock = true;
 			bm92t_send_vdm(info, vdm_enter_nin_alt_mode_msg,
 				sizeof(vdm_enter_nin_alt_mode_msg));
 			bm92t_state_machine(info, VDM_ENTER_ND_ALT_MODE_SENT);
+		}
+		break;
+
+	case VDM_DISC_SVID_SENT:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, VDM_ACCEPT_DISC_SVID_SENT);
+		} else if (bm92t_is_success(alert_data))
+			dev_dbg(dev, "cmd done in VDM_DISC_SVID_SENT\n");
+		break;
+
+	case VDM_ACCEPT_DISC_SVID_SENT:
+		if (bm92t_is_success(alert_data)) {
+			/* Check discovered SVIDs */
+			err = bm92t_read_reg(info, INCOMING_VDM_REG, vdm, sizeof(vdm));
+
+			if (vdm[1] == (VDM_ACK | VDM_CMD_DISC_SVID))
+			{
+				dev_info(dev, "Supported SVIDs:\n");
+				for (i = 0; i < ((vdm[0] - 4) / 2); i++)
+					dev_info(dev, "SVID%d %04X\n",
+						i, vdm[5 + i * 2] | (vdm[6 + i * 2] << 8));
+
+				/* Request DisplayPort Alt mode support SVID (0xFF01) */
+				bm92t_send_vdm(info, vdm_discover_mode_msg,
+					sizeof(vdm_discover_mode_msg));
+				bm92t_state_machine(info, VDM_DISC_MODE_SENT);
+			}
+			
+		}
+		break;
+
+	case VDM_DISC_MODE_SENT:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, VDM_ACCEPT_DISC_MODE_SENT);
+		} else if (bm92t_is_success(alert_data))
+			dev_dbg(dev, "cmd done in VDM_DISC_MODE_SENT\n");
+		break;
+
+	case VDM_ACCEPT_DISC_MODE_SENT:
+		if (bm92t_is_success(alert_data)) {
+			/* Check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM_REG, vdm, sizeof(vdm));
+
+			/* Check if DisplayPort Alt mode is supported */
+			if (vdm[0] > 4 && /* Has VDO objects */
+				vdm[1] == (VDM_ACK | VDM_CMD_DISC_MODE) &&
+				vdm[2] == VDM_STRUCTURED &&
+				vdm[3] == 0x01 && vdm[4] == 0xFF && /* SVID DisplayPort */
+				vdm[5] & VDO_DP_UFP_D &&
+				vdm[6] & VDO_DP_SUPPORT)
+			{
+				dev_info(dev, "DisplayPort Alt Mode supported");
+				for (i = 0; i < ((vdm[0] - 4) / 4); i++)
+					dev_info(dev, "DPCap%d %08X\n",
+						i, vdm[5 + i * 4] | (vdm[6 + i * 4] << 8) |
+						(vdm[7 + i * 4] << 16) | (vdm[8 + i * 4] << 24));
+
+				/* Enter automatic DisplayPort handling */
+				msleep(100);
+				cmd = DP_MODE_CMD;
+				err = bm92t_send_cmd(info, &cmd);
+				msleep(100); /* WAR: may not need to wait */
+				bm92t_state_machine(info, DP_DISCOVER_MODE);
+			}
 		}
 		break;
 
@@ -1152,9 +1285,13 @@ static void bm92t_event_handler(struct work_struct *work)
 	case DP_CONFIG_ENTER_HANDLED:
 		if (bm92t_is_success(alert_data) &&
 			((status1_data & 0xff) == STATUS1_INSERT)) {
-			bm92t_send_vdm(info, vdm_query_device_msg,
-				sizeof(vdm_query_device_msg));
-			bm92t_state_machine(info, VDM_ND_QUERY_DEVICE_SENT);
+			bm92t_extcon_cable_update(info, EXTCON_DISP_DP, true);
+			if (info->cable.is_nintendo_dock) {
+				bm92t_send_vdm(info, vdm_query_device_msg,
+					sizeof(vdm_query_device_msg));
+				bm92t_state_machine(info, VDM_ND_QUERY_DEVICE_SENT);
+			} else
+				bm92t_state_machine(info, NORMAL_CONFIG_HANDLED);
 		}
 		break;
 
@@ -1216,8 +1353,6 @@ static void bm92t_event_handler(struct work_struct *work)
 		break;
 
 	case VDM_ACCEPT_ND_ENABLE_USBHUB_SENT:
-		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, true);
-
 		if (bm92t_is_success(alert_data)) {
 			/* Check incoming VDM */
 			err = bm92t_read_reg(info, INCOMING_VDM_REG,
@@ -1254,7 +1389,26 @@ static void bm92t_event_handler(struct work_struct *work)
 			bm92t_state_machine(info, NINTENDO_CONFIG_HANDLED);
 		}
 		break;
+	/* End of Nintendo Dock VDMs */
 
+	case VDM_EXIT_DP_MODE_SENT:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, VDM_ACCEPT_EXIT_DP_MODE_SENT);
+		} else if (bm92t_is_success(alert_data))
+			dev_dbg(dev, "cmd done in VDM_EXIT_DP_MODE_SENT\n");
+		break;
+
+	case VDM_ACCEPT_EXIT_DP_MODE_SENT:
+		if (bm92t_is_success(alert_data)) {
+			/* Read incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM_REG, vdm, sizeof(vdm));
+			bm92t_state_machine(info, NORMAL_CONFIG_HANDLED);
+		}
+		break;
+
+	case NORMAL_CONFIG_HANDLED:
 	case NINTENDO_CONFIG_HANDLED:
 		break;
 
