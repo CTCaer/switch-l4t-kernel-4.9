@@ -276,6 +276,9 @@ static int bq2419x_vbus_enable(struct regulator_dev *rdev)
 
 	mutex_lock(&bq2419x->otg_mutex);
 	bq2419x->is_otg_connected = true;
+	dev_info(bq2419x->dev, "Setting VBUS current 1300 mA\n");
+	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
+			BQ2419X_BOOST_LIM_MASK, BQ2419X_BOOST_LIM_1300_MA);
 	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
 			BQ2419X_ENABLE_CHARGE_MASK, BQ2419X_ENABLE_VBUS);
 	if (ret < 0)
@@ -300,6 +303,9 @@ static int bq2419x_vbus_disable(struct regulator_dev *rdev)
 		bq2419x_watchdog_disable(bq2419x);
 	}
 	bq2419x->is_otg_connected = false;
+	dev_info(bq2419x->dev, "Setting VBUS current 500 mA\n");
+	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
+			BQ2419X_BOOST_LIM_MASK, BQ2419X_BOOST_LIM_500_MA);
 	ret = bq2419x_charger_enable(bq2419x);
 	if (ret < 0)
 		dev_err(bq2419x->dev, "Charger enable failed %d", ret);
@@ -673,7 +679,7 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 	int ret = 0;
 	int val;
 
-	dev_info(bq2419x->dev, "Setting charging current %d\n", max_uA/1000);
+	dev_info(bq2419x->dev, "Setting charging current %d mA\n", max_uA/1000);
 	bq2419x->chg_status = BATTERY_DISCHARGING;
 
 	if (!bq2419x->is_otg_connected) {
@@ -1346,7 +1352,7 @@ static ssize_t bq2419x_set_input_charging_current(struct device *dev,
 	ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
 	mutex_unlock(&bq2419x->mutex);
 	if (ret  < 0) {
-		dev_err(dev, "Current %d mA configuration faild: %d\n",
+		dev_err(dev, "Current %d mA configuration failed: %d\n",
 			in_current_limit, ret);
 		return ret;
 	}
