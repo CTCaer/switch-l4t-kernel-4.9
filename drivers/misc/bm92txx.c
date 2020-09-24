@@ -6,6 +6,7 @@
  *
  * Authors:
  *     Adam Jiang <chaoj@nvidia.com>
+ *     CTCaer <ctcaer@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -367,6 +368,7 @@ struct bm92t_info {
 	struct dentry *debugfs_root;
 #endif
 	struct regulator *batt_chg_reg;
+	struct regulator *vbus_reg;
 	bool charging_enabled;
 	unsigned int fw_type;
 	unsigned int fw_revision;
@@ -560,6 +562,45 @@ static int
 	return ret;
 }
 
+static int bm92t_set_vbus_enable(struct bm92t_info *info, bool enable)
+{
+	int ret = 0;
+	bool is_enabled = regulator_is_enabled(info->vbus_reg);
+
+	dev_dbg(&info->i2c_client->dev,
+		"%s VBUS\n", enable ? "Enabling" : "Disabling");
+	if (info->vbus_reg != NULL) {
+		if (enable && !is_enabled)
+			ret = regulator_enable(info->vbus_reg);
+		else if (is_enabled)
+			ret = regulator_disable(info->vbus_reg);
+	}
+
+	return ret;
+}
+
+static int bm92t_set_source_mode(struct bm92t_info *info, unsigned int role)
+{
+	int err = 0;
+	unsigned short value;
+	unsigned char msg[3] = {CONFIG1_REG, 0, 0};
+
+	err = bm92t_read_reg(info, CONFIG1_REG, (unsigned char *) &value, sizeof(value));
+	if (err < 0)
+		return err;
+
+	if (((value & CONFIG1_SPDSRC_MASK) >> CONFIG1_SPDSRC_SHIFT) != role)
+	{
+		value &= ~CONFIG1_SPDSRC_MASK;
+		value |= role << CONFIG1_SPDSRC_SHIFT;
+		msg[1] = value & 0xFF;
+		msg[2] = (value >> 8) & 0xFF;
+		err = bm92t_write_reg(info, msg, sizeof(msg));
+	}
+
+	return err;
+}
+
 static char * bm92t_extcon_cable_get_name(const unsigned int cable)
 {
 	int i, count;
@@ -621,6 +662,8 @@ static void bm92t_power_work(struct work_struct *work)
 static void
 	bm92t_extcon_cable_set_init_state(struct work_struct *work)
 {
+	unsigned short value;
+	unsigned char msg[3] = {VENDOR_CONFIG_REG, 0, 0};
 	struct bm92t_info *info = container_of(
 		to_delayed_work(work), struct bm92t_info, oneshot_work);
 
@@ -628,6 +671,20 @@ static void
 		 "extcon cable is set to init state\n");
 
 	disable_irq(info->i2c_client->irq);
+
+	bm92t_set_vbus_enable(info, false);
+
+	/* Enable OTG detection */
+	bm92t_read_reg(info, VENDOR_CONFIG_REG, (unsigned char *) &value, sizeof(value));
+	if (value & 4) {
+		value &= 0xFFFB;
+		msg[1] = value & 0xFF;
+		msg[2] = (value >> 8) & 0xFF;
+		bm92t_write_reg(info, msg, sizeof(msg));
+	}
+
+	/* Enable auto power to SPDSRC for supporting both OTG and Charger */
+	bm92t_set_source_mode(info, SPDSRC12_AUTO);
 
 	bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 	bm92t_extcon_cable_update(info, EXTCON_USB, true);
@@ -834,6 +891,7 @@ static void bm92t_event_handler(struct work_struct *work)
 	unsigned short cmd;
 	unsigned short alert_data;
 	unsigned short status1_data;
+	unsigned short status2_data;
 	unsigned short dp_data;
 	unsigned char vdm[29], pdo[5], rdo[5];
 
@@ -853,6 +911,11 @@ static void bm92t_event_handler(struct work_struct *work)
 			     sizeof(status1_data));
 	if (err < 0)
 		goto ret;
+	err = bm92t_read_reg(info, STATUS2_REG,
+			     (unsigned char *) &status2_data,
+			     sizeof(status2_data));
+	if (err < 0)
+		goto ret;
 	err = bm92t_read_reg(info, DP_STATUS_REG,
 			     (unsigned char *) &dp_data,
 			     sizeof(dp_data));
@@ -860,8 +923,8 @@ static void bm92t_event_handler(struct work_struct *work)
 		goto ret;
 
 	dev_info_ratelimited(dev,
-		"Alert= 0x%04x Status1= 0x%04x DP= 0x%04x State=%s\n",
-		alert_data, status1_data, dp_data, states[info->state]);
+		"Alert= 0x%04x Status1= 0x%04x Status2= 0x%04x DP= 0x%04x State=%s\n",
+		alert_data, status1_data, status2_data, dp_data, states[info->state]);
 
 	/* Check for errors */
 	err = status1_data & STATUS1_FAULT_MASK;
@@ -872,6 +935,13 @@ static void bm92t_event_handler(struct work_struct *work)
 		bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 		bm92t_extcon_cable_update(info, EXTCON_USB, false);
 		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
+		bm92t_set_vbus_enable(info, false);
+		goto ret;
+	}
+
+	/* Check if power source was connected while VBUS was enabled */
+	if (alert_data & ALERT_SRC_FAULT) {
+		dev_err(dev, "VBUS error occurred.\n");
 		goto ret;
 	}
 
@@ -879,6 +949,9 @@ static void bm92t_event_handler(struct work_struct *work)
 	if (alert_data & ALERT_PLUGPULL) {
 		if (!bm92t_is_plugged(status1_data)) {
 			cancel_delayed_work(&info->power_work);
+
+			bm92t_set_vbus_enable(info, false);
+
 			if (info->charging_enabled) {
 				bm92t_set_current_limit(info, 0);
 				info->charging_enabled = false;
@@ -890,12 +963,30 @@ static void bm92t_event_handler(struct work_struct *work)
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
 			bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
 			bm92t_state_machine(info, INIT_STATE);
+		} else if (status1_data & STATUS1_SRC_MODE && /* OTG event */
+				   status2_data & STATUS2_OTG_INSERT) {
+			bm92t_set_vbus_enable(info, true);
+			bm92t_extcon_cable_update(info, EXTCON_USB, false);
+			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, true);
 		}
 		goto ret;
 	}
 
 	switch (info->state) {
 	case INIT_STATE:
+		if (alert_data & ALERT_SRC_PLUGIN) {
+			dev_info(dev, "Source/OTG HUB plug-in\n");
+			info->first_init = false;
+			goto ret;
+		}
+
+		if (status1_data & STATUS1_SRC_MODE &&
+				status2_data & STATUS2_OTG_INSERT) {
+			info->first_init = false;
+			dev_info(dev, "OTG adapter\n");
+			goto ret;
+		}
+
 		if ((alert_data & ALERT_CONTRACT) || info->first_init) {
 			info->first_init = false;
 
@@ -952,22 +1043,33 @@ static void bm92t_event_handler(struct work_struct *work)
 			schedule_delayed_work(&info->power_work,
 				msecs_to_jiffies(2000));
 
-			/* Check if Dual-Role Data is supported */
-			if (!info->cable.drd_support) {
-				dev_dbg(dev,
-					"DRD not supported, cmd done in SYS_RDY_SENT\n");
-				goto ret;
-			}
+			if (bm92t_is_ufp(status1_data)) {
+				/* Check if Dual-Role Data is supported */
+				if (!info->cable.drd_support) {
+					dev_dbg(dev,
+						"DRD not supported, cmd done in SYS_RDY_SENT\n");
+					goto ret;
+				}
 
-			cmd = DR_SWAP_CMD;
-			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, DR_SWAP_SENT);
+				cmd = DR_SWAP_CMD;
+				err = bm92t_send_cmd(info, &cmd);
+				bm92t_state_machine(info, DR_SWAP_SENT);
+			}
+			else if (bm92t_is_dfp(status1_data)) {
+				dev_dbg(dev, "Already in DFP mode\n");
+				if ((status1_data & 0xff) == STATUS1_INSERT) {
+					bm92t_send_vdm(info, vdm_discover_id_msg,
+						sizeof(vdm_discover_id_msg));
+					bm92t_state_machine(info, VDM_DISC_ID_SENT);
+				}
+			}
 		}
 		break;
 
 	case DR_SWAP_SENT:
 		if (bm92t_is_success(alert_data) &&
 			((status1_data & 0xff) == STATUS1_INSERT) &&
+			bm92t_is_dfp(status1_data)) {
 			bm92t_send_vdm(info, vdm_discover_id_msg,
 				sizeof(vdm_discover_id_msg));
 			bm92t_state_machine(info, VDM_DISC_ID_SENT);
@@ -1151,6 +1253,8 @@ static void bm92t_event_handler(struct work_struct *work)
 			err = bm92t_read_reg(info, INCOMING_VDM_REG, vdm, sizeof(vdm));
 			bm92t_state_machine(info, NINTENDO_CONFIG_HANDLED);
 		}
+		break;
+
 	case NINTENDO_CONFIG_HANDLED:
 		break;
 
@@ -1202,6 +1306,9 @@ static void bm92t_shutdown(struct i2c_client *client)
 			msleep(1);
 		}
 	}
+
+	/* Disable SPDSRC */
+	bm92t_set_source_mode(info, SPDSRC12_OFF);
 }
 
 #ifdef CONFIG_DEBUG_FS
@@ -1514,6 +1621,15 @@ static int bm92t_probe(struct i2c_client *client,
 		info->batt_chg_reg = NULL;
 	}
 
+	info->vbus_reg = devm_regulator_get(&client->dev, "vbus");
+	if (IS_ERR(info->vbus_reg)) {
+		err = PTR_ERR(info->vbus_reg);
+
+		dev_info(&client->dev,
+				"vbus reg not registered: %d\n", err);
+		info->vbus_reg = NULL;
+	}
+
 	/* Initialized state */
 	info->state = INIT_STATE;
 	info->first_init = true;
@@ -1549,6 +1665,9 @@ static int bm92t_probe(struct i2c_client *client,
 	if (info->fw_revision <= 0x644) {
 		return -EINVAL;
 	}
+
+	/* Disable Source mode at boot */
+	bm92t_set_source_mode(info, SPDSRC12_OFF);
 
 	INIT_WORK(&info->work, bm92t_event_handler);
 	INIT_DELAYED_WORK(&info->oneshot_work,
