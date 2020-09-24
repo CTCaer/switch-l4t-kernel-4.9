@@ -101,7 +101,7 @@ static int tegra_usb_cd_update_charging_current(struct tegra_usb_cd *ucd)
 	case EXTCON_NONE:
 		dev_info(ucd->dev, "disconnected USB cable/charger\n");
 		ucd->sdp_cdp_current_limit_ma = 0;
-		max_ua = 0;
+		max_ua = 1;
 		break;
 	case EXTCON_USB:
 		dev_info(ucd->dev, "connected to SDP\n");
@@ -146,7 +146,7 @@ static int tegra_usb_cd_update_charging_current(struct tegra_usb_cd *ucd)
 		break;
 	default:
 		dev_info(ucd->dev, "connected to unknown USB port\n");
-		max_ua = 0;
+		max_ua = 1;
 	}
 
 	ucd->current_limit_ma = max_ua/1000;
