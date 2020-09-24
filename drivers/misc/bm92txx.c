@@ -94,7 +94,6 @@
 #define DATA_ROLE_ACC   3
 
 /* STATUS2_REG */
-#define STATUS2_UNK0 BIT(0)
 #define STATUS2_VCONN_ON     BIT(9)
 #define STATUS2_EM_CABLE     BIT(12) /* Electronically marked cable. Safe for 1.3A */
 #define STATUS2_OTG_INSERT   BIT(13)
@@ -239,9 +238,9 @@
 #define PD_12V_CHARGING_CURRENT_LIMIT_UA 1200000u
 #define PD_15V_CHARGING_CURRENT_LIMIT_UA 1200000u
 
-#define PD_INPUT_VOLTAGE_LIMIT_MAX_MV 15000u
-#define PD_INPUT_CURRENT_LIMIT_MIN_MA 1500u
+#define PD_INPUT_CURRENT_LIMIT_MIN_MA 0u
 #define PD_INPUT_CURRENT_LIMIT_MAX_MA 3000u
+#define PD_INPUT_VOLTAGE_LIMIT_MAX_MV 17000u
 
 #define DOCK_ID_VOLTAGE_MV 5000u
 #define DOCK_ID_CURRENT_MA 500u
@@ -286,6 +285,8 @@
 #define SVID_NINTENDO VID_NINTENDO
 #define SVID_DP       0xFF01
 
+
+/* All states with ND are for Nintendo Dock */
 enum bm92t_state_type {
 	INIT_STATE = 0,
 	NEW_PDO,
@@ -305,6 +306,7 @@ enum bm92t_state_type {
 	VDM_ACCEPT_ND_LED_ON_SENT,
 	VDM_ND_LED_CUSTOM_SENT,
 	VDM_ACCEPT_ND_LED_CUSTOM_SENT,
+	NINTENDO_CONFIG_HANDLED,
 };
 
 struct __attribute__((packed)) pd_object {
@@ -391,6 +393,7 @@ static const char * const states[] = {
 	"VDM_ACCEPT_ND_LED_ON_SENT",
 	"VDM_ND_LED_CUSTOM_SENT",
 	"VDM_ACCEPT_ND_LED_CUSTOM_SENT",
+	"NINTENDO_CONFIG_HANDLED",
 };
 
 static const unsigned int bm92t_extcon_cable[] = {
@@ -639,6 +642,8 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 	struct device *dev;
 	unsigned char pdos[29];
 	struct pd_object pdo[7];
+	unsigned int prev_wattage = 0;
+	unsigned int amperage, voltage, wattage, type;
 
 	dev = &info->i2c_client->dev;
 
@@ -685,14 +690,37 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 	/* Not in dock mode. Check for max possible wattage */
 	for (i = 1; i < pdos_no; ++i)
 	{
-		/* Only accept up to 15V, <= 3A for charger mode. */
-		if (pdo[i].type == PDO_TYPE_FIXED &&
-			(pdo[i].volt * 50) <= PD_INPUT_VOLTAGE_LIMIT_MAX_MV &&
-			(pdo[i].amp * 10)  >= PD_INPUT_CURRENT_LIMIT_MIN_MA &&
-			(pdo[i].amp * 10)  <= PD_INPUT_CURRENT_LIMIT_MAX_MA)
+		type = pdo[i].type;
+		voltage = pdo[i].volt * 50;
+		amperage = pdo[i].amp * 10;
+		wattage = voltage * amperage;
+
+		/* Only USB-PD defined voltages with max 15V. */
+		switch (voltage)
 		{
-			info->cable.pdo_no = i + 1;
-			memcpy(&info->cable.pdo, &pdo[i], sizeof(struct pd_object));
+		case 5000:
+		case 9000:
+		case 12000:
+		case 15000:
+			break;
+		default:
+			continue;
+		}
+
+		/* Only accept <= 3A and select max wattage with max voltage possible. */
+		if (type == PDO_TYPE_FIXED &&
+			amperage >= PD_INPUT_CURRENT_LIMIT_MIN_MA &&
+			amperage <= PD_INPUT_CURRENT_LIMIT_MAX_MA)
+		{
+			if (wattage > prev_wattage ||
+			   (voltage > (info->cable.pdo.volt * 50) &&
+				wattage && wattage == prev_wattage) ||
+			   (!info->cable.pdo_no && !amperage && voltage == 5000))
+			{
+				prev_wattage = wattage;
+				info->cable.pdo_no = i + 1;
+				memcpy(&info->cable.pdo, &pdo[i], sizeof(struct pd_object));
+			}
 		}
 	}
 
@@ -809,6 +837,8 @@ static void bm92t_event_handler(struct work_struct *work)
 	unsigned short dp_data;
 	unsigned char vdm[29], pdo[5], rdo[5];
 
+	static int retries_usbhub = 10;
+
 	info = container_of(work, struct bm92t_info, work);
 	dev = &info->i2c_client->dev;
 
@@ -855,6 +885,7 @@ static void bm92t_event_handler(struct work_struct *work)
 				bm92t_extcon_cable_update(info, EXTCON_USB_PD, false);
 			}
 
+			retries_usbhub = 10;
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
 			bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
@@ -868,10 +899,17 @@ static void bm92t_event_handler(struct work_struct *work)
 		if ((alert_data & ALERT_CONTRACT) || info->first_init) {
 			info->first_init = false;
 
+			/* Disable USB if first init and unplugged */
+			if (!bm92t_is_plugged(status1_data)) {
+				bm92t_extcon_cable_update(info, EXTCON_USB, false);
+				goto ret;
+			}
+
 			/* Negotiate new power profile */
 			if (!bm92t_check_pdo(info)) {
 				dev_err(dev, "Power Negotiation failed\n");
 				bm92t_state_machine(info, INIT_STATE);
+				msleep(550); /* WAR: BQ2419x good power test */
 				bm92t_extcon_cable_update(info, EXTCON_USB, true);
 				goto ret;
 			}
@@ -1083,14 +1121,18 @@ static void bm92t_event_handler(struct work_struct *work)
 			err = bm92t_read_reg(info, INCOMING_VDM_REG,
 				vdm, sizeof(vdm));
 
-			if (vdm[5] & 0x1) {
+			if ((vdm[5] & 0x1) && retries_usbhub) {
 				msleep(250);
 				dev_info(dev, "Retrying enabling USB HUB.\n");
 				bm92t_send_vdm(info, vdm_enable_usbhub_msg,
 					sizeof(vdm_enable_usbhub_msg));
 				bm92t_state_machine(info,
 					VDM_ND_ENABLE_USBHUB_SENT);
-			}
+				retries_usbhub--;
+			} else if (!retries_usbhub)
+				dev_err(dev, "USB HUB check failed\n");
+			else
+				bm92t_state_machine(info, NINTENDO_CONFIG_HANDLED);
 		}
 		break;
 
@@ -1107,7 +1149,9 @@ static void bm92t_event_handler(struct work_struct *work)
 		if (bm92t_is_success(alert_data)) {
 			/* Read incoming VDM */
 			err = bm92t_read_reg(info, INCOMING_VDM_REG, vdm, sizeof(vdm));
+			bm92t_state_machine(info, NINTENDO_CONFIG_HANDLED);
 		}
+	case NINTENDO_CONFIG_HANDLED:
 		break;
 
 	default:
@@ -1147,12 +1191,10 @@ static void bm92t_shutdown(struct i2c_client *client)
 	dev_info(&info->i2c_client->dev, "%s\n", __func__);
 
 	/* Disable Dock LED if enabled */
-	if (info->state == VDM_ACCEPT_ND_ENABLE_USBHUB_SENT ||
-		info->state == VDM_ACCEPT_ND_LED_CUSTOM_SENT)
-	{
+	if (info->state == NINTENDO_CONFIG_HANDLED) {
 		bm92t_state_machine(info, VDM_ND_LED_CUSTOM_SENT);
 		bm92t_usbhub_led_cfg(info, 0, 0, 0, 128);
-		while (info->state == VDM_ND_LED_CUSTOM_SENT)
+		while (info->state != NINTENDO_CONFIG_HANDLED)
 		{
 			retries--;
 			if (retries < 0)
