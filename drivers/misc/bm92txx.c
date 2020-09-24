@@ -33,67 +33,201 @@
 #include <linux/regulator/consumer.h>
 #include <asm/uaccess.h>
 
-#define ALERT_STATUS    0x2
-#define STATUS1         0x3
-#define STATUS2         0x4
-#define COMMAND         0x5
-#define CONFIG1         0x6
-#define DEV_CAPS        0x7
-#define READ_PDOS_SRC   0x8
-#define CONFIG2         0x17
-#define DP_STATUS       0x18
-#define DP_ALERT_EN     0x19
-#define VENDOR_CONFIG   0x1A
-#define AUTO_NGT_NBATT  0x20
-#define AUTO_NGT_BATT   0x23
-#define SYS_CONFIG1     0x26
-#define SYS_CONFIG2     0x27
-#define CURRENT_PDO     0x28
-#define CURRENT_RDO     0x2B
-#define ALERT_ENABLE    0x2E
-#define SYS_CONFIG3     0x2F
-#define SET_RDO         0x30
-#define PDOS_SNK        0x33
-#define PDOS_SRC_PROV   0x3C
-#define FW_TYPE         0x4B
-#define FW_REVISION     0x4C
-#define MAN_ID          0x4D
-#define DEV_ID          0x4E
-#define REV_ID          0x4F
-#define INCOMING_VDM    0x50
-#define OUTGOING_VDM    0x60
+#define ALERT_STATUS_REG    0x2
+#define STATUS1_REG         0x3
+#define STATUS2_REG         0x4
+#define COMMAND_REG         0x5
+#define CONFIG1_REG         0x6
+#define DEV_CAPS_REG        0x7
+#define READ_PDOS_SRC_REG   0x8
+#define CONFIG2_REG         0x17
+#define DP_STATUS_REG       0x18
+#define DP_ALERT_EN_REG     0x19
+#define VENDOR_CONFIG_REG   0x1A
+#define AUTO_NGT_FIXED_REG  0x20
+#define AUTO_NGT_BATT_REG   0x23
+#define SYS_CONFIG1_REG     0x26
+#define SYS_CONFIG2_REG     0x27
+#define CURRENT_PDO_REG     0x28
+#define CURRENT_RDO_REG     0x2B
+#define ALERT_ENABLE_REG    0x2E
+#define SYS_CONFIG3_REG     0x2F
+#define SET_RDO_REG         0x30
+#define PDOS_SNK_REG        0x33
+#define PDOS_SRC_PROV_REG   0x3C
+#define FW_TYPE_REG         0x4B
+#define FW_REVISION_REG     0x4C
+#define MAN_ID_REG          0x4D
+#define DEV_ID_REG          0x4E
+#define REV_ID_REG          0x4F
+#define INCOMING_VDM_REG    0x50
+#define OUTGOING_VDM_REG    0x60
 
+#define ALERT_SNK_FAULT     BIT(0)
+#define ALERT_SRC_FAULT     BIT(1)
 #define ALERT_CMD_DONE      BIT(2)
 #define ALERT_PLUGPULL      BIT(3)
 #define ALERT_DRSWAPPED     BIT(10)
 #define ALERT_VDM_RECEIVED  BIT(11)
-#define ALERT_CONTR         BIT(12)
+#define ALERT_CONTRACT      BIT(12)
+#define ALERT_SRC_PLUGIN    BIT(13)
 #define ALERT_PDO           BIT(14)
 
+/* STATUS1_REG */
+#define STATUS1_SPDSRC2     BIT(3)
 #define STATUS1_LASTCMD     BIT(4)
-#define STATUS1_INSERT      BIT(7)
-#define STATUS1_CSIDE       BIT(11) // Type-C Plug Side.
-#define STATUS1_SPDSNK      BIT(14)
+#define STATUS1_INSERT      BIT(7)  /* Cable inserted */
+#define STATUS1_VSAFE       BIT(10) /* 0: No power, 1: VSAFE 5V or PDO */
+#define STATUS1_CSIDE       BIT(11) /* Type-C Plug Side. 0: CC1 Side Valid, 1: CC2 Side Valid */
+#define STATUS1_SRC_MODE    BIT(12) /* Source mode (OTG) */
+#define STATUS1_CMD_BUSY    BIT(13) /* Command in progress */
+#define STATUS1_SPDSNK      BIT(14) /* Sink mode */
+#define STATUS1_SPDSRC1     BIT(15) /* VBUS enabled */
 
-#define STATUS1_DR_SHIFT        8
-#define STATUS1_DR_MASK         (3 << STATUS1_DR_SHIFT)
-#define STATUS1_LASTCMD_MASK    (8 << 4)
-
-#define SYS_RDY_CMD       0x0505
-#define SEND_RDO_CMD      0x0707
-#define SRC_DISABLE_CMD   0x0909 // Disconnects 5V source.
-#define SEND_VDM_CMD      0x1111
-#define ACCEPT_VDM_CMD    0x1616
-#define DR_SWAP_CMD       0x1818
-#define DP_MODE_CMD       0x3131
-#define DP_START_CMD      0x3636
+#define STATUS1_FAULT_MASK     3
+#define STATUS1_DR_SHIFT       8
+#define STATUS1_DR_MASK        (3 << STATUS1_DR_SHIFT)
+#define STATUS1_LASTCMD_MASK   (8 << 4)
 
 #define DATA_ROLE_UFP   1
 #define DATA_ROLE_DFP   2
+#define DATA_ROLE_ACC   3
 
-#define PDO_TYPE_FIXED 0
-#define PDO_TYPE_BATT  1
-#define PDO_TYPE_VAR   2
+/* STATUS2_REG */
+#define STATUS2_UNK0 BIT(0)
+#define STATUS2_VCONN_ON     BIT(9)
+#define STATUS2_EM_CABLE     BIT(12) /* Electronically marked cable. Safe for 1.3A */
+#define STATUS2_OTG_INSERT   BIT(13)
+
+#define STATUS2_PDOI_SHIFT   3
+#define STATUS2_PDOI_MASK    (1 << STATUS2_PDO_SHIFT)
+#define STATUS2_ACC_SHIFT    10
+#define STATUS2_ACC_MASK     (3 << STATUS2_ACC_SHIFT) /* Accesory mode */
+
+#define PDOI_SRC_OR_NO  0
+#define PDOI_SNK        1
+
+#define ACC_DISABLED    0
+#define ACC_AUDIO       1
+#define ACC_DEBUG       2
+#define ACC_VCONN       3
+
+/* DP_STATUS_REG */
+#define DP_STATUS_SNK_CONN  BIT(1)
+#define DP_STATUS_SIGNAL_ON BIT(7)
+#define DP_STATUS_INSERT    BIT(14)
+#define DP_STATUS_SRC_CONN  BIT(15)
+
+/* CONFIG1_REG */
+#define CONFIG1_AUTO_DR_SWAP          BIT(1)
+#define CONFIG1_SLEEP_REQUEST         BIT(4)
+#define CONFIG1_AUTONGTSNK_VAR_EN     BIT(5)
+#define CONFIG1_AUTONGTSNK_FIXED_EN   BIT(6)
+#define CONFIG1_AUTONGTSNK_EN         BIT(7)
+#define CONFIG1_AUTONGTSNK_BATT_EN    BIT(8)
+#define CONFIG1_VINOUT_DELAY_OFF      BIT(9) /* VIN/VOUT turn on delay. 0: 250us, 1: 1ms */
+
+#define CONFIG1_VINOUT_TIME_ON_SHIFT  10 /* VIN/VOUT turn on delay */
+#define CONFIG1_VINOUT_TIME_ON_MASK   (3 << CONFIG1_VINOUT_DELAY_SHIFT)
+#define CONFIG1_SPDSRC_SHIFT          14
+#define CONFIG1_SPDSRC_MASK           (3 << CONFIG1_SPDSRC_SHIFT)
+
+#define VINOUT_TIME_ON_1MS    0
+#define VINOUT_TIME_ON_5MS    1
+#define VINOUT_TIME_ON_10MS   2
+#define VINOUT_TIME_ON_20MS   3
+
+#define SPDSRC12_AUTO         0 /* SPDSRC1/2 Auto on/off */
+#define SPDSRC2_AUTO          1
+#define SPDSRC1_AUTO          2
+#define SPDSRC12_OFF          3 /* SPDSRC1/2 off */
+
+/* CONFIG2_REG */
+#define CONFIG2_VSRC_SWAP         BIT(4) /* VCONN source swap. 0: Reject, 1: Accept */
+#define CONFIG2_NO_USB_SUSPEND    BIT(5)
+#define CONFIG2_EXT_POWERED       BIT(7)
+
+#define CONFIG2_PR_SWAP_MASK      (3 << 0)
+#define CONFIG2_DR_SWAP_SHIFT     2
+#define CONFIG2_DR_SWAP_MASK      (3 << CONFIG2_DR_SWAP_SHIFT)
+#define CONFIG2_TYPEC_AMP_SHIFT   14
+#define CONFIG2_TYPEC_AMP_MASK    (3 << CONFIG1_TYPEC_AMP_SHIFT)
+
+#define PR_SWAP_ALWAYS_REJECT         0
+#define PR_SWAP_ACCEPT_SNK_REJECT_SRC 1 /* Accept when power sink */
+#define PR_SWAP_ACCEPT_SRC_REJECT_SNK 2 /* Accept when power source */
+#define PR_SWAP_ALWAYS_ACCEPT         3
+
+#define DR_SWAP_ALWAYS_REJECT         0
+#define DR_SWAP_ACCEPT_UFP_REJECT_DFP 1 /* Accept when device */
+#define DR_SWAP_ACCEPT_DFP_REJECT_UFP 2 /* Accept when host */
+#define DR_SWAP_ALWAYS_ACCEPT         3
+
+#define TYPEC_AMP_0_5A_5V   9
+#define TYPEC_AMP_1_5A_5V   10
+#define TYPEC_AMP_3_0A_5V   11
+
+/* SYS_CONFIG1_REG */
+#define SYS_CONFIG1_USE_AUTONGT_HOST    BIT(6)
+#define SYS_CONFIG1_PDO_SNK_CONS        BIT(8)
+#define SYS_CONFIG1_PDO_SRC_PROV        BIT(12)
+#define SYS_CONFIG1_WAKE_ON_INSERT      BIT(15)
+
+#define SYS_CONFIG1_PLUG_MASK           (0xF << 0)
+#define SYS_CONFIG1_PDO_SNK_CONS_SHIFT  9 /* Number of Sink PDOs */
+#define SYS_CONFIG1_PDO_SNK_CONS_MASK   (7 << SYS_CONFIG1_PDO_SNK_CONS_NO_SHIFT)
+#define SYS_CONFIG1_PDO4_SHIFT          13
+#define SYS_CONFIG1_PDO4_MASK           (0x3 << SYS_CONFIG1_PDO4_SHIFT)
+
+#define PLUG_TYPE_C      9
+#define PLUG_TYPE_C_3A   10
+#define PLUG_TYPE_C_5A   11
+
+#define PDO4_PDO4        0
+#define PDO4_PDO5        1
+#define PDO4_PDO6        2
+#define PDO4_PDO7        3
+
+/* SYS_CONFIG2_REG */
+#define SYS_CONFIG2_NO_COMM_UFP          BIT(0) /* Force no USB comms Capable UFP */
+#define SYS_CONFIG2_NO_COMM_DFP          BIT(1) /* Force no USB comms Capable DFP */
+#define SYS_CONFIG2_NO_COMM_ON_NO_BATT   BIT(2) /* Force no USB comms on dead battery */
+#define SYS_CONFIG2_AUTO_SPDSNK_EN       BIT(6) /* Enable without SYS_RDY */
+#define SYS_CONFIG2_BST_EN               BIT(8)
+
+#define SYS_CONFIG2_PDO_SRC_PROV_SHIFT   9 /* Number of Source provisioned PDOs */
+#define SYS_CONFIG2_PDO_SRC_PROV_MASK    (7 << SYS_CONFIG2_PDO_SRC_PROV_SHIFT)
+
+/* DEV_CAPS_REG */
+#define DEV_CAPS_ALERT_STS  BIT(0)
+#define DEV_CAPS_ALERT_EN   BIT(1)
+#define DEV_CAPS_VIN_EN     BIT(2)
+#define DEV_CAPS_VOUT_EN0   BIT(3)
+#define DEV_CAPS_SPDSRC2    BIT(4)
+#define DEV_CAPS_SPDSRC1    BIT(5)
+#define DEV_CAPS_SPRL       BIT(6)
+#define DEV_CAPS_SPDSNK     BIT(7)
+#define DEV_CAPS_OCP        BIT(8)  /* Over current protection */
+#define DEV_CAPS_DP_SRC     BIT(9)  /* DisplayPort capable Source */
+#define DEV_CAPS_DP_SNK     BIT(10) /* DisplayPort capable Sink */
+#define DEV_CAPS_VOUT_EN1   BIT(11)
+
+/* Commands */
+#define SYS_RDY_CMD       0x0505
+#define SEND_RDO_CMD      0x0707
+#define STORE_SYSCFG_CMD  0x0909
+#define PD_HARD_RST_CMD   0x0D0D
+#define SEND_VDM_CMD      0x1111
+#define ACCEPT_VDM_CMD    0x1616
+#define DR_SWAP_CMD       0x1818
+#define DP_MODE_CMD       0x3131 /* Discover DP Alt mode */
+#define DP_STOP_CMD       0x3232
+#define DP_START_CMD      0x3636 /* Configure and enter selected DP mode */
+
+/* General defines */
+#define PDO_TYPE_FIXED  0
+#define PDO_TYPE_BATT   1
+#define PDO_TYPE_VAR    2
 
 #define PDO_INFO_DR_DATA   (1 << 5)
 #define PDO_INFO_USB_COMM  (1 << 6)
@@ -115,39 +249,102 @@
 #define DOCK_INPUT_CURRENT_LIMIT_MIN_MA 2600u
 #define DOCK_INPUT_CURRENT_LIMIT_MAX_MA 3000u
 
+/* VDM/VDO */
+#define VDM_CMD_RESERVED   0
+#define VDM_CMD_DISC_ID    1
+#define VDM_CMD_DISC_SVID  2
+#define VDM_CMD_DISC_MODE  3
+#define VDM_CMD_ENTER_MODE 4
+#define VDM_CMD_EXIT_MODE  5
+#define VDM_CMD_ATTENTION  6
+#define VDM_CMD_DP_STATUS  16
+#define VDM_CMD_DP_CONFIG  17
+
+#define VDM_ACK 0x40
+#define VDM_NAK 0x80
+#define VDM_UNSTRUCTURED   0x00
+#define VDM_STRUCTURED     0x80
+
+#define VDO_ID_TYPE_NONE        0
+#define VDO_ID_TYPE_PD_HUB      1
+#define VDO_ID_TYPE_PD_PERIPH   2
+#define VDO_ID_TYPE_PASS_CBL    3
+#define VDO_ID_TYPE_ACTI_CBL    4
+#define VDO_ID_TYPE_ALTERNATE   5
+
+#define VDO_DP_UFP_D       BIT(0)
+#define VDO_DP_DFP_D       BIT(1)
+#define VDO_DP_SUPPORT     BIT(2)
+#define VDO_DP_RECEPTACLE  BIT(6)
+
+#define VDO_DP_UFP_PIN_D   BIT(3)
+
+#define VID_NINTENDO      0x057E
+#define PID_NIN_DOCK      0x2003
+#define PID_NIN_CHARGER   0x2004
+
+#define SVID_NINTENDO VID_NINTENDO
+#define SVID_DP       0xFF01
+
 enum bm92t_state_type {
 	INIT_STATE = 0,
 	NEW_PDO,
 	SYS_RDY_SENT,
 	DR_SWAP_SENT,
-	VDM_ID_PHASE1_SENT,
-	VDM_ACCEPT_PHASE1_SENT,
-	VDM_ID_PHASE2_SENT,
-	VDM_ACCEPT_PHASE2_SENT,
-	ENTER_DP_MODE,
-	HPD_HANDLED,
-	VDM_QUERY_DEVICE_SENT,
-	VDM_ACCEPT_QUERY_DEVICE_SENT,
-	VDM_CHECK_USBHUB_SENT,
-	VDM_ACCEPT_CHECK_USBHUB_SENT,
-	VDM_LED_ON_SENT,
-	VDM_ACCEPT_LED_ON_SENT,
-	VDM_LED_CUSTOM_SENT,
-	VDM_ACCEPT_LED_CUSTOM_SENT
+	VDM_DISC_ID_SENT,
+	VDM_ACCEPT_DISC_ID_SENT,
+	VDM_ENTER_ND_ALT_MODE_SENT,
+	VDM_ACCEPT_ENTER_NIN_ALT_MODE_SENT,
+	DP_DISCOVER_MODE,
+	DP_CONFIG_ENTER_HANDLED,
+	VDM_ND_QUERY_DEVICE_SENT,
+	VDM_ACCEPT_ND_QUERY_DEVICE_SENT,
+	VDM_ND_ENABLE_USBHUB_SENT,
+	VDM_ACCEPT_ND_ENABLE_USBHUB_SENT,
+	VDM_ND_LED_ON_SENT,
+	VDM_ACCEPT_ND_LED_ON_SENT,
+	VDM_ND_LED_CUSTOM_SENT,
+	VDM_ACCEPT_ND_LED_CUSTOM_SENT,
 };
 
-struct pd_object {
+struct __attribute__((packed)) pd_object {
 	unsigned int amp:10;
 	unsigned int volt:10;
 	unsigned int info:10;
 	unsigned int type:2;
 };
 
-struct rd_object {
+struct __attribute__((packed)) rd_object {
 	unsigned int max_amp:10;
 	unsigned int op_amp:10;
-	unsigned int info:8;
-	unsigned int no:4;
+	unsigned int info:6;
+	unsigned int usb_comms:1;
+	unsigned int mismatch:1;
+	unsigned int obj_no:4;
+};
+
+struct __attribute__((packed)) vd_object {
+	unsigned int vid:16;
+	unsigned int rsvd:10;
+	unsigned int modal:1;
+	unsigned int type:3;
+	unsigned int ufp:1;
+	unsigned int dfp:1;
+
+	unsigned int xid;
+
+	unsigned int bcd:16;
+	unsigned int pid:16;
+
+	unsigned int prod_type;
+};
+
+struct bm92t_device {
+	int pdo_no;
+	bool drd_support;
+	bool is_nintendo_dock;
+	struct pd_object pdo;
+	struct vd_object vdo;
 };
 
 struct bm92t_info {
@@ -172,9 +369,7 @@ struct bm92t_info {
 	unsigned int fw_type;
 	unsigned int fw_revision;
 
-	int pdo_no;
-	struct pd_object pdo;
-	bool drd_support;
+	struct bm92t_device cable;
 };
 
 static const char * const states[] = {
@@ -182,20 +377,20 @@ static const char * const states[] = {
 	"NEW_PDO",
 	"SYS_RDY_SENT",
 	"DR_SWAP_SENT",
-	"VDM_ID_PHASE1_SENT",
-	"VDM_ACCEPT_PHASE1_SENT",
-	"VDM_ID_PHASE2_SENT",
-	"VDM_ACCEPT_PHASE2_SENT",
-	"ENTER_DP_MODE",
-	"HPD_HANDLED",
-	"VDM_QUERY_DEVICE_SENT",
-	"VDM_ACCEPT_QUERY_DEVICE_SENT",
-	"VDM_CHECK_USBHUB_SENT",
-	"VDM_ACCEPT_CHECK_USBHUB_SENT",
-	"VDM_LED_ON_SENT",
-	"VDM_ACCEPT_LED_ON_SENT",
-	"VDM_LED_CUSTOM_SENT",
-	"VDM_ACCEPT_LED_CUSTOM_SENT"
+	"VDM_DISC_ID_SENT",
+	"VDM_ACCEPT_DISC_ID_SENT",
+	"VDM_ENTER_ND_ALT_MODE_SENT",
+	"VDM_ACCEPT_ENTER_NIN_ALT_MODE_SENT",
+	"DP_DISCOVER_MODE",
+	"DP_CONFIG_ENTER_HANDLED",
+	"VDM_ND_QUERY_DEVICE_SENT",
+	"VDM_ACCEPT_ND_QUERY_DEVICE_SENT",
+	"VDM_ND_ENABLE_USBHUB_SENT",
+	"VDM_ACCEPT_ND_ENABLE_USBHUB_SENT",
+	"VDM_ND_LED_ON_SENT",
+	"VDM_ACCEPT_ND_LED_ON_SENT",
+	"VDM_ND_LED_CUSTOM_SENT",
+	"VDM_ACCEPT_ND_LED_CUSTOM_SENT",
 };
 
 static const unsigned int bm92t_extcon_cable[] = {
@@ -220,16 +415,20 @@ static const struct bm92t_extcon_cables bm92t_extcon_cable_names[] = {
 	{ -1,              "Unknown"}
 };
 
-unsigned char vdm_id_phase1_msg[6] = {OUTGOING_VDM,
-	0x04, 0x01, 0x80, 0x00, 0xFF};
-unsigned char vdm_id_phase2_msg[6] = {OUTGOING_VDM,
-	0x04, 0x04, 0x81, 0x7E, 0x05};
-unsigned char vdm_query_device_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7E, 0x05, 0x00, 0x01, 0x16, 0x00};
-unsigned char vdm_check_usbhub_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7E, 0x05, 0x01, 0x01, 0x20, 0x00};
-unsigned char vdm_usbhub_led_msg[14] = {OUTGOING_VDM,
-	0x0c, 0x00, 0x00, 0x7E, 0x05, 0x01, 0x01, 0x01, 0x00,
+unsigned char vdm_discover_id_msg[6] = {OUTGOING_VDM_REG,
+	0x04, VDM_CMD_DISC_ID, VDM_STRUCTURED, 0x00, 0xFF};
+
+unsigned char vdm_enter_nin_alt_mode_msg[6] = {OUTGOING_VDM_REG,
+	0x04, VDM_CMD_ENTER_MODE, VDM_STRUCTURED | 1, 0x7E, 0x05}; /* Nintendo Alt Mode */
+
+unsigned char vdm_query_device_msg[10] = {OUTGOING_VDM_REG,
+	0x08, VDM_CMD_RESERVED, VDM_UNSTRUCTURED, 0x7E, 0x05, 0x00, 0x01, 0x16, 0x00};
+
+unsigned char vdm_enable_usbhub_msg[10] = {OUTGOING_VDM_REG,
+	0x08, VDM_CMD_RESERVED, VDM_UNSTRUCTURED, 0x7E, 0x05, 0x01, 0x01, 0x20, 0x00};
+
+unsigned char vdm_usbhub_led_msg[14] = {OUTGOING_VDM_REG,
+	0x0c, VDM_CMD_RESERVED, VDM_UNSTRUCTURED, 0x7E, 0x05, 0x01, 0x01, 0x01, 0x00,
 	0x00, 0x00, 0x00, 0x00}; // Fade, Time off, Time on, Duty.
 
 static int bm92t_write_reg(struct bm92t_info *info,
@@ -283,7 +482,7 @@ static int bm92t_send_cmd(struct bm92t_info *info, unsigned short *cmd)
 	if (!cmd)
 		return -EINVAL;
 
-	reg = COMMAND;
+	reg = COMMAND_REG;
 
 	msg[0] = reg;
 	msg[1] = _cmd[0];
@@ -296,7 +495,29 @@ static int bm92t_send_cmd(struct bm92t_info *info, unsigned short *cmd)
 	return ret;
 }
 
-static int bm92t_handle_hpd(struct bm92t_info *info)
+static inline bool bm92t_is_success(const short alert_data)
+{
+	return (alert_data & ALERT_CMD_DONE);
+}
+
+static inline bool bm92t_is_plugged(const short status1_data)
+{
+	return (status1_data & STATUS1_INSERT);
+}
+
+static inline bool bm92t_is_ufp(const short status1_data)
+{
+	return (((status1_data & STATUS1_DR_MASK) >> STATUS1_DR_SHIFT) ==
+				DATA_ROLE_UFP);
+}
+
+static inline bool bm92t_is_dfp(const short status1_data)
+{
+	return (((status1_data & STATUS1_DR_MASK) >> STATUS1_DR_SHIFT) ==
+				DATA_ROLE_DFP);
+}
+
+static int bm92t_handle_dp_config_enter(struct bm92t_info *info)
 {
 	int err;
 	unsigned char msg[5];
@@ -355,7 +576,7 @@ static void bm92t_extcon_cable_update(struct bm92t_info *info,
 	int state = extcon_get_cable_state_(&info->edev, cable);
 
 	if (state != is_attached) {
-		dev_info(&info->i2c_client->dev, "Extcon cable (%02d: %s) %s\n",
+		dev_info(&info->i2c_client->dev, "extcon cable (%02d: %s) %s\n",
 			cable, bm92t_extcon_cable_get_name(cable),
 			is_attached ? "attached" : "detached");
 		extcon_set_cable_state_(&info->edev, cable, is_attached);
@@ -368,18 +589,13 @@ static inline void bm92t_state_machine(struct bm92t_info *info, int state)
 	dev_dbg(&info->i2c_client->dev, "state = %s\n", states[state]);
 }
 
-static inline bool bm92t_is_success(const short alert_data)
-{
-	return alert_data & ALERT_CMD_DONE;
-}
-
 static void bm92t_power_work(struct work_struct *work)
 {
 	struct bm92t_info *info = container_of(
 		to_delayed_work(work), struct bm92t_info, power_work);
 	unsigned int charging_limit;
 
-	switch (info->pdo.volt * 50)
+	switch (info->cable.pdo.volt * 50)
 	{
 	case 9000:
 		charging_limit = PD_09V_CHARGING_CURRENT_LIMIT_UA;
@@ -408,11 +624,12 @@ static void
 	dev_info(&info->i2c_client->dev,
 		 "extcon cable is set to init state\n");
 
+	disable_irq(info->i2c_client->irq);
+
 	bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 	bm92t_extcon_cable_update(info, EXTCON_USB, true);
-	
-	disable_irq(info->i2c_client->irq);
-	msleep(2000); // WAR: Allow USB device enumeration at boot.
+
+	msleep(1000); /* WAR: Allow USB device enumeration at boot. */
 	queue_work(info->event_wq, &info->work);
 }
 
@@ -425,10 +642,9 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 
 	dev = &info->i2c_client->dev;
 
-	info->pdo_no = 0;
-	info->drd_support = false;
+	memset(&info->cable, 0, sizeof(struct bm92t_device));
 
-	err = bm92t_read_reg(info, READ_PDOS_SRC, pdos, sizeof(pdos));
+	err = bm92t_read_reg(info, READ_PDOS_SRC_REG, pdos, sizeof(pdos));
 	pdos_no = pdos[0] / 4;
 	if (err || pdos_no < 2)
 		return 0;
@@ -443,7 +659,7 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 	}
 
 	if (pdo[0].info & PDO_INFO_DR_DATA)
-		info->drd_support = true;
+		info->cable.drd_support = true;
 
 	/* Check for dock mode */
 	if (pdos_no == 2 &&
@@ -456,9 +672,9 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 			(pdo[1].amp * 10)  >= DOCK_INPUT_CURRENT_LIMIT_MIN_MA &&
 			(pdo[1].amp * 10)  <= DOCK_INPUT_CURRENT_LIMIT_MAX_MA)
 		{
-			dev_info(dev, "Adapter in dock mode\n");
-			info->pdo_no = 2;
-			memcpy(&info->pdo, &pdo[1], sizeof(struct pd_object));
+			dev_info(dev, "Adapter in nintendo dock\n");
+			info->cable.pdo_no = 2;
+			memcpy(&info->cable.pdo, &pdo[1], sizeof(struct pd_object));
 			return 1;
 		}
 
@@ -475,14 +691,14 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 			(pdo[i].amp * 10)  >= PD_INPUT_CURRENT_LIMIT_MIN_MA &&
 			(pdo[i].amp * 10)  <= PD_INPUT_CURRENT_LIMIT_MAX_MA)
 		{
-			info->pdo_no = i + 1;
-			memcpy(&info->pdo, &pdo[i], sizeof(struct pd_object));
+			info->cable.pdo_no = i + 1;
+			memcpy(&info->cable.pdo, &pdo[i], sizeof(struct pd_object));
 		}
 	}
 
-	if (info->pdo_no)
+	if (info->cable.pdo_no)
 	{
-		dev_info(&info->i2c_client->dev, "Adapter in charger mode\n");
+		dev_info(&info->i2c_client->dev, "Adapter in charger/hub mode\n");
 		return 1;
 	}
 
@@ -494,16 +710,17 @@ static int bm92t_send_rdo(struct bm92t_info *info)
 	int err;
 
 	struct rd_object rdo;
-	unsigned char msg[6] = { SET_RDO, 0x04, 0x00, 0x00, 0x00, 0x00};
+	unsigned char msg[6] = { SET_RDO_REG, 0x04, 0x00, 0x00, 0x00, 0x00};
 	unsigned short cmd = SEND_RDO_CMD;
 
 	dev_info(&info->i2c_client->dev, "Requesting %d: %4dmA %5dmV\n", 
-			   info->pdo_no, info->pdo.amp * 10, info->pdo.volt * 50);
+			   info->cable.pdo_no, info->cable.pdo.amp * 10,
+			   info->cable.pdo.volt * 50);
 
 	rdo.info = 0;
-	rdo.no = info->pdo_no;
-	rdo.max_amp = info->pdo.amp;
-	rdo.op_amp = info->pdo.amp;
+	rdo.obj_no = info->cable.pdo_no;
+	rdo.max_amp = info->cable.pdo.amp;
+	rdo.op_amp = info->cable.pdo.amp;
 
 	memcpy(&msg[2], &rdo, sizeof(struct rd_object));
 
@@ -547,11 +764,45 @@ static void bm92t_usbhub_led_cfg(struct bm92t_info *info,
 	bm92t_send_vdm(info, vdm_usbhub_led_msg, sizeof(vdm_usbhub_led_msg));
 }
 
+static void bm92t_print_dp_dev_info(struct device *dev,
+	struct vd_object *vdo)
+{
+	dev_info(dev, "Connected PD device:\n");
+	dev_info(dev, "VID: %04X, PID: %04X\n", vdo->vid, vdo->pid);
+
+	switch (vdo->type)
+	{
+	case VDO_ID_TYPE_NONE:
+		dev_info(dev, "Type: Undefined\n");
+		break;
+	case VDO_ID_TYPE_PD_HUB:
+		dev_info(dev, "Type: PD HUB\n");
+		break;
+	case VDO_ID_TYPE_PD_PERIPH:
+		dev_info(dev, "Type: PD Peripheral\n");
+		break;
+	case VDO_ID_TYPE_PASS_CBL:
+		dev_info(dev, "Type: Passive Cable\n");
+		break;
+	case VDO_ID_TYPE_ACTI_CBL:
+		dev_info(dev, "Type: Active Cable\n");
+		break;
+	case VDO_ID_TYPE_ALTERNATE:
+		dev_info(dev, "Type: Alternate Mode Adapter\n");
+		break;
+	default:
+		dev_info(dev, "Type: Unknown (%d)\n", vdo->type);
+		break;
+	}
+}
+
 static void bm92t_event_handler(struct work_struct *work)
 {
-	int err;
+	int i, err;
 	struct bm92t_info *info;
 	struct device *dev;
+	struct pd_object curr_pdo;
+	struct rd_object curr_rdo;
 	unsigned short cmd;
 	unsigned short alert_data;
 	unsigned short status1_data;
@@ -561,18 +812,18 @@ static void bm92t_event_handler(struct work_struct *work)
 	info = container_of(work, struct bm92t_info, work);
 	dev = &info->i2c_client->dev;
 
-	/* read status registers at 02h, 03h and 04h */
-	err = bm92t_read_reg(info, ALERT_STATUS,
+	/* Read status registers at 02h, 03h and 04h */
+	err = bm92t_read_reg(info, ALERT_STATUS_REG,
 			     (unsigned char *) &alert_data,
 			     sizeof(alert_data));
 	if (err < 0)
 		goto ret;
-	err = bm92t_read_reg(info, STATUS1,
+	err = bm92t_read_reg(info, STATUS1_REG,
 			     (unsigned char *) &status1_data,
 			     sizeof(status1_data));
 	if (err < 0)
 		goto ret;
-	err = bm92t_read_reg(info, DP_STATUS,
+	err = bm92t_read_reg(info, DP_STATUS_REG,
 			     (unsigned char *) &dp_data,
 			     sizeof(dp_data));
 	if (err < 0)
@@ -582,7 +833,8 @@ static void bm92t_event_handler(struct work_struct *work)
 		"Alert= 0x%04x Status1= 0x%04x DP= 0x%04x State=%s\n",
 		alert_data, status1_data, dp_data, states[info->state]);
 
-	err = status1_data & 0x3;
+	/* Check for errors */
+	err = status1_data & STATUS1_FAULT_MASK;
 	if (err) {
 		dev_err(dev,
 			"Internal error occurred. Ecode = %d\n", err);
@@ -595,7 +847,7 @@ static void bm92t_event_handler(struct work_struct *work)
 
 	/* Check if cable removed */
 	if (alert_data & ALERT_PLUGPULL) {
-		if (!(status1_data & STATUS1_INSERT)) {
+		if (!bm92t_is_plugged(status1_data)) {
 			cancel_delayed_work(&info->power_work);
 			if (info->charging_enabled) {
 				bm92t_set_current_limit(info, 0);
@@ -613,8 +865,10 @@ static void bm92t_event_handler(struct work_struct *work)
 
 	switch (info->state) {
 	case INIT_STATE:
-		if ((alert_data & ALERT_CONTR) || info->first_init) {
+		if ((alert_data & ALERT_CONTRACT) || info->first_init) {
 			info->first_init = false;
+
+			/* Negotiate new power profile */
 			if (!bm92t_check_pdo(info)) {
 				dev_err(dev, "Power Negotiation failed\n");
 				bm92t_state_machine(info, INIT_STATE);
@@ -631,17 +885,22 @@ static void bm92t_event_handler(struct work_struct *work)
 		if (bm92t_is_success(alert_data))
 			dev_dbg(dev, "cmd done in NEW_PDO state\n");
 
-		if (alert_data & ALERT_CONTR) {
-			/* check PDO/RDO */
-			err = bm92t_read_reg(info, CURRENT_PDO,
+		if (alert_data & ALERT_CONTRACT) {
+			/* Check PDO/RDO */
+			err = bm92t_read_reg(info, CURRENT_PDO_REG,
 				pdo, sizeof(pdo));
-			dev_dbg(dev, "current PDO B1=0x%x, B2=0x%x, B3=0x%x, B4=0x%x\n",
-				pdo[1], pdo[2], pdo[3], pdo[4]);
-
-			err = bm92t_read_reg(info, CURRENT_RDO,
+			memcpy(&curr_pdo, &pdo[1], sizeof(struct pd_object));
+			err = bm92t_read_reg(info, CURRENT_RDO_REG,
 				rdo, sizeof(rdo));
-			dev_dbg(dev, "current RDO B1=0x%x, B2=0x%x, B3=0x%x, B4=0x%x\n",
-				rdo[1], rdo[2], rdo[3], rdo[4]);
+			memcpy(&curr_rdo, &rdo[1], sizeof(struct rd_object));
+
+			dev_info(dev, "Selected PDO: %d: %4dmA %5dmV\n", 
+				info->cable.pdo_no, curr_pdo.amp * 10, curr_pdo.volt * 50);
+			dev_info(dev, "Selected RDO: %d: %4dmA min, %5dmA max\n", 
+				info->cable.pdo_no, curr_rdo.op_amp * 10, curr_rdo.max_amp * 10);
+
+			if (curr_rdo.mismatch)
+				dev_err(dev, "PD mismatch!\n");
 
 			cmd = SYS_RDY_CMD;
 			err = bm92t_send_cmd(info, &cmd);
@@ -652,14 +911,13 @@ static void bm92t_event_handler(struct work_struct *work)
 	case SYS_RDY_SENT:
 		if (bm92t_is_success(alert_data)) {
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, true);
-			msleep(550); /* required? */
 			schedule_delayed_work(&info->power_work,
 				msecs_to_jiffies(2000));
 
 			/* Check if Dual-Role Data is supported */
-			if (!info->drd_support)
-			{
-				dev_dbg(dev, "DRD not supported, cmd done in SYS_RDY_SENT\n");
+			if (!info->cable.drd_support) {
+				dev_dbg(dev,
+					"DRD not supported, cmd done in SYS_RDY_SENT\n");
 				goto ret;
 			}
 
@@ -671,105 +929,111 @@ static void bm92t_event_handler(struct work_struct *work)
 
 	case DR_SWAP_SENT:
 		if (bm92t_is_success(alert_data) &&
-			((status1_data & 0xff) == 0x80)) {
-			bm92t_send_vdm(info, vdm_id_phase1_msg,
-				sizeof(vdm_id_phase1_msg));
-			bm92t_state_machine(info, VDM_ID_PHASE1_SENT);
+			((status1_data & 0xff) == STATUS1_INSERT) &&
+			bm92t_send_vdm(info, vdm_discover_id_msg,
+				sizeof(vdm_discover_id_msg));
+			bm92t_state_machine(info, VDM_DISC_ID_SENT);
 		}
 		break;
 
-	case VDM_ID_PHASE1_SENT:
+	case VDM_DISC_ID_SENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_PHASE1_SENT);
+			bm92t_state_machine(info, VDM_ACCEPT_DISC_ID_SENT);
 		} else if (bm92t_is_success(alert_data))
-			dev_dbg(dev, "cmd done in VDM_ID_PHASE1_SENT\n");
+			dev_dbg(dev, "cmd done in VDM_DISC_ID_SENT\n");
 		break;
 
-	case VDM_ACCEPT_PHASE1_SENT:
+	case VDM_ACCEPT_DISC_ID_SENT:
 		if (bm92t_is_success(alert_data)) {
-			/* check incoming VDM */
-			err = bm92t_read_reg(info, INCOMING_VDM,
+			/* Check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM_REG,
 				vdm, sizeof(vdm));
 
-			/* Check if supported. byte15 3: dock, 4: failed? */
-			if (!(vdm[5] == 0x7e && vdm[6] == 0x05 &&
-				(vdm[15] == 0x03 /* || vdm[15] == 0x04 */) &&
-				vdm[16] == 0x20)) {
-				dev_err(dev, "Dock phase 1 not recognized\n");
-				dev_err(dev, "got: B15=0x%x, B16=0x%x\n", vdm[15], vdm[16]);
+			memcpy(&info->cable.vdo, &vdm[5], sizeof(struct vd_object));
+
+			bm92t_print_dp_dev_info(dev, &info->cable.vdo);
+
+			/* Check if Nintendo dock. */
+			if (!(info->cable.vdo.type == VDO_ID_TYPE_ALTERNATE &&
+				  info->cable.vdo.vid == VID_NINTENDO &&
+				  info->cable.vdo.pid == PID_NIN_DOCK)) {
+				dev_err(dev, "VID/PID not recognized\n");
 				goto ret;
 			}
-			bm92t_send_vdm(info, vdm_id_phase2_msg,
-				sizeof(vdm_id_phase2_msg));
-			bm92t_state_machine(info, VDM_ID_PHASE2_SENT);
+			bm92t_send_vdm(info, vdm_enter_nin_alt_mode_msg,
+				sizeof(vdm_enter_nin_alt_mode_msg));
+			bm92t_state_machine(info, VDM_ENTER_ND_ALT_MODE_SENT);
 		}
 		break;
 
-	case VDM_ID_PHASE2_SENT:
+	case VDM_ENTER_ND_ALT_MODE_SENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_PHASE2_SENT);
+			bm92t_state_machine(info, VDM_ACCEPT_ENTER_NIN_ALT_MODE_SENT);
 		} else if (bm92t_is_success(alert_data))
-			dev_dbg(dev, "cmd done in VDM_ID_PHASE2_SENT\n");
+			dev_dbg(dev, "cmd done in VDM_ENTER_ND_ALT_MODE_SENT\n");
 		break;
 
-	case VDM_ACCEPT_PHASE2_SENT:
+	case VDM_ACCEPT_ENTER_NIN_ALT_MODE_SENT:
 		if (bm92t_is_success(alert_data)) {
-			/* check incoming VDM */
-			err = bm92t_read_reg(info, INCOMING_VDM, vdm, sizeof(vdm));
+			/* Check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM_REG, vdm, sizeof(vdm));
 
-			/* Check if supported. byte1 0x44: dock, 0x84: failed? */
-			if (!((vdm[1] == 0x44 /* || vdm[1] == 0x84 */) && vdm[2] == 0x81 &&
+			/* Check if supported. */
+			if (!(vdm[1] == (VDM_ACK | VDM_CMD_ENTER_MODE) &&
+				vdm[2] == (VDM_STRUCTURED | 1) &&
 				vdm[3] == 0x7e && vdm[4] == 0x05)) {
-				dev_err(dev, "Dock phase 2 not recognized\n");
-				dev_err(dev, "got: B1=0x%x, B2=0x%x\n", vdm[1], vdm[2]);
+				dev_err(dev, "Failed to enter Nintendo Alt Mode\n");
 				goto ret;
 			}
+
+			/* Enter automatic DisplayPort handling */
 			msleep(100);
 			cmd = DP_MODE_CMD;
 			err = bm92t_send_cmd(info, &cmd);
 			msleep(100); /* WAR: may not need to wait */
-			bm92t_state_machine(info, ENTER_DP_MODE);
+			bm92t_state_machine(info, DP_DISCOVER_MODE);
 		}
 		break;
 
-	case ENTER_DP_MODE:
+	case DP_DISCOVER_MODE:
 		if (bm92t_is_success(alert_data)) {
-			err = bm92t_handle_hpd(info);
+			err = bm92t_handle_dp_config_enter(info);
 			if (!err)
-				bm92t_state_machine(info, HPD_HANDLED);
+				bm92t_state_machine(info, DP_CONFIG_ENTER_HANDLED);
 			else
 				bm92t_state_machine(info, INIT_STATE);
 		}
 		break;
 
-	case HPD_HANDLED:
+	case DP_CONFIG_ENTER_HANDLED:
 		if (bm92t_is_success(alert_data) &&
-			((status1_data & 0xff) == 0x80)) {
+			((status1_data & 0xff) == STATUS1_INSERT)) {
 			bm92t_send_vdm(info, vdm_query_device_msg,
 				sizeof(vdm_query_device_msg));
-			bm92t_state_machine(info, VDM_QUERY_DEVICE_SENT);
+			bm92t_state_machine(info, VDM_ND_QUERY_DEVICE_SENT);
 		}
 		break;
 
-	case VDM_QUERY_DEVICE_SENT:
+	/* Nintendo Dock VDMs */
+	case VDM_ND_QUERY_DEVICE_SENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_QUERY_DEVICE_SENT);
+			bm92t_state_machine(info, VDM_ACCEPT_ND_QUERY_DEVICE_SENT);
 		} else if (bm92t_is_success(alert_data))
-			dev_dbg(dev, "cmd done in VDM_QUERY_DEVICE_SENT\n");
+			dev_dbg(dev, "cmd done in VDM_ND_QUERY_DEVICE_SENT\n");
 		break;
 
-	case VDM_ACCEPT_QUERY_DEVICE_SENT:
+	case VDM_ACCEPT_ND_QUERY_DEVICE_SENT:
 		if (bm92t_is_success(alert_data)) {
-			/* check incoming VDM */
-			err = bm92t_read_reg(info, INCOMING_VDM,
+			/* Check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM_REG,
 				vdm, sizeof(vdm));
-			pr_info("device state = 0x%02x, 0x%02x, 0x%02x, 0x%02x\n",
+			dev_info(dev, "device state = 0x%02x, 0x%02x, 0x%02x, 0x%02x\n",
 				vdm[9], vdm[10], vdm[11], vdm[12]);
 
 			if (vdm[11] & 0x02) {
@@ -781,67 +1045,68 @@ static void bm92t_event_handler(struct work_struct *work)
 			}
 
 			bm92t_usbhub_led_cfg(info, 128, 0, 0, 64);
-			bm92t_state_machine(info, VDM_LED_ON_SENT);
+			bm92t_state_machine(info, VDM_ND_LED_ON_SENT);
 		}
 		break;
 
-	case VDM_LED_ON_SENT:
+	case VDM_ND_LED_ON_SENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_LED_ON_SENT);
+			bm92t_state_machine(info, VDM_ACCEPT_ND_LED_ON_SENT);
 		} else if (bm92t_is_success(alert_data))
-			dev_dbg(dev, "cmd done in VDM_LED_ON_SENT\n");
+			dev_dbg(dev, "cmd done in VDM_ND_LED_ON_SENT\n");
 		break;
 
-	case VDM_ACCEPT_LED_ON_SENT:
+	case VDM_ACCEPT_ND_LED_ON_SENT:
 		if (bm92t_is_success(alert_data)) {
-			bm92t_send_vdm(info, vdm_check_usbhub_msg,
-				sizeof(vdm_check_usbhub_msg));
-			bm92t_state_machine(info, VDM_CHECK_USBHUB_SENT);
+			bm92t_send_vdm(info, vdm_enable_usbhub_msg,
+				sizeof(vdm_enable_usbhub_msg));
+			bm92t_state_machine(info, VDM_ND_ENABLE_USBHUB_SENT);
 		}
 		break;
 
-	case VDM_CHECK_USBHUB_SENT:
+	case VDM_ND_ENABLE_USBHUB_SENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_CHECK_USBHUB_SENT);
+			bm92t_state_machine(info, VDM_ACCEPT_ND_ENABLE_USBHUB_SENT);
 		} else if (bm92t_is_success(alert_data))
-			dev_dbg(dev, "cmd done in VDM_CHECK_USBHUB_SENT\n");
+			dev_dbg(dev, "cmd done in VDM_ND_ENABLE_USBHUB_SENT\n");
 		break;
 
-	case VDM_ACCEPT_CHECK_USBHUB_SENT:
+	case VDM_ACCEPT_ND_ENABLE_USBHUB_SENT:
 		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, true);
 
 		if (bm92t_is_success(alert_data)) {
-			/* check incoming VDM */
-			err = bm92t_read_reg(info, INCOMING_VDM,
+			/* Check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM_REG,
 				vdm, sizeof(vdm));
 
 			if (vdm[5] & 0x1) {
-				pr_info("Sending vdm again.\n");
-				bm92t_send_vdm(info, vdm_check_usbhub_msg,
-					sizeof(vdm_check_usbhub_msg));
+				msleep(250);
+				dev_info(dev, "Retrying enabling USB HUB.\n");
+				bm92t_send_vdm(info, vdm_enable_usbhub_msg,
+					sizeof(vdm_enable_usbhub_msg));
 				bm92t_state_machine(info,
-					VDM_CHECK_USBHUB_SENT);
+					VDM_ND_ENABLE_USBHUB_SENT);
 			}
 		}
 		break;
 
-	case VDM_LED_CUSTOM_SENT:
+	case VDM_ND_LED_CUSTOM_SENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_LED_CUSTOM_SENT);
+			bm92t_state_machine(info, VDM_ACCEPT_ND_LED_CUSTOM_SENT);
 		} else if (bm92t_is_success(alert_data))
-			dev_dbg(dev, "cmd done in VDM_LED_CUSTOM_SENT\n");
+			dev_dbg(dev, "cmd done in VDM_ND_LED_CUSTOM_SENT\n");
 		break;
 
-	case VDM_ACCEPT_LED_CUSTOM_SENT:
+	case VDM_ACCEPT_ND_LED_CUSTOM_SENT:
 		if (bm92t_is_success(alert_data)) {
-			/* read incoming VDM */
-			err = bm92t_read_reg(info, INCOMING_VDM, vdm, sizeof(vdm));
+			/* Read incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM_REG, vdm, sizeof(vdm));
 		}
 		break;
 
@@ -882,12 +1147,12 @@ static void bm92t_shutdown(struct i2c_client *client)
 	dev_info(&info->i2c_client->dev, "%s\n", __func__);
 
 	/* Disable Dock LED if enabled */
-	if (info->state == VDM_ACCEPT_CHECK_USBHUB_SENT ||
-		info->state == VDM_ACCEPT_LED_CUSTOM_SENT)
+	if (info->state == VDM_ACCEPT_ND_ENABLE_USBHUB_SENT ||
+		info->state == VDM_ACCEPT_ND_LED_CUSTOM_SENT)
 	{
-		bm92t_state_machine(info, VDM_LED_CUSTOM_SENT);
+		bm92t_state_machine(info, VDM_ND_LED_CUSTOM_SENT);
 		bm92t_usbhub_led_cfg(info, 0, 0, 0, 128);
-		while (info->state == VDM_LED_CUSTOM_SENT)
+		while (info->state == VDM_ND_LED_CUSTOM_SENT)
 		{
 			retries--;
 			if (retries < 0)
@@ -937,59 +1202,60 @@ static int bm92t_regs_print(struct seq_file *s, unsigned char reg_addr, int size
 
 	return err;
 }
+
 static int bm92t_regs_show(struct seq_file *s, void *data)
 {
 	int err;
 
-	err = bm92t_regs_print(s, ALERT_STATUS, 2);
+	err = bm92t_regs_print(s, ALERT_STATUS_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, STATUS1, 2);
+	err = bm92t_regs_print(s, STATUS1_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, STATUS2, 2);
+	err = bm92t_regs_print(s, STATUS2_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, CONFIG1, 2);
+	err = bm92t_regs_print(s, CONFIG1_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, DEV_CAPS, 2);
+	err = bm92t_regs_print(s, DEV_CAPS_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, CONFIG2, 2);
+	err = bm92t_regs_print(s, CONFIG2_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, DP_STATUS, 2);
+	err = bm92t_regs_print(s, DP_STATUS_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, DP_ALERT_EN, 2);
+	err = bm92t_regs_print(s, DP_ALERT_EN_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, VENDOR_CONFIG, 2);
+	err = bm92t_regs_print(s, VENDOR_CONFIG_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, AUTO_NGT_NBATT, 5);
+	err = bm92t_regs_print(s, AUTO_NGT_FIXED_REG, 5);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, AUTO_NGT_BATT, 5);
+	err = bm92t_regs_print(s, AUTO_NGT_BATT_REG, 5);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, SYS_CONFIG1, 2);
+	err = bm92t_regs_print(s, SYS_CONFIG1_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, SYS_CONFIG2, 2);
+	err = bm92t_regs_print(s, SYS_CONFIG2_REG, 2);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, CURRENT_PDO, 5);
+	err = bm92t_regs_print(s, CURRENT_PDO_REG, 5);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, CURRENT_RDO, 5);
+	err = bm92t_regs_print(s, CURRENT_RDO_REG, 5);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, ALERT_ENABLE, 4);
+	err = bm92t_regs_print(s, ALERT_ENABLE_REG, 4);
 	if (err)
 		return err;
-	err = bm92t_regs_print(s, SYS_CONFIG3, 2);
+	err = bm92t_regs_print(s, SYS_CONFIG3_REG, 2);
 	if (err)
 		return err;
 
@@ -1065,10 +1331,10 @@ static ssize_t bm92t_led_write(struct file *file,
 		&duty, &time_on, &time_off, &fade);
 
 	if (ret == 4) {
-		if (info->state == VDM_ACCEPT_CHECK_USBHUB_SENT ||
-			info->state == VDM_ACCEPT_LED_CUSTOM_SENT)
+		if (info->state == VDM_ACCEPT_ND_ENABLE_USBHUB_SENT ||
+			info->state == VDM_ACCEPT_ND_LED_CUSTOM_SENT)
 		{
-			bm92t_state_machine(info, VDM_LED_CUSTOM_SENT);
+			bm92t_state_machine(info, VDM_ND_LED_CUSTOM_SENT);
 			bm92t_usbhub_led_cfg(info, duty, time_on, time_off, fade);
 		}
 		else
@@ -1088,6 +1354,42 @@ static ssize_t bm92t_led_write(struct file *file,
 static const struct file_operations bm92t_led_fops = {
 	.open = simple_open,
 	.write = bm92t_led_write,
+};
+
+static ssize_t bm92t_cmd_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	struct bm92t_info *info = (struct bm92t_info *) (file->private_data);
+	unsigned val;
+	unsigned short cmd;
+	char buf[8];
+	int ret;
+
+	count = min_t(size_t, count, (sizeof(buf)-1));
+	if (copy_from_user(buf, userbuf, count))
+		return -EFAULT;
+
+	buf[count] = 0;
+
+	ret = sscanf(buf, "%i", &val);
+
+	if (ret == 1) {
+		cmd = val;
+		bm92t_send_cmd(info, &cmd);
+	}
+	else
+	{
+		dev_err(&info->i2c_client->dev,
+				"CMD syntax is: duty time_on time_off fade\n");
+		return -EINVAL;
+	}
+
+	return count;
+}
+
+static const struct file_operations bm92t_cmd_fops = {
+	.open = simple_open,
+	.write = bm92t_cmd_write,
 };
 
 static int bm92t_debug_init(struct bm92t_info *info)
@@ -1119,6 +1421,12 @@ static int bm92t_debug_init(struct bm92t_info *info)
 				 info->debugfs_root,
 				 info,
 				 &bm92t_led_fops))
+		goto failed;
+
+	if (!debugfs_create_file("cmd", S_IWUGO,
+				 info->debugfs_root,
+				 info,
+				 &bm92t_cmd_fops))
 		goto failed;
 
 	return 0;
@@ -1164,11 +1472,11 @@ static int bm92t_probe(struct i2c_client *client,
 		info->batt_chg_reg = NULL;
 	}
 
-	/* initialized state */
+	/* Initialized state */
 	info->state = INIT_STATE;
 	info->first_init = true;
 
-	/* register extcon */
+	/* Register extcon */
 	info->edev.supported_cable = bm92t_extcon_cable;
 	info->edev.name = "bm92t_extcon";
 	info->edev.dev.parent = &client->dev;
@@ -1178,18 +1486,18 @@ static int bm92t_probe(struct i2c_client *client,
 		return err;
 	}
 
-	/* create workqueue */
+	/* Create workqueue */
 	info->event_wq = create_singlethread_workqueue("bm92t-event-queue");
 	if (!info->event_wq) {
 		dev_err(&client->dev, "Cannot create work queue\n");
 		return -ENOMEM;
 	}
 
-	err = bm92t_read_reg(info, FW_TYPE,
+	err = bm92t_read_reg(info, FW_TYPE_REG,
 			 (unsigned char *) &reg_value, sizeof(reg_value));
 	info->fw_type = reg_value;
 
-	err = bm92t_read_reg(info, FW_REVISION,
+	err = bm92t_read_reg(info, FW_REVISION_REG,
 			 (unsigned char *) &reg_value, sizeof(reg_value));
 	info->fw_revision = reg_value;
 
