@@ -653,6 +653,56 @@ static int bm92t_set_source_mode(struct bm92t_info *info, unsigned int role)
 	return err;
 }
 
+static int bm92t_hard_pd_reset_auto(struct bm92t_info *info, bool force)
+{
+	int err = 0;
+	unsigned short cmd = PD_HARD_RST_CMD;
+	unsigned short alert_data, status1_data, dp_data;
+
+	if (force) {
+		dev_info(&info->i2c_client->dev, "PD Hard Reset requested!\n");
+		bm92t_send_cmd(info, &cmd);
+		msleep(33);
+
+		/* Clear alerts */
+		err = bm92t_read_reg(info, ALERT_STATUS_REG,
+			   	 (unsigned char *) &alert_data,
+			   	 sizeof(alert_data));
+		goto ret;
+	}
+
+	err = bm92t_read_reg(info, STATUS1_REG,
+			     (unsigned char *) &status1_data,
+			     sizeof(status1_data));
+	if (err < 0)
+		goto ret;
+	err = bm92t_read_reg(info, DP_STATUS_REG,
+			     (unsigned char *) &dp_data,
+			     sizeof(dp_data));
+	if (err < 0)
+		goto ret;
+
+	/* Check if UFP is in invalid state */
+	if (bm92t_is_plugged(status1_data)) {
+		if (bm92t_is_dfp(status1_data) || 
+			dp_data & DP_STATUS_SRC_CONN ||
+			status1_data & 0x70) {
+			dev_err(&info->i2c_client->dev,
+				"Invalid state, initiating PD Hard Reset!!\n");
+			bm92t_send_cmd(info, &cmd);
+			msleep(100);
+
+			/* Clear alerts */
+			err = bm92t_read_reg(info, ALERT_STATUS_REG,
+			    	 (unsigned char *) &alert_data,
+			    	 sizeof(alert_data));
+		}
+	}
+
+ret:
+	return err;
+}
+
 static char * bm92t_extcon_cable_get_name(const unsigned int cable)
 {
 	int i, count;
@@ -725,6 +775,9 @@ static void
 	disable_irq(info->i2c_client->irq);
 
 	bm92t_set_vbus_enable(info, false);
+
+	/* In case UFP is in an invalid state, request a PD hard reset */
+	bm92t_hard_pd_reset_auto(info, false);
 
 	/* Enable OTG detection */
 	bm92t_read_reg(info, VENDOR_CONFIG_REG, (unsigned char *) &value, sizeof(value));
@@ -855,6 +908,7 @@ static int bm92t_send_rdo(struct bm92t_info *info)
 			   info->cable.pdo.volt * 50);
 
 	rdo.info = 0;
+	rdo.usb_comms = 1;
 	rdo.obj_no = info->cable.pdo_no;
 	rdo.max_amp = info->cable.pdo.amp;
 	rdo.op_amp = info->cable.pdo.amp;
@@ -988,6 +1042,8 @@ static void bm92t_event_handler(struct work_struct *work)
 		bm92t_extcon_cable_update(info, EXTCON_USB, false);
 		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
 		bm92t_set_vbus_enable(info, false);
+		if (bm92t_is_plugged(status1_data) || alert_data == 0)
+			bm92t_hard_pd_reset_auto(info, true);
 		goto ret;
 	}
 
