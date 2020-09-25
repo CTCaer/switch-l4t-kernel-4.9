@@ -68,6 +68,7 @@
 #define ALERT_SRC_FAULT     BIT(1)
 #define ALERT_CMD_DONE      BIT(2)
 #define ALERT_PLUGPULL      BIT(3)
+#define ALERT_DP_EVENT      BIT(6)
 #define ALERT_DRSWAPPED     BIT(10)
 #define ALERT_VDM_RECEIVED  BIT(11)
 #define ALERT_CONTRACT      BIT(12)
@@ -416,7 +417,7 @@ static const unsigned int bm92t_extcon_cable[] = {
 	EXTCON_USB_HOST, /* Id */
 	EXTCON_USB,      /* Vbus */
 	EXTCON_USB_PD,   /* USB-PD */
-	EXTCON_DISP_DP,  /* DisplayPort */
+	EXTCON_DISP_DP,  /* DisplayPort. Must be declared. */
 	EXTCON_NONE
 };
 
@@ -818,8 +819,7 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 
 	dev_info(dev, "Supported PDOs:\n");
 	memcpy(pdo , pdos + 1, pdos[0]);
-	for (i = 0; i < pdos_no; ++i)
-	{
+	for (i = 0; i < pdos_no; ++i) {
 		dev_info(dev, "PDO %d: %4dmA %5dmV %s\n", 
 			i + 1, pdo[i].amp * 10, pdo[i].volt * 50,
 			(pdo[i].info & PDO_INFO_DR_DATA) ? "DRD" : "No DRD");
@@ -850,8 +850,7 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 	}
 
 	/* Not in dock mode. Check for max possible wattage */
-	for (i = 1; i < pdos_no; ++i)
-	{
+	for (i = 0; i < pdos_no; ++i) {
 		type = pdo[i].type;
 		voltage = pdo[i].volt * 50;
 		amperage = pdo[i].amp * 10;
@@ -886,8 +885,7 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 		}
 	}
 
-	if (info->cable.pdo_no)
-	{
+	if (info->cable.pdo_no) {
 		dev_info(&info->i2c_client->dev, "Adapter in charger/hub mode\n");
 		return 1;
 	}
@@ -903,7 +901,7 @@ static int bm92t_send_rdo(struct bm92t_info *info)
 	unsigned char msg[6] = { SET_RDO_REG, 0x04, 0x00, 0x00, 0x00, 0x00};
 	unsigned short cmd = SEND_RDO_CMD;
 
-	dev_info(&info->i2c_client->dev, "Requesting %d: %4dmA %5dmV\n", 
+	dev_info(&info->i2c_client->dev, "Requesting %d: %4dmA %5dmV\n",
 			   info->cable.pdo_no, info->cable.pdo.amp * 10,
 			   info->cable.pdo.volt * 50);
 
@@ -1040,7 +1038,6 @@ static void bm92t_event_handler(struct work_struct *work)
 		bm92t_state_machine(info, INIT_STATE);
 		bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 		bm92t_extcon_cable_update(info, EXTCON_USB, false);
-		bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
 		bm92t_set_vbus_enable(info, false);
 		if (bm92t_is_plugged(status1_data) || alert_data == 0)
 			bm92t_hard_pd_reset_auto(info, true);
@@ -1069,7 +1066,6 @@ static void bm92t_event_handler(struct work_struct *work)
 			retries_usbhub = 10;
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
-			bm92t_extcon_cable_update(info, EXTCON_DISP_DP, false);
 			bm92t_state_machine(info, INIT_STATE);
 		} else if (status1_data & STATUS1_SRC_MODE && /* OTG event */
 				   status2_data & STATUS2_OTG_INSERT) {
@@ -1139,9 +1135,9 @@ static void bm92t_event_handler(struct work_struct *work)
 				rdo, sizeof(rdo));
 			memcpy(&curr_rdo, &rdo[1], sizeof(struct rd_object));
 
-			dev_info(dev, "Selected PDO: %d: %4dmA %5dmV\n", 
+			dev_info(dev, "Selected PDO: %d: %4dmA %5dmV\n",
 				info->cable.pdo_no, curr_pdo.amp * 10, curr_pdo.volt * 50);
-			dev_info(dev, "Selected RDO: %d: %4dmA min, %5dmA max\n", 
+			dev_info(dev, "Selected RDO: %d: %4dmA min, %5dmA max\n",
 				info->cable.pdo_no, curr_rdo.op_amp * 10, curr_rdo.max_amp * 10);
 
 			if (curr_rdo.mismatch)
@@ -1255,7 +1251,6 @@ static void bm92t_event_handler(struct work_struct *work)
 					sizeof(vdm_discover_mode_msg));
 				bm92t_state_machine(info, VDM_DISC_MODE_SENT);
 			}
-			
 		}
 		break;
 
@@ -1341,7 +1336,6 @@ static void bm92t_event_handler(struct work_struct *work)
 	case DP_CONFIG_ENTER_HANDLED:
 		if (bm92t_is_success(alert_data) &&
 			((status1_data & 0xff) == STATUS1_INSERT)) {
-			bm92t_extcon_cable_update(info, EXTCON_DISP_DP, true);
 			if (info->cable.is_nintendo_dock) {
 				bm92t_send_vdm(info, vdm_query_device_msg,
 					sizeof(vdm_query_device_msg));
