@@ -236,9 +236,13 @@
 #define PDO_INFO_HP_CAP    (1 << 8)
 #define PDO_INFO_DR_POWER  (1 << 9)
 
-#define PD_09V_CHARGING_CURRENT_LIMIT_UA 1500000u
-#define PD_12V_CHARGING_CURRENT_LIMIT_UA 1200000u
-#define PD_15V_CHARGING_CURRENT_LIMIT_UA 1200000u
+#define PD_05V_CHARGING_CURRENT_LIMIT_MA 2000u
+#define PD_09V_CHARGING_CURRENT_LIMIT_MA 2000u
+#define PD_12V_CHARGING_CURRENT_LIMIT_MA 1500u
+#define PD_15V_CHARGING_CURRENT_LIMIT_MA 1200u
+
+#define NON_PD_SUB_POWER_UA 2500000u
+#define PD_SUB_POWER_UA 4500000u
 
 #define PD_INPUT_CURRENT_LIMIT_MIN_MA 0u
 #define PD_INPUT_CURRENT_LIMIT_MAX_MA 3000u
@@ -352,6 +356,7 @@ struct __attribute__((packed)) vd_object {
 
 struct bm92t_device {
 	int pdo_no;
+	unsigned int charging_limit;
 	bool drd_support;
 	bool is_nintendo_dock;
 	struct pd_object pdo;
@@ -433,6 +438,11 @@ static const struct bm92t_extcon_cables bm92t_extcon_cable_names[] = {
 	{ EXTCON_DISP_DP,  "DisplayPort"},
 	{ EXTCON_NONE,     "None"},
 	{ -1,              "Unknown"}
+};
+
+/* bq2419x current input limits */
+static const unsigned int current_input_limits[] = {
+	100, 150, 500, 900, 1200, 1500, 2000, 3000
 };
 
 unsigned char vdm_discover_id_msg[6] = {OUTGOING_VDM_REG,
@@ -685,7 +695,7 @@ static int bm92t_hard_pd_reset_auto(struct bm92t_info *info, bool force)
 
 	/* Check if UFP is in invalid state */
 	if (bm92t_is_plugged(status1_data)) {
-		if (bm92t_is_dfp(status1_data) || 
+		if (bm92t_is_dfp(status1_data) ||
 			dp_data & DP_STATUS_SRC_CONN ||
 			status1_data & 0x70) {
 			dev_err(&info->i2c_client->dev,
@@ -736,27 +746,54 @@ static inline void bm92t_state_machine(struct bm92t_info *info, int state)
 	dev_dbg(&info->i2c_client->dev, "state = %s\n", states[state]);
 }
 
+static void bm92t_calculate_current_limit(struct bm92t_info *info,
+	unsigned int voltage, unsigned int amperage)
+{
+	int i;
+	unsigned int charging_limit = amperage;
+
+	/* Subtract a USB2 or USB3 port current */
+	if (voltage > 5000)
+		charging_limit -= (PD_SUB_POWER_UA / voltage);
+	else
+		charging_limit -= (NON_PD_SUB_POWER_UA / voltage);
+
+	/* Set limits */
+	switch (voltage)
+	{
+	case 5000:
+		charging_limit = min(charging_limit, PD_05V_CHARGING_CURRENT_LIMIT_MA);
+		break;
+	case 9000:
+		charging_limit = min(charging_limit, PD_09V_CHARGING_CURRENT_LIMIT_MA);
+		break;
+	case 12000:
+		charging_limit = min(charging_limit, PD_12V_CHARGING_CURRENT_LIMIT_MA);
+		break;
+	case 15000:
+	default:
+		charging_limit = min(charging_limit, PD_15V_CHARGING_CURRENT_LIMIT_MA);
+		break;
+	}
+
+	/* Set actual amperage */
+	for (i = ARRAY_SIZE(current_input_limits) - 1; i >= 0; i--)
+	{
+		if (charging_limit >= current_input_limits[i]) {
+			charging_limit = current_input_limits[i];
+			break;
+		}
+	}
+
+	info->cable.charging_limit = charging_limit;
+}
+
 static void bm92t_power_work(struct work_struct *work)
 {
 	struct bm92t_info *info = container_of(
 		to_delayed_work(work), struct bm92t_info, power_work);
-	unsigned int charging_limit;
 
-	switch (info->cable.pdo.volt * 50)
-	{
-	case 9000:
-		charging_limit = PD_09V_CHARGING_CURRENT_LIMIT_UA;
-		break;
-	case 12000:
-		charging_limit = PD_12V_CHARGING_CURRENT_LIMIT_UA;
-		break;
-	case 15000:
-	default:
-		charging_limit = PD_15V_CHARGING_CURRENT_LIMIT_UA;
-		break;
-	}
-
-	bm92t_set_current_limit(info, charging_limit);
+	bm92t_set_current_limit(info, info->cable.charging_limit * 1000u);
 	info->charging_enabled = true;
 
 	extcon_set_cable_state_(&info->edev, EXTCON_USB_PD, true);
@@ -820,7 +857,7 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 	dev_info(dev, "Supported PDOs:\n");
 	memcpy(pdo , pdos + 1, pdos[0]);
 	for (i = 0; i < pdos_no; ++i) {
-		dev_info(dev, "PDO %d: %4dmA %5dmV %s\n", 
+		dev_info(dev, "PDO %d: %4dmA %5dmV %s\n",
 			i + 1, pdo[i].amp * 10, pdo[i].volt * 50,
 			(pdo[i].info & PDO_INFO_DR_DATA) ? "DRD" : "No DRD");
 	}
@@ -897,19 +934,24 @@ static int bm92t_send_rdo(struct bm92t_info *info)
 {
 	int err;
 
-	struct rd_object rdo;
+	struct rd_object rdo = { 0 };
 	unsigned char msg[6] = { SET_RDO_REG, 0x04, 0x00, 0x00, 0x00, 0x00};
 	unsigned short cmd = SEND_RDO_CMD;
 
-	dev_info(&info->i2c_client->dev, "Requesting %d: %4dmA %5dmV\n",
-			   info->cable.pdo_no, info->cable.pdo.amp * 10,
-			   info->cable.pdo.volt * 50);
+	/* Calculate operating current */
+	bm92t_calculate_current_limit(info, info->cable.pdo.volt * 50,
+							info->cable.pdo.amp * 10);
 
-	rdo.info = 0;
+	dev_info(&info->i2c_client->dev,
+		"Requesting %d: min %dmA, max %4dmA, %5dmV\n",
+		info->cable.pdo_no, info->cable.charging_limit,
+		info->cable.pdo.amp * 10,
+		info->cable.pdo.volt * 50);
+
 	rdo.usb_comms = 1;
 	rdo.obj_no = info->cable.pdo_no;
 	rdo.max_amp = info->cable.pdo.amp;
-	rdo.op_amp = info->cable.pdo.amp;
+	rdo.op_amp = info->cable.charging_limit / 10;
 
 	memcpy(&msg[2], &rdo, sizeof(struct rd_object));
 
@@ -1135,10 +1177,11 @@ static void bm92t_event_handler(struct work_struct *work)
 				rdo, sizeof(rdo));
 			memcpy(&curr_rdo, &rdo[1], sizeof(struct rd_object));
 
-			dev_info(dev, "Selected PDO: %d: %4dmA %5dmV\n",
+			dev_info(dev, "New PD Contract:\n");
+			dev_info(dev, "PDO: %d: %dmA, %dmV\n",
 				info->cable.pdo_no, curr_pdo.amp * 10, curr_pdo.volt * 50);
-			dev_info(dev, "Selected RDO: %d: %4dmA min, %5dmA max\n",
-				info->cable.pdo_no, curr_rdo.op_amp * 10, curr_rdo.max_amp * 10);
+			dev_info(dev, "RDO: op %dmA, %dmA max\n",
+				curr_rdo.op_amp * 10, curr_rdo.max_amp * 10);
 
 			if (curr_rdo.mismatch)
 				dev_err(dev, "PD mismatch!\n");
@@ -1548,7 +1591,7 @@ static int bm92t_regs_print(struct seq_file *s, unsigned char reg_addr, int size
 		err = -EINVAL;
 		break;
 	}
-	
+
 	if (err)
 		dev_err(&info->i2c_client->dev,
 				"debugfs cannot read 0x%02x\n", reg_addr);
