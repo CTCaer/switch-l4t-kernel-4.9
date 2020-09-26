@@ -796,7 +796,7 @@ static void bm92t_power_work(struct work_struct *work)
 	bm92t_set_current_limit(info, info->cable.charging_limit * 1000u);
 	info->charging_enabled = true;
 
-	extcon_set_cable_state_(&info->edev, EXTCON_USB_PD, true);
+	bm92t_extcon_cable_update(info, EXTCON_USB_PD, true);
 }
 
 static void
@@ -1430,6 +1430,7 @@ static void bm92t_event_handler(struct work_struct *work)
 
 	case VDM_ACCEPT_ND_LED_ON_SENT:
 		if (bm92t_is_success(alert_data)) {
+			msleep(500); /* Wait for hub hw to get powered */
 			bm92t_send_vdm(info, vdm_enable_usbhub_msg,
 				sizeof(vdm_enable_usbhub_msg));
 			bm92t_state_machine(info, VDM_ND_ENABLE_USBHUB_SENT);
