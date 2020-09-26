@@ -1654,6 +1654,12 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 	devinfo = pcie_bus_dev->devinfo;
 	brcmf_pcie_attach(devinfo);
 
+	ret = brcmf_chip_get_raminfo(devinfo->ci);
+	if (ret) {
+		brcmf_err("Failed to get RAM info\n");
+		goto fail;
+	}
+
 	/* Some of the firmwares have the size of the memory of the device
 	 * defined inside the firmware. This is because part of the memory in
 	 * the device is shared and the devision is determined by FW. Parse
