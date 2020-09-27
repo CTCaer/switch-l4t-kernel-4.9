@@ -226,8 +226,6 @@ int brcmf_attach(struct device *dev, struct brcmf_mp_device *settings);
 void brcmf_detach(struct device *dev);
 /* Indication from bus module that dongle should be reset */
 void brcmf_dev_reset(struct device *dev);
-/* Indication that firmware has halted or crashed */
-void brcmf_fw_crashed(struct device *dev);
 /* Indication from bus module to change flow-control state */
 void brcmf_txflowblock(struct device *dev, bool state);
 
