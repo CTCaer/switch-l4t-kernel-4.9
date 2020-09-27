@@ -697,8 +697,11 @@ static void brcmf_pcie_handle_mb_data(struct brcmf_pciedev_info *devinfo)
 	}
 	if (dtoh_mb_data & BRCMF_D2H_DEV_FWHALT) {
 		brcmf_dbg(PCIE, "D2H_MB_DATA: FW HALT\n");
-		brcmf_err("FW HALT. Resetting PCIE device!\n");
-		schedule_work(&devinfo->bus_reset);
+		/* If device requires reset on wake up, avoid doing it here */
+		if (!devinfo->settings->bus.pcie.reset_on_wake) {
+			brcmf_err("FW HALT. Resetting PCIE device!\n");
+			schedule_work(&devinfo->bus_reset);
+		}
 	}
 }
 
@@ -1927,8 +1930,12 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 	wait_event_timeout(devinfo->mbdata_resp_wait, devinfo->mbdata_completed,
 			   BRCMF_PCIE_MBDATA_TIMEOUT);
 	if (!devinfo->mbdata_completed) {
-		brcmf_err("Timeout on response for entering D3 substate\n");
-		brcmf_bus_change_state(bus, BRCMF_BUS_UP);
+		if (devinfo->settings->bus.pcie.reset_on_wake) {
+			brcmf_err("Resetting device!\n");
+			schedule_work(&devinfo->bus_reset);
+		}
+		else
+			brcmf_bus_change_state(bus, BRCMF_BUS_UP);
 		return -EIO;
 	}
 
@@ -1950,6 +1957,13 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
 	bus = dev_get_drvdata(dev);
 	devinfo = bus->bus_priv.pcie->devinfo;
 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
+
+	/* Check if device requires a reset after D3 */
+	if (devinfo->settings->bus.pcie.reset_on_wake) {
+		brcmf_err("Resetting device after wake up!\n");
+		schedule_work(&devinfo->bus_reset);
+		return 0;
+	}
 
 	/* Check if device is still up and running, if so we are ready */
 	if (brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_INTMASK) != 0) {
