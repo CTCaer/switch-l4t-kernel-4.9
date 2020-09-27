@@ -51,3 +51,16 @@ void brcmf_of_probe(struct device *dev, struct brcmfmac_sdio_pd *sdio)
 	sdio->oob_irq_nr = irq;
 	sdio->oob_irq_flags = irqf;
 }
+
+void brcmf_pcie_of_probe(struct device *dev, struct brcmfmac_pcie_pd *pcie)
+{
+	struct device_node *np = of_find_node_by_name(dev->of_node, "brcmf");
+
+	if (!np || !of_device_is_compatible(np, "brcm,bcm4356-fmac"))
+		return;
+
+	if (of_property_read_bool(np, "brcm,reset_on_wake")) {
+		brcmf_err("Enabling pcie reset on wake quirk\n");
+		pcie->reset_on_wake = true;
+	}
+}

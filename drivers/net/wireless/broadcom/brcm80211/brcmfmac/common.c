@@ -305,6 +305,12 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
 		 */
 		brcmf_of_probe(dev, &settings->bus.sdio);
 	}
+	if (bus_type == BRCMF_BUSTYPE_PCIE) {
+		/* In case of PCIE try OF
+		 * (Open Firwmare) Device Tree.
+		 */
+		brcmf_pcie_of_probe(dev, &settings->bus.pcie);
+	}
 	return settings;
 }
 
