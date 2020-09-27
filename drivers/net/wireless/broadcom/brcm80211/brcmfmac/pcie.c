@@ -1930,6 +1930,7 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 	wait_event_timeout(devinfo->mbdata_resp_wait, devinfo->mbdata_completed,
 			   BRCMF_PCIE_MBDATA_TIMEOUT);
 	if (!devinfo->mbdata_completed) {
+		brcmf_err("Timeout on response for entering D3 substate\n");
 		if (devinfo->settings->bus.pcie.reset_on_wake) {
 			brcmf_err("Resetting device!\n");
 			schedule_work(&devinfo->bus_reset);
