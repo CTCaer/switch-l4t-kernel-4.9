@@ -276,6 +276,7 @@ struct brcmf_pciedev_info {
 	void (*write_ptr)(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
 			  u16 value);
 	struct brcmf_mp_device *settings;
+	struct work_struct bus_reset;
 };
 
 struct brcmf_pcie_ringbuf {
@@ -304,6 +305,9 @@ static const u32 brcmf_ring_itemsize[BRCMF_NROF_COMMON_MSGRINGS] = {
 	BRCMF_D2H_MSGRING_RX_COMPLETE_ITEMSIZE
 };
 
+static void brcmf_pcie_setup(struct device *dev, int ret,
+			     const struct firmware *fw,
+			     void *nvram, u32 nvram_len);
 
 static u32
 brcmf_pcie_read_reg32(struct brcmf_pciedev_info *devinfo, u32 reg_offset)
@@ -693,7 +697,8 @@ static void brcmf_pcie_handle_mb_data(struct brcmf_pciedev_info *devinfo)
 	}
 	if (dtoh_mb_data & BRCMF_D2H_DEV_FWHALT) {
 		brcmf_dbg(PCIE, "D2H_MB_DATA: FW HALT\n");
-		brcmf_fw_crashed(&devinfo->pdev->dev);
+		brcmf_err("FW HALT. Resetting PCIE device!\n");
+		schedule_work(&devinfo->bus_reset);
 	}
 }
 
@@ -1343,6 +1348,35 @@ static int brcmf_pcie_get_memdump(struct device *dev, void *data, size_t len)
 	return 0;
 }
 
+static void brcmf_pcie_reset(struct work_struct *work)
+{
+	struct brcmf_pciedev_info *devinfo =
+			container_of(work, struct brcmf_pciedev_info,
+					      bus_reset);
+	struct device *dev = &devinfo->pdev->dev;
+	int err;
+
+	brcmf_pcie_intr_disable(devinfo);
+
+	brcmf_pcie_bus_console_read(devinfo, true);
+
+	brcmf_detach(dev);
+
+	brcmf_pcie_release_irq(devinfo);
+	brcmf_pcie_release_scratchbuffers(devinfo);
+	brcmf_pcie_release_ringbuffers(devinfo);
+	brcmf_pcie_reset_device(devinfo);
+
+	err = brcmf_fw_get_firmwares_pcie(dev, BRCMF_FW_REQUEST_NVRAM |
+						    BRCMF_FW_REQ_NV_OPTIONAL,
+					  devinfo->fw_name, devinfo->nvram_name,
+					  brcmf_pcie_setup,
+					  pci_domain_nr(devinfo->pdev->bus),
+					  devinfo->pdev->bus->number);
+	if (err) {
+		dev_err(dev, "Failed to prepare FW request\n");
+	}
+}
 
 static const struct brcmf_bus_ops brcmf_pcie_bus_ops = {
 	.txdata = brcmf_pcie_tx,
@@ -1810,6 +1844,9 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 						    BRCMF_FW_REQ_NV_OPTIONAL,
 					  devinfo->fw_name, devinfo->nvram_name,
 					  brcmf_pcie_setup, domain_nr, bus_nr);
+
+	INIT_WORK(&devinfo->bus_reset, brcmf_pcie_reset);
+
 	if (ret == 0)
 		return 0;
 fail_bus:

@@ -1089,11 +1089,6 @@ void brcmf_dev_reset(struct device *dev)
 		brcmf_fil_cmd_int_set(drvr->iflist[0], BRCMF_C_TERMINATED, 1);
 }
 
-void brcmf_fw_crashed(struct device *dev)
-{
-	brcmf_err("Firmware has halted or crashed\n");
-}
-
 void brcmf_detach(struct device *dev)
 {
 	s32 i;
