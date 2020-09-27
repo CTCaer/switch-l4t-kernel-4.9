@@ -15,8 +15,12 @@
  */
 #ifdef CONFIG_OF
 void brcmf_of_probe(struct device *dev, struct brcmfmac_sdio_pd *sdio);
+void brcmf_pcie_of_probe(struct device *dev, struct brcmfmac_pcie_pd *pcie);
 #else
 static void brcmf_of_probe(struct device *dev, struct brcmfmac_sdio_pd *sdio)
+{
+}
+static void brcmf_pcie_of_probe(struct device *dev, struct brcmfmac_pcie_pd *pcie)
 {
 }
 #endif /* CONFIG_OF */

@@ -51,7 +51,7 @@ extern struct brcmf_mp_global_t brcmf_mp_global;
  * @roamoff: Firmware roaming off?
  * @ignore_probe_fail: Ignore probe failure.
  * @country_codes: If available, pointer to struct for translating country codes
- * @bus: Bus specific platform data. Only SDIO at the mmoment.
+ * @bus: Bus specific platform data. Only SDIO and PCIE at the mmoment.
  */
 struct brcmf_mp_device {
 	bool		p2p_enable;
@@ -62,6 +62,7 @@ struct brcmf_mp_device {
 	struct brcmfmac_pd_cc *country_codes;
 	union {
 		struct brcmfmac_sdio_pd sdio;
+		struct brcmfmac_pcie_pd pcie;
 	} bus;
 };
 

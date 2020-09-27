@@ -101,6 +101,16 @@ struct brcmfmac_sdio_pd {
 };
 
 /**
+ * struct brcmfmac_pcie_pd - PCIE Device specific platform data.
+ *
+ * @reset_on_wake:		When enabled, the pcie device gets reset
+ * 					after a D3 resume.
+ */
+struct brcmfmac_pcie_pd {
+	bool	reset_on_wake;
+};
+
+/**
  * struct brcmfmac_pd_cc_entry - Struct for translating user space country code
  *				 (iso3166) to firmware country code and
  *				 revision.
@@ -144,7 +154,7 @@ struct brcmfmac_pd_cc {
  * @country_codes:	If available, pointer to struct for translating country
  *			codes.
  * @bus:		Bus specific (union) device settings. Currently only
- *			SDIO.
+ *			SDIO and PCIE.
  */
 struct brcmfmac_pd_device {
 	unsigned int		id;
@@ -154,6 +164,7 @@ struct brcmfmac_pd_device {
 	struct brcmfmac_pd_cc	*country_codes;
 	union {
 		struct brcmfmac_sdio_pd sdio;
+		struct brcmfmac_pcie_pd pcie;
 	} bus;
 };
 
