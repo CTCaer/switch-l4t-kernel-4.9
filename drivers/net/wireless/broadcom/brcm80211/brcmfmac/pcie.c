@@ -277,6 +277,7 @@ struct brcmf_pciedev_info {
 			  u16 value);
 	struct brcmf_mp_device *settings;
 	struct work_struct bus_reset;
+	bool bus_in_reset;
 };
 
 struct brcmf_pcie_ringbuf {
@@ -1359,6 +1360,13 @@ static void brcmf_pcie_reset(struct work_struct *work)
 	struct device *dev = &devinfo->pdev->dev;
 	int err;
 
+	if (devinfo->bus_in_reset) {
+		dev_err(dev, "Already into reset, aborting...\n");
+		return;
+	}
+
+	devinfo->bus_in_reset = true;
+
 	brcmf_pcie_intr_disable(devinfo);
 
 	brcmf_pcie_bus_console_read(devinfo, true);
@@ -1760,8 +1768,10 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 
 	brcmf_pcie_intr_enable(devinfo);
 	brcmf_pcie_hostready(devinfo);
-	if (brcmf_pcie_attach_bus(devinfo) == 0)
+	if (brcmf_pcie_attach_bus(devinfo) == 0) {
+		devinfo->bus_in_reset = false;
 		return;
+	}
 
 	brcmf_pcie_bus_console_read(devinfo, false);
 
@@ -1922,6 +1932,22 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 	bus = dev_get_drvdata(dev);
 	devinfo = bus->bus_priv.pcie->devinfo;
 
+	/* 
+	 * Some devices hang in D3 randomly or when not connected.
+	 * To mitigate that issue do not inform them that host enters D3.
+	 */
+	if (devinfo->settings->bus.pcie.reset_on_wake) {
+		/* Check if suspend was asked too soon */
+		if (devinfo->bus_in_reset) {
+			brcmf_err("Device in reset, aborting suspend!\n");
+			return -EPERM;
+		}
+
+		brcmf_bus_change_state(bus, BRCMF_BUS_DOWN);
+
+		return 0;
+	}
+
 	brcmf_bus_change_state(bus, BRCMF_BUS_DOWN);
 
 	devinfo->mbdata_completed = false;
@@ -1931,12 +1957,7 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 			   BRCMF_PCIE_MBDATA_TIMEOUT);
 	if (!devinfo->mbdata_completed) {
 		brcmf_err("Timeout on response for entering D3 substate\n");
-		if (devinfo->settings->bus.pcie.reset_on_wake) {
-			brcmf_err("Resetting device!\n");
-			schedule_work(&devinfo->bus_reset);
-		}
-		else
-			brcmf_bus_change_state(bus, BRCMF_BUS_UP);
+		rcmf_bus_change_state(bus, BRCMF_BUS_UP);
 		return -EIO;
 	}
 
