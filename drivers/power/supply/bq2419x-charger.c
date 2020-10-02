@@ -945,10 +945,10 @@ static int bq2419x_extcon_cable_update(struct bq2419x_chip *bq2419x,
 							unsigned int val)
 {
 	if ((val & BQ2419x_VBUS_PG_STAT) == BQ2419x_PG_VBUS_USB) {
-		extcon_set_state(&bq2419x->edev, EXTCON_USB,  true);
+		extcon_set_state_sync(&bq2419x->edev, EXTCON_USB,  true);
 		dev_dbg(bq2419x->dev, "USB is connected\n");
 	} else if ((val & BQ2419x_VBUS_PG_STAT) == BQ2419x_VBUS_UNKNOWN) {
-		extcon_set_state(&bq2419x->edev, EXTCON_USB, false);
+		extcon_set_state_sync(&bq2419x->edev, EXTCON_USB, false);
 		dev_info(bq2419x->dev, "USB is disconnected\n");
 	}
 
