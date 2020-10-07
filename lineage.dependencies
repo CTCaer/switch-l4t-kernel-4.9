@@ -42,10 +42,6 @@
    "target_path": "kernel/nvidia/linux-4.9/hardware/nvidia/platform/t210/hawkeye"
  },
  {
-   "repository": "android_kernel_nvidia_linux-4.9_hardware_nvidia_platform_t210_icosa",
-   "target_path": "kernel/nvidia/linux-4.9/hardware/nvidia/platform/t210/icosa"
- },
- {
    "repository": "android_kernel_nvidia_linux-4.9_hardware_nvidia_platform_t210_jetson",
    "target_path": "kernel/nvidia/linux-4.9/hardware/nvidia/platform/t210/jetson"
  },
