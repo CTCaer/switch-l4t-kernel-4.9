@@ -15,5 +15,5 @@ ifeq ($(CONFIG_FRAMEBUFFER_CONSOLE_ROTATION),y)
 obj-$(CONFIG_FRAMEBUFFER_CONSOLE)     += fbcon_rotate.o fbcon_cw.o fbcon_ud.o \
                                          fbcon_ccw.o
 endif
-
+obj-$(CONFIG_FB_CON_DECOR)     	  += fbcondecor.o cfbcondecor.o
 obj-$(CONFIG_FB_STI)              += sticore.o
