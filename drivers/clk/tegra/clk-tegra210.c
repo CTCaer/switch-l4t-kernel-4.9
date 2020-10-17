@@ -3523,7 +3523,7 @@ static __init void tegra210_shared_clk_init(char *sclk_high_clk)
 
 	clk = tegra_clk_register_shared_master("emc_master", "emc",
 		emc_is_native ? TEGRA_SHARED_BUS_EMC_NATIVE : 0,
-		12750000, t210b01 ? 1866000000 : 1600000000);
+		12750000, 1866000000); /* t210 default max: 1600 MHz */
 	if (clk) {
 		to_clk_cbus_shared(__clk_get_hw(clk))->users_default_rate =
 			204000000;
