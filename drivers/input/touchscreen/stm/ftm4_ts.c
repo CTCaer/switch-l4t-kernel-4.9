@@ -1749,7 +1749,7 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 	device_init_wakeup(&client->dev, true);
 	if (device_may_wakeup(&info->client->dev))
 		enable_irq_wake(info->irq);
-	info->lowpower_mode = true;
+	info->lowpower_mode = false; // false for 4CD60D.
 
 	return 0;
 
@@ -1991,7 +1991,9 @@ static int fts_stop_device(struct fts_ts_info *info)
 #ifdef FTS_SUPPORT_NOISE_PARAM
 		fts_get_noise_param(info);
 #endif
+		fts_command(info, SENSEOFF);
 	} else {
+		fts_command(info, SENSEOFF);
 		fts_command(info, FLUSHBUFFER);
 		fts_release_all_finger(info);
 #ifdef FTS_SUPPORT_NOISE_PARAM
@@ -2006,7 +2008,7 @@ static int fts_stop_device(struct fts_ts_info *info)
 	}
  out:
 	mutex_unlock(&info->device_mutex);
-	fts_command(info, SENSEOFF);
+
 	return 0;
 }
 
@@ -2100,6 +2102,11 @@ static void fts_shutdown(struct i2c_client *client)
 		info->lowpower_mode = 0;
 		tsp_debug_info(&info->client->dev, "FTS lowpower_mode off!\n");
 	}
+
+	/* Disable interrupts */
+	fts_interrupt_set(info, INT_DISABLE);
+	fts_command(info, FLUSHBUFFER);
+	fts_irq_enable(info, false);
 
 	fts_stop_device(info);
 }
