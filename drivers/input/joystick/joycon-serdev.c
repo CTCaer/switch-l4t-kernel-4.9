@@ -2208,6 +2208,39 @@ static struct serdev_device_ops joycon_serdev_ops = {
 	.write_wakeup = serdev_device_write_wakeup,
 };
 
+static ssize_t wake_show(struct device *dev,
+			     struct device_attribute *attr, char *buf)
+{
+	struct joycon_ctlr *ctlr = dev_get_drvdata(dev);
+	unsigned long flags;
+	ssize_t len;
+
+	spin_lock_irqsave(&ctlr->lock, flags);
+	len = sprintf(buf, "%d\n", !ctlr->suspending);
+	spin_unlock_irqrestore(&ctlr->lock, flags);
+
+	return len;
+}
+
+static ssize_t wake_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct joycon_ctlr *ctlr = dev_get_drvdata(dev);
+	unsigned long flags;
+
+	dev_info(&ctlr->sdev->dev, "wake\n");
+	spin_lock_irqsave(&ctlr->lock, flags);
+	if (ctlr->suspending) {
+		ctlr->suspending = false;
+		joycon_enter_detection(ctlr);
+	}
+	spin_unlock_irqrestore(&ctlr->lock, flags);
+
+	return count;
+}
+static DEVICE_ATTR_RW(wake);
+
 static int joycon_serdev_probe(struct serdev_device *serdev)
 {
 	struct joycon_ctlr *ctlr;
@@ -2250,6 +2283,12 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 	}
 	serdev_device_set_client_ops(serdev, &joycon_serdev_ops);
 	serdev_device_set_flow_control(serdev, true);
+
+	ret = device_create_file(dev, &dev_attr_wake);
+	if (ret) {
+		dev_err(dev, "Failed to create wake sysfs; ret=%d\n", ret);
+		goto err_sdev_close;
+	}
 
 	ret = joycon_enter_detection(ctlr);
 	if (ret) {
@@ -2322,12 +2361,15 @@ static int __maybe_unused joycon_serdev_suspend(struct device *dev)
 	dev_info(dev, "suspend\n");
 
 	spin_lock_irqsave(&ctlr->lock, flags);
+	if (ctlr->suspending) {
+		spin_unlock_irqrestore(&ctlr->lock, flags);
+		return 0;
+	}
 	ctlr->suspending = true;
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ) {
 		/* attempt telling the joy-con to sleep to decrease battery drain */
 		joycon_set_hci_state(ctlr, 0);
-		joycon_disconnect(ctlr);
 	}
 	joycon_stop_queues(ctlr);
 
@@ -2342,13 +2384,13 @@ static int __maybe_unused joycon_serdev_suspend(struct device *dev)
 static int __maybe_unused joycon_serdev_resume(struct device *dev)
 {
 	struct joycon_ctlr *ctlr = dev_get_drvdata(dev);
-	unsigned long flags;
 
 	dev_info(dev, "resume\n");
-	spin_lock_irqsave(&ctlr->lock, flags);
-	ctlr->suspending = false;
-	spin_unlock_irqrestore(&ctlr->lock, flags);
-	return joycon_enter_detection(ctlr);
+
+	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ)
+		joycon_disconnect(ctlr);
+
+	return 0;
 }
 
 #ifdef CONFIG_OF
