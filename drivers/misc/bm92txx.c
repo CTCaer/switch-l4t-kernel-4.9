@@ -1317,7 +1317,7 @@ static void bm92t_event_handler(struct work_struct *work)
 				vdm[2] == VDM_STRUCTURED &&
 				vdm[3] == 0x01 && vdm[4] == 0xFF && /* SVID DisplayPort */
 				vdm[5] & VDO_DP_UFP_D &&
-				vdm[6] & VDO_DP_SUPPORT)
+				vdm[5] & VDO_DP_SUPPORT)
 			{
 				dev_info(dev, "DisplayPort Alt Mode supported");
 				for (i = 0; i < ((vdm[0] - 4) / 4); i++)
