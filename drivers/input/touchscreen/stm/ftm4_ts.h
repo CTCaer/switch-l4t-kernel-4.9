@@ -24,6 +24,7 @@
 #endif
 
 #define USE_OPEN_CLOSE
+#define USE_OPEN_DWORK
 #define FEATURE_FTS_PRODUCTION_CODE	1
 
 #ifdef USE_OPEN_DWORK

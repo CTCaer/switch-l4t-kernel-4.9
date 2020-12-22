@@ -1816,8 +1816,9 @@ static int fts_input_open(struct input_dev *dev)
 {
 	struct fts_ts_info *info = input_get_drvdata(dev);
 	unsigned char regAdd[4] = {0xB0, 0x01, 0x29, 0x41};
+#ifndef USE_OPEN_DWORK
 	int retval = 0;
-
+#endif
 	tsp_debug_info(&info->client->dev, "%s\n", __func__);
 
 #ifdef USE_OPEN_DWORK
@@ -1841,7 +1842,10 @@ static int fts_input_open(struct input_dev *dev)
 		fts_command(info, FTS_CMD_HOVER_ON);
 	}
 
+
+#ifndef USE_OPEN_DWORK
 out:
+#endif
 	return 0;
 }
 
@@ -2173,8 +2177,14 @@ static int fts_pm_resume(struct device *dev)
 
 	mutex_lock(&info->input_dev->mutex);
 
-	if (info->input_dev->users)
+	if (info->input_dev->users) {
+#ifdef USE_OPEN_DWORK
+		schedule_delayed_work(&info->open_work,
+				      msecs_to_jiffies(TOUCH_OPEN_DWORK_TIME));
+#else
 		fts_start_device(info);
+#endif
+	}
 
 	mutex_unlock(&info->input_dev->mutex);
 
