@@ -744,10 +744,9 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 
 	battery_charging_status_update(bq2419x->bc_dev, bq2419x->chg_status);
 	if (bq2419x->disable_suspend_during_charging) {
-		if (bq2419x->cable_connected && in_current_limit > 500
-			&& (bq2419x->chg_status != BATTERY_CHARGING_DONE))
+		if (bq2419x->cable_connected)
 			battery_charger_acquire_wake_lock(bq2419x->bc_dev);
-		else if (!bq2419x->cable_connected && old_current_limit > 500)
+		else if (!bq2419x->cable_connected)
 			battery_charger_release_wake_lock(bq2419x->bc_dev);
 	}
 
