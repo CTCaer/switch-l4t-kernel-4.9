@@ -834,6 +834,24 @@ static int joycon_request_calibration(struct joycon_ctlr *ctlr)
 		ctlr->stick_cal_y.min = DFLT_STICK_CAL_MIN;
 	}
 
+	if (ctlr->stick_cal_x.center == 0 &&
+		ctlr->stick_cal_x.max == 0 &&
+		ctlr->stick_cal_x.min == 0) {
+		ctlr->stick_cal_x.center = DFLT_STICK_CAL_CEN;
+		ctlr->stick_cal_x.max = DFLT_STICK_CAL_MAX;
+		ctlr->stick_cal_x.min = DFLT_STICK_CAL_MIN;
+		dev_warn(dev, "Boguous stick calibration for x axis, using defaults");
+	}
+
+	if (ctlr->stick_cal_y.center == 0 &&
+		ctlr->stick_cal_y.max == 0 &&
+		ctlr->stick_cal_y.min == 0) {
+		ctlr->stick_cal_y.center = DFLT_STICK_CAL_CEN;
+		ctlr->stick_cal_y.max = DFLT_STICK_CAL_MAX;
+		ctlr->stick_cal_y.min = DFLT_STICK_CAL_MIN;
+		dev_warn(dev, "Boguous stick calibration for y axis, using defaults");
+	}
+
 	dev_dbg(&ctlr->sdev->dev, "calibration:\n"
 				  "x_c=%d x_max=%d x_min=%d\n"
 				  "y_c=%d y_max=%d y_min=%d\n",
@@ -2069,8 +2087,14 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 	dev_dbg(dev, "received uart data of size=%lu\n", len);
 	/* check if this is beginning of new packet */
 	if (!ctlr->partial_pkt_len) {
+		/* obirds workaround (they send some zeros in the beginning). */
+		int j = 0;
+		while (buf[j] == 0 && j < len)
+			j++;
+		packet = (struct joycon_uart_packet *) (buf + j);
+
 		/* Have we received the entire packet? */
-		if (len >= 4 && packet->size + 5 <= len) {
+		if (len-j >= 4 && packet->size + 5 <= len-j) {
 			if (packet->magic[0] != JC_UART_MAGIC_RX_0 ||
 			    packet->magic[1] != JC_UART_MAGIC_RX_1 ||
 			    packet->magic[2] != JC_UART_MAGIC_RX_2) {
@@ -2080,10 +2104,14 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 			}
 			/* Proceed to process the packet without buffering */
 			dev_dbg(dev, "received whole uart packet\n");
+		} else if (len-j > JC_MAX_RESP_SIZE) {
+			/* Toss out this packet if malformed */
+			dev_warn(dev, "received pkt is malformed\n");
+			return len;
 		} else {
 			/* This isn't yet the whole packet. */
-			memcpy(ctlr->partial_pkt, buf, len);
-			ctlr->partial_pkt_len = len;
+			memcpy(ctlr->partial_pkt, buf+j, len-j);
+			ctlr->partial_pkt_len = len-j;
 			return len;
 		}
 	} else {
