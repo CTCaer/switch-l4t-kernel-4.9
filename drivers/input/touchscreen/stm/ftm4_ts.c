@@ -2108,8 +2108,10 @@ static void fts_shutdown(struct i2c_client *client)
 	}
 
 	/* Disable interrupts */
-	fts_interrupt_set(info, INT_DISABLE);
-	fts_command(info, FLUSHBUFFER);
+	if (!info->touch_stopped) {
+		fts_interrupt_set(info, INT_DISABLE);
+		fts_command(info, FLUSHBUFFER);
+	}
 	fts_irq_enable(info, false);
 
 	fts_stop_device(info);
