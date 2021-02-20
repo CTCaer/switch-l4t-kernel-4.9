@@ -694,10 +694,11 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 	if (ret < 0)
 		dev_err(bq2419x->dev, "SYS_STAT_REG read failed: %d\n", ret);
 
-	if (max_uA == 0 && val != 0)
-		return ret;
-	if (!max_uA)
+	if (max_uA == 0) {
 		bq2419x->wake_lock_released = false;
+		if (val != 0)
+			return ret;
+	}
 
 	old_current_limit = bq2419x->in_current_limit;
 	bq2419x->last_charging_current = max_uA;
