@@ -43,7 +43,7 @@
 *           | - Proper checks on power management
 *           | - Allow more dts based customization instead of ifdefs
 *           | - Speed up boot and resume by 1-2s
-*           | - Fix palm handling
+*           | - Fix palm handling and raise pressure detection to 500 from 254
 *           | - Fix issues with delayed resume
 *           | - Fix issues with hanging on suspend
 *           | - Fix issues/hangs because of incorrect interrupt management
@@ -559,13 +559,13 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 
 			/* Palm rejection */
 			if (z > PRESSURE_MAX) {
-				tsp_debug_err(&info->client->dev, "Palm Detected\n");
-				tsp_debug_dbg(&info->client->dev,
-					"%s: [ID:%2d  X:%4d  Y:%4d  Z:%4d  Orient:%2d  tc:%2d]\n", __func__,
-					TouchID, x, y, z, orient, info->touch_count);
-
-				if (!info->palm_pressed)
+				if (!info->palm_pressed) {
+					tsp_debug_err(&info->client->dev, "Palm Detected\n");
+					tsp_debug_dbg(&info->client->dev,
+						"%s: [ID:%2d  X:%4d  Y:%4d  Z:%4d  Orient:%2d  tc:%2d]\n", __func__,
+						TouchID, x, y, z, orient, info->touch_count);
 					fts_release_all_finger(info);
+				}
 
 				info->palm_pressed = true;
 
