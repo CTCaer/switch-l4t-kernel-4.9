@@ -1171,7 +1171,12 @@ static void bm92t_event_handler(struct work_struct *work)
 			bm92t_send_rdo(info);
 			bm92t_state_machine(info, NEW_PDO);
 			msleep(20);
+			goto ret;
 		}
+
+		/* Check if forced workqueue and unplugged */
+		if (!alert_data && !bm92t_is_plugged(status1_data))
+			bm92t_extcon_cable_update(info, EXTCON_USB, false);
 		break;
 
 	case NEW_PDO:
