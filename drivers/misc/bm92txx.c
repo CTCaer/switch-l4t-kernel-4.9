@@ -1392,14 +1392,16 @@ static void bm92t_event_handler(struct work_struct *work)
 		break;
 
 	case DP_CONFIG_ENTER_HANDLED:
-		if (bm92t_is_success(alert_data) &&
-			((status1_data & 0xff) == STATUS1_INSERT)) {
-			if (info->cable.is_nintendo_dock) {
-				bm92t_send_vdm(info, vdm_query_device_msg,
-					sizeof(vdm_query_device_msg));
-				bm92t_state_machine(info, VDM_ND_QUERY_DEVICE_SENT);
+		if (bm92t_is_success(alert_data)) {
+			if ((status1_data & 0xff) == STATUS1_INSERT) {
+				if (info->cable.is_nintendo_dock) {
+					bm92t_send_vdm(info, vdm_query_device_msg,
+						sizeof(vdm_query_device_msg));
+					bm92t_state_machine(info, VDM_ND_QUERY_DEVICE_SENT);
+				} else
+					bm92t_state_machine(info, NORMAL_CONFIG_HANDLED);
 			} else
-				bm92t_state_machine(info, NORMAL_CONFIG_HANDLED);
+				dev_err(dev, "Failed to enter DP Alt mode\n");
 		}
 		break;
 
