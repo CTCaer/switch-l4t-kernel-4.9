@@ -322,6 +322,7 @@ struct fts_ts_info {
 	int touch_count;
 	struct fts_finger finger[FINGER_MAX];
 	bool palm_pressed;
+	int palm_touch_id;
 
 	int touch_mode;
 
