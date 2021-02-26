@@ -49,6 +49,7 @@
 *           | - Fix issues/hangs because of incorrect interrupt management
 *           | - Ensure power off on suspend for saving power
 *           | - Correct logging to debug level instead of info/error
+* 02/26/2021| Better palm removal detection
 *******************************************************************************/
 
 #include <linux/init.h>
@@ -537,6 +538,9 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 				break;
 			}
 
+			if (info->palm_pressed)
+				break;
+
 			/* Decode X/Y coordinates */
 			x = ((data[1 + EventNum * FTS_EVENT_SIZE] & 0xFF) << 4) +
 				((data[3 + EventNum * FTS_EVENT_SIZE] & 0xF0) >> 4);
@@ -559,17 +563,17 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 
 			/* Palm rejection */
 			if (z > PRESSURE_MAX) {
-				if (!info->palm_pressed) {
-					tsp_debug_err(&info->client->dev, "Palm Detected\n");
-					tsp_debug_dbg(&info->client->dev,
-						"%s: [ID:%2d  X:%4d  Y:%4d  Z:%4d  Orient:%2d  tc:%2d]\n", __func__,
-						TouchID, x, y, z, orient, info->touch_count);
-					fts_release_all_finger(info);
-				}
+				tsp_debug_err(&info->client->dev, "Palm Detected\n");
+				tsp_debug_dbg(&info->client->dev,
+					"%s: [ID:%2d  X:%4d  Y:%4d  Z:%4d  Orient:%2d  tc:%2d]\n", __func__,
+					TouchID, x, y, z, orient, info->touch_count);
 
+				fts_release_all_finger(info);
+
+				info->palm_touch_id = TouchID;
 				info->palm_pressed = true;
 
-				return 0;
+				break;
 			}
 
 			/* Compensate edges */
@@ -626,9 +630,12 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 
 		case EVENTID_LEAVE_POINTER:
 			if (info->palm_pressed) {
-				tsp_debug_err(&info->client->dev, "Palm Released\n");
-				info->palm_pressed = false;
-				return 0;
+				if (info->palm_touch_id == TouchID) {
+					tsp_debug_err(&info->client->dev, "Palm Released\n");
+					fts_release_all_finger(info);
+					info->palm_pressed = false;
+				}
+				break;
 			}
 
 			if (info->touch_count <= 0) {
