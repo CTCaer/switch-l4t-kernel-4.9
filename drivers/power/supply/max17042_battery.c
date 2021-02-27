@@ -52,8 +52,19 @@
 
 /* Interrupt mask bits */
 #define CONFIG_ALRT_BIT_ENBL	(1 << 2)
+#define STATUS_INTR_VOLTMIN_BIT	(1 << 8)
+#define STATUS_INTR_VOLTMAX_BIT	(1 << 12)
+#define STATUS_INTR_THERMIN_BIT	(1 << 9)
+#define STATUS_INTR_THERMAX_BIT	(1 << 13)
 #define STATUS_INTR_SOCMIN_BIT	(1 << 10)
 #define STATUS_INTR_SOCMAX_BIT	(1 << 14)
+#define STATUS_INTR_BATINS_BIT	(1 << 11)
+#define STATUS_INTR_BATREM_BIT	(1 << 15)
+#define STATUS_INTR_THRESHOLDS	\
+		(STATUS_INTR_VOLTMIN_BIT | STATUS_INTR_VOLTMAX_BIT | \
+		 STATUS_INTR_THERMIN_BIT | STATUS_INTR_THERMAX_BIT | \
+		 STATUS_INTR_SOCMIN_BIT  | STATUS_INTR_SOCMAX_BIT  | \
+		 STATUS_INTR_BATINS_BIT  | STATUS_INTR_BATREM_BIT)
 
 #define VFSOC0_LOCK		0x0000
 #define VFSOC0_UNLOCK		0x0080
@@ -778,10 +789,10 @@ static int max17042_init_chip(struct max17042_chip *chip)
 	if (chip->pdata->enable_por_init)
 		max17042_override_por_values(chip);
 
-	/* Initialize configaration */
+	/* Initialize configuration */
 	max17042_write_config_regs(chip);
 
-	/* write cell characterization data */
+	/* Write cell characterization data */
 	ret = max17042_init_model(chip);
 	if (ret) {
 		dev_err(&chip->client->dev, "%s init failed\n",
@@ -798,18 +809,18 @@ static int max17042_init_chip(struct max17042_chip *chip)
 	/* write custom parameters */
 	max17042_write_custom_regs(chip);
 
-	/* update capacity params */
+	/* Update capacity params */
 	max17042_update_capacity_regs(chip);
 
-	/* delay must be atleast 350mS to allow VFSOC
+	/* Delay must be at least 350mS to allow VFSOC
 	 * to be calculated from the new configuration
 	 */
 	msleep(350);
 
-	/* reset vfsoc0 reg */
+	/* Reset vfsoc0 reg */
 	max17042_reset_vfsoc0_reg(chip);
 
-	/* load new capacity params */
+	/* Load new capacity params */
 	max17042_load_new_capacity_params(chip);
 
 	/* Init complete, Clear the POR bit */
@@ -827,27 +838,32 @@ static void max17042_set_soc_threshold(struct max17042_chip *chip, u16 off)
 	struct regmap *map = chip->regmap;
 	u32 soc, soc_tr;
 
-	/* program interrupt thesholds such that we should
+	/* Program interrupt thresholds such that we should
 	 * get interrupt for every 'off' perc change in the soc
 	 */
 	regmap_read(map, MAX17042_RepSOC, &soc);
 	soc >>= 8;
 	soc_tr = (soc + off) << 8;
-	soc_tr |= (soc - off);
+	soc_tr |= ((int)soc - off) >= 0 ? (soc - off) : 0;
 	regmap_write(map, MAX17042_SALRT_Th, soc_tr);
 }
 
 static irqreturn_t max17042_thread_handler(int id, void *dev)
 {
 	struct max17042_chip *chip = dev;
-	u32 val;
+	u32 val, soc;
 
 	regmap_read(chip->regmap, MAX17042_STATUS, &val);
 	if ((val & STATUS_INTR_SOCMIN_BIT) ||
 		(val & STATUS_INTR_SOCMAX_BIT)) {
-		dev_info(&chip->client->dev, "SOC threshold INTR\n");
+		regmap_read(chip->regmap, MAX17042_RepSOC, &soc);
+		dev_info(&chip->client->dev, "SOC at %d%%\n", soc >> 8);
 		max17042_set_soc_threshold(chip, 1);
 	}
+
+	/* Clear all threshold alert interrupts */
+	regmap_update_bits(chip->regmap, MAX17042_STATUS,
+			STATUS_INTR_THRESHOLDS, 0);
 
 	power_supply_changed(chip->battery);
 	return IRQ_HANDLED;
@@ -1273,6 +1289,9 @@ static int max17042_probe(struct i2c_client *client,
 					CONFIG_ALRT_BIT_ENBL,
 					CONFIG_ALRT_BIT_ENBL);
 			max17042_set_soc_threshold(chip, 1);
+			/* Clear all threshold alert interrupts */
+			regmap_update_bits(chip->regmap, MAX17042_STATUS,
+					STATUS_INTR_THRESHOLDS, 0);
 		} else {
 			client->irq = 0;
 			dev_err(&client->dev, "%s(): cannot get IRQ\n",
@@ -1313,10 +1332,21 @@ static int max17042_suspend(struct device *dev)
 	struct max17042_chip *chip = dev_get_drvdata(dev);
 
 	/*
-	 * disable the irq and enable irq_wake
+	 * Disable the irq and enable irq_wake
 	 * capability to the interrupt line.
+	 * Additionally clear any pending irq and
+	 * Set min threshold to 0%.
 	 */
 	if (chip->client->irq) {
+		/* Clear all threshold alert interrupts */
+		regmap_update_bits(chip->regmap, MAX17042_STATUS,
+				STATUS_INTR_THRESHOLDS, 0);
+
+		/* Program soc thresholds such that we should
+		 * get interrupt for 0% in soc.
+		 */
+		regmap_write(chip->regmap, MAX17042_SALRT_Th, 0xFF << 8 | 0);
+
 		disable_irq(chip->client->irq);
 		enable_irq_wake(chip->client->irq);
 	}
@@ -1327,8 +1357,23 @@ static int max17042_suspend(struct device *dev)
 static int max17042_resume(struct device *dev)
 {
 	struct max17042_chip *chip = dev_get_drvdata(dev);
+	u32 val;
 
 	if (chip->client->irq) {
+		/* Check for wake up interrupts */
+		regmap_read(chip->regmap, MAX17042_STATUS, &val);
+		if (val) {
+			if (val & STATUS_INTR_SOCMIN_BIT)
+				dev_err(&chip->client->dev, "SOC critical 0%%!\n");
+			else {
+				/* Clear all threshold alert interrupts */
+				regmap_update_bits(chip->regmap, MAX17042_STATUS,
+						STATUS_INTR_THRESHOLDS, 0);
+			}
+
+			power_supply_changed(chip->battery);
+		}
+
 		disable_irq_wake(chip->client->irq);
 		enable_irq(chip->client->irq);
 		/* re-program the SOC thresholds to 1% change */
