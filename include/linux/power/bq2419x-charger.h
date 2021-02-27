@@ -154,6 +154,7 @@ struct bq2419x_charger_platform_data {
 	int charge_voltage_limit_mV;
 	int max_charge_current_mA;
 	int wdt_timeout;
+	bool no_otg_wdt;
 	int rtc_alarm_time;
 	int num_consumer_supplies;
 	struct regulator_consumer_supply *consumer_supplies;
