@@ -1774,6 +1774,9 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 		return -EINVAL;
 	}
 
+	for (i = 5, j = 1; i >= 0; i--, j++)
+		ctlr->mac_addr[i] = packet->data[j];
+
 	/*
 	   regular controller returns 0x01
 	   hori returns 0x22 or 0x21
@@ -1784,9 +1787,12 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 	if (packet->data[0] == 0x21) {
 		ctlr->ctlr_type = JOYCON_TYPE_LEFT;
 		ctlr->is_hori = true;
+		// Patch mac with L/R to ensure it's still somewhat unique
+		ctlr->mac_addr[5] = JOYCON_TYPE_LEFT;
 	} else if (packet->data[0] == 0x22) {
 		ctlr->ctlr_type = JOYCON_TYPE_RIGHT;
 		ctlr->is_hori = true;
+		ctlr->mac_addr[5] = JOYCON_TYPE_RIGHT;
 	} else {
 		ctlr->is_hori = false;
 	}
@@ -2367,16 +2373,18 @@ static int __maybe_unused joycon_serdev_suspend(struct device *dev)
 	}
 	ctlr->suspending = true;
 	spin_unlock_irqrestore(&ctlr->lock, flags);
-	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ) {
-		/* attempt telling the joy-con to sleep to decrease battery drain */
-		joycon_set_hci_state(ctlr, 0);
-	}
-	joycon_stop_queues(ctlr);
 
 	/* stop charging */
 	if (!IS_ERR_OR_NULL(ctlr->charger_reg) &&
 	    regulator_is_enabled(ctlr->charger_reg) > 0)
 		regulator_disable(ctlr->charger_reg);
+
+	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ) {
+		/* attempt telling the joy-con to sleep to decrease battery drain */
+		joycon_set_hci_state(ctlr, 0);
+	}
+
+	joycon_stop_queues(ctlr);
 
 	return 0;
 }
