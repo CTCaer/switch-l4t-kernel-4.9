@@ -1,9 +1,15 @@
-// SPDX-License-Identifier: GPL-2.0
-//
-// Copyright (C) 2018 Billy Laws
-// Author: Billy Laws <blaws05@gmail.com>
-//
-// ONOFF driver for MAXIM 77620 charger/power-supply.
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2018 Billy Laws
+ * Copyright (C) 2020 CTCaer
+ *
+ * Author: 
+ *  Billy Laws <blaws05@gmail.com>
+ *  CTCaer <ctcaer@gmail.com>
+ *
+ * Description:
+ *  ONOFF driver for MAXIM 77620 charger/power-supply.
+ */
 
 #include <linux/i2c.h>
 #include <linux/input.h>
@@ -13,11 +19,18 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 
+#define ONOFF_IRQF 2
+#define ONOFF_IRQR 3
+
+#define ONOFF_IRQF_MASK BIT(2)
+#define ONOFF_IRQR_MASK BIT(3)
+
 struct max77620_onoff {
+	struct regmap *rmap;
 	struct input_dev *input;
 	int irq_f, irq_r;
-	bool pressed;
 	unsigned int code;
+	bool suspended;
 };
 
 static const struct regmap_irq max77620_onoff_irqs[] = {
@@ -57,30 +70,17 @@ static struct regmap_irq_chip max77620_onoff_irq_chip = {
 	.mask_base = MAX77620_REG_ONOFFIRQM,
 };
 
-static irqreturn_t max77620_onoff_falling(int irq, void *data)
+static irqreturn_t max77620_onoff_handler(int irq, void *data)
 {
 	struct max77620_onoff *onoff = data;
+	bool pressed = irq == onoff->irq_r;
 
-	if (onoff->pressed) {
-		input_report_key(onoff->input, onoff->code, 0);
-		input_sync(onoff->input);
+	/* Skip release report in suspended state */
+	if (onoff->suspended && !pressed)
+		return IRQ_HANDLED;
 
-		onoff->pressed = false;
-	}
-
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t max77620_onoff_rising(int irq, void *data)
-{
-	struct max77620_onoff *onoff = data;
-
-	if (!onoff->pressed) {
-		input_report_key(onoff->input, onoff->code, 1);
-		input_sync(onoff->input);
-
-		onoff->pressed = true;
-	}
+	input_report_key(onoff->input, onoff->code, pressed ? 1 : 0);
+	input_sync(onoff->input);
 
 	return IRQ_HANDLED;
 }
@@ -90,21 +90,30 @@ static int max77620_onoff_probe(struct platform_device *pdev)
 	struct max77620_onoff *onoff;
 	struct device *dev, *parent;
 	struct max77620_chip *chip =  dev_get_drvdata(pdev->dev.parent);
-	struct regmap *map;
+	struct device_node *np;
+	unsigned int code;
 	int irq, ret;
 
 	dev = &pdev->dev;
 	parent = dev->parent;
 
-	map = dev_get_regmap(parent, NULL);
-	if (!map)
-		return -ENODEV;
-
 	onoff = devm_kzalloc(dev, sizeof(*onoff), GFP_KERNEL);
 	if (!onoff)
 		return -ENOMEM;
 
-	onoff->code = KEY_SLEEP;
+	onoff->rmap = chip->rmap;
+
+	np = of_get_child_by_name(pdev->dev.parent->of_node, "onoff");
+	if (np && !of_device_is_available(np))
+		np = NULL;
+
+	if (np)
+		ret = of_property_read_u32(np, "maxim,onoff-keycode",
+				   &code);
+	if (!np || ret < 0)
+		onoff->code = KEY_POWER;
+	else
+		onoff->code = code;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
@@ -119,51 +128,73 @@ static int max77620_onoff_probe(struct platform_device *pdev)
 	onoff->input->id.bustype = BUS_I2C;
 	input_set_capability(onoff->input, EV_KEY, onoff->code);
 
-	ret = devm_regmap_add_irq_chip(&pdev->dev, map, irq,
+	ret = devm_regmap_add_irq_chip(&pdev->dev, onoff->rmap, irq,
 				       IRQF_ONESHOT, -1,
 				       &max77620_onoff_irq_chip,
 				       &chip->onoff_irq_data);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to add onoff irq_chip %d\n", ret);
-		return ret;
+		goto fail;
 	}
 
-	onoff->irq_f = regmap_irq_get_virq(chip->onoff_irq_data, 2);
-	onoff->irq_r = regmap_irq_get_virq(chip->onoff_irq_data, 3);
+	onoff->irq_f = regmap_irq_get_virq(chip->onoff_irq_data, ONOFF_IRQF);
+	onoff->irq_r = regmap_irq_get_virq(chip->onoff_irq_data, ONOFF_IRQR);
 
-	ret = devm_request_any_context_irq(dev, onoff->irq_f, max77620_onoff_falling,
+	ret = devm_request_any_context_irq(dev, onoff->irq_f, max77620_onoff_handler,
 					     IRQF_ONESHOT, "en0-down", onoff);
 	if (ret < 0)
-		return ret;
+		goto fail;
 
-	ret = devm_request_any_context_irq(dev, onoff->irq_r, max77620_onoff_rising,
+	ret = devm_request_any_context_irq(dev, onoff->irq_r, max77620_onoff_handler,
 					     IRQF_ONESHOT, "en0-up", onoff);
 	if (ret < 0)
-		return ret;
+		goto fail;
 
 	platform_set_drvdata(pdev, onoff);
 	input_set_drvdata(onoff->input, onoff);
 	device_init_wakeup(dev, 1);
 
-	return input_register_device(onoff->input);
+	ret = input_register_device(onoff->input);
+
+fail:
+	return ret;
 }
 
-static int __maybe_unused max77620_onoff_suspend(struct device *dev)
+#ifdef CONFIG_PM_SLEEP
+
+static int max77620_onoff_suspend(struct device *dev)
 {
 	struct max77620_onoff *onoff = dev_get_drvdata(dev);
-	
+
+	onoff->suspended = true;
+
 	if (device_may_wakeup(dev))
 		return enable_irq_wake(onoff->irq_f);
 
 	return 0;
 }
 
-static int __maybe_unused max77620_onoff_resume(struct device *dev)
+static int max77620_onoff_resume(struct device *dev)
 {
 	struct max77620_onoff *onoff = dev_get_drvdata(dev);
-	
-	// Ignore any release event to prevent confusing userspace after leaving sleep
-	onoff->pressed = false;
+	unsigned int val, ret;
+
+	/* Clear ON/OFF interrupts */
+	ret = regmap_read(onoff->rmap, MAX77620_REG_ONOFFIRQ, &val);
+	if (ret < 0)
+		dev_err(dev, "Failed to clear onoff irq: %d\n", ret);
+
+	onoff->suspended = false;
+
+	/* If ON/OFF was pressed, report it */
+	if (val & ONOFF_IRQR_MASK) {
+		input_report_key(onoff->input, onoff->code, 1);
+		input_sync(onoff->input);
+	}
+
+	/* Unconditionally release after resume */
+	input_report_key(onoff->input, onoff->code, 0);
+	input_sync(onoff->input);
 
 	if (device_may_wakeup(dev))
 		return disable_irq_wake(onoff->irq_f);
@@ -171,15 +202,34 @@ static int __maybe_unused max77620_onoff_resume(struct device *dev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(max77620_onoff_pm_ops, max77620_onoff_suspend, max77620_onoff_resume);
+static const struct dev_pm_ops max77620_onoff_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(max77620_onoff_suspend,
+				max77620_onoff_resume)
+};
+
+#endif /* CONFIG_PM_SLEEP */
 
 static struct platform_driver max77620_onoff_driver = {
 	.driver = {
 		.name = "max77620-onoff",
+#ifdef CONFIG_PM_SLEEP
+		.pm = &max77620_onoff_pm_ops,
+#endif
 	},
 	.probe = max77620_onoff_probe,
 };
-module_platform_driver(max77620_onoff_driver);
+
+static int __init max77620_onoff_init(void)
+{
+	return platform_driver_register(&max77620_onoff_driver);
+}
+subsys_initcall(max77620_onoff_init);
+
+static void __exit max77620_onoff_exit(void)
+{
+	platform_driver_unregister(&max77620_onoff_driver);
+}
+module_exit(max77620_onoff_exit);
 
 MODULE_DESCRIPTION("MAXIM 77620 ONOFF driver");
 MODULE_AUTHOR("Billy Laws <blaws05@gmail.com>");
