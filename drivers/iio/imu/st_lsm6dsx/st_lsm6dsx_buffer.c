@@ -324,37 +324,37 @@ static int st_lsm6dsx_update_fifo(struct iio_dev *iio_dev, bool enable)
 {
 	struct st_lsm6dsx_sensor *sensor = iio_priv(iio_dev);
 	struct st_lsm6dsx_hw *hw = sensor->hw;
-	int err;
+	int err = 0;
 
 	mutex_lock(&hw->poll_lock);
 	if (hw->fifo_mode != ST_LSM6DSX_FIFO_BYPASS) {
 		err = st_lsm6dsx_flush_fifo(hw);
 		if (err < 0)
-			return err;
+			goto exit;
 	}
 
 	if (enable) {
 		err = st_lsm6dsx_sensor_enable(sensor);
 		if (err < 0)
-			return err;
+			goto exit;
 	} else {
 		err = st_lsm6dsx_sensor_disable(sensor);
 		if (err < 0)
-			return err;
+			goto exit;
 	}
 
 	err = st_lsm6dsx_update_decimators(hw);
 	if (err < 0)
-		return err;
+		goto exit;
 
 	err = st_lsm6dsx_update_watermark(sensor, sensor->watermark);
 	if (err < 0)
-		return err;
+		goto exit;
 
 	if (hw->enable_mask) {
 		err = st_lsm6dsx_set_fifo_mode(hw, ST_LSM6DSX_FIFO_CONT);
 		if (err < 0)
-			return err;
+			goto exit;
 
 		/*
 		 * store enable buffer timestamp as reference to compute
@@ -365,15 +365,23 @@ static int st_lsm6dsx_update_fifo(struct iio_dev *iio_dev, bool enable)
 
 	if (!hw->irq) {
 		if (enable) {
-			hw->poll_thread = kthread_run(st_lsm6dsx_poll_thread, hw, "st_lsm6dsx_poll");
-		} else if (hw->poll_thread != NULL) {
+			if (!hw->poll_started) {
+				hw->poll_thread = kthread_run(st_lsm6dsx_poll_thread, hw, "st_lsm6dsx_poll");
+				if (IS_ERR(hw->poll_thread))
+					err = -EIO;
+				else
+					hw->poll_started = true;
+			}
+				
+		} else if (hw->poll_started) {
 			kthread_stop(hw->poll_thread);
-			hw->poll_thread = NULL;
+			hw->poll_started = false;
 		}
 	}
 
+exit:
 	mutex_unlock(&hw->poll_lock);
-	return 0;
+	return err;
 }
 
 static irqreturn_t st_lsm6dsx_handler_irq(int irq, void *private)
@@ -472,10 +480,13 @@ int st_lsm6dsx_fifo_setup(struct st_lsm6dsx_hw *hw)
 				hw->irq);
 			return err;
 		}
+		hw->poll_started = false;
 	} else {
-		hw->poll_thread = NULL;
+		hw->poll_thread = kthread_run(st_lsm6dsx_poll_thread, hw, "st_lsm6dsx_poll");
+		if (IS_ERR(hw->poll_thread))
+			return -EIO;
+		hw->poll_started = true;
 	}
-
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
 		buffer = devm_iio_kfifo_allocate(hw->dev);
 		if (!buffer)

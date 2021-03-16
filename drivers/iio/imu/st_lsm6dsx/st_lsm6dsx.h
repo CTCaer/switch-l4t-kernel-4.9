@@ -123,6 +123,7 @@ struct st_lsm6dsx_hw {
 	enum st_lsm6dsx_fifo_mode fifo_mode;
 	u8 enable_mask;
 	u8 sip;
+	bool poll_started;
 
 	struct iio_dev *iio_devs[ST_LSM6DSX_ID_MAX];
 
