@@ -1774,6 +1774,9 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 		return -EINVAL;
 	}
 
+	for (i = 5, j = 1; i >= 0; i--, j++)
+		ctlr->mac_addr[i] = packet->data[j];
+
 	/*
 	   regular controller returns 0x01
 	   hori returns 0x22 or 0x21
@@ -1784,9 +1787,12 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 	if (packet->data[0] == 0x21) {
 		ctlr->ctlr_type = JOYCON_TYPE_LEFT;
 		ctlr->is_hori = true;
+		// Patch mac with L/R to ensure it's still somewhat unique
+		ctlr->mac_addr[5] = JOYCON_TYPE_LEFT;
 	} else if (packet->data[0] == 0x22) {
 		ctlr->ctlr_type = JOYCON_TYPE_RIGHT;
 		ctlr->is_hori = true;
+		ctlr->mac_addr[5] = JOYCON_TYPE_RIGHT;
 	} else {
 		ctlr->is_hori = false;
 	}
