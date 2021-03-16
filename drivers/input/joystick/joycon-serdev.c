@@ -2328,19 +2328,25 @@ static int __maybe_unused joycon_serdev_suspend(struct device *dev)
 	dev_info(dev, "suspend\n");
 
 	spin_lock_irqsave(&ctlr->lock, flags);
+	if (ctlr->suspending) {
+		spin_unlock_irqrestore(&ctlr->lock, flags);
+		return 0;
+	}
 	ctlr->suspending = true;
 	spin_unlock_irqrestore(&ctlr->lock, flags);
-	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ) {
-		/* attempt telling the joy-con to sleep to decrease battery drain */
-		joycon_set_hci_state(ctlr, 0);
-		joycon_disconnect(ctlr);
-	}
-	joycon_stop_queues(ctlr);
 
 	/* stop charging */
 	if (!IS_ERR_OR_NULL(ctlr->charger_reg) &&
 	    regulator_is_enabled(ctlr->charger_reg) > 0)
 		regulator_disable(ctlr->charger_reg);
+
+	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ) {
+		/* attempt telling the joy-con to sleep to decrease battery drain */
+		joycon_set_hci_state(ctlr, 0);
+		joycon_disconnect(ctlr);
+	}
+
+	joycon_stop_queues(ctlr);
 
 	return 0;
 }
