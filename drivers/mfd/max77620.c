@@ -606,6 +606,36 @@ static int max77620_read_es_version(struct max77620_chip *chip)
 	return ret;
 }
 
+static int max77620_init_hard_power_off(struct max77620_chip *chip,
+				    struct device *dev)
+{
+	struct device_node *np = dev->of_node;
+	u32 mrt_time = 0;
+	u8 reg_val;
+	int ret;
+
+	ret = of_property_read_u32(np, "maxim,hard-power-off-time", &mrt_time);
+	if (ret < 0)
+		return 0;
+
+	mrt_time = (mrt_time > 12) ? 12 : mrt_time;
+	if (mrt_time <= 6)
+		reg_val = mrt_time - 2;
+	else
+		reg_val = (mrt_time - 6) / 2 + 4;
+
+	reg_val <<= MAX77620_ONOFFCNFG1_MRT_SHIFT;
+
+	ret = regmap_update_bits(chip->rmap, MAX77620_REG_ONOFFCNFG1,
+				 MAX77620_ONOFFCNFG1_MRT_MASK, reg_val);
+	if (ret < 0) {
+		dev_err(dev, "REG ONOFFCNFG1 update failed: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
 static int max77620_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
 {
@@ -649,6 +679,10 @@ static int max77620_probe(struct i2c_client *client,
 	}
 
 	ret = max77620_read_es_version(chip);
+	if (ret < 0)
+		return ret;
+
+	ret = max77620_init_hard_power_off(chip, &client->dev);
 	if (ret < 0)
 		return ret;
 
