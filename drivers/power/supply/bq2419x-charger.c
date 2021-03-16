@@ -1696,7 +1696,7 @@ static int bq2419x_charger_thermal_configure(
 
 	/* Fast charger become 50% when temp is at < 10 degC */
 	if (temp <= 10)
-		fast_charge_current /= 2;
+		fast_charge_current *= 2;
 
 	curr_ichg = bq2419x->chg_current_control.val >> 2;
 	ichg = bq2419x_val_to_reg(fast_charge_current,
