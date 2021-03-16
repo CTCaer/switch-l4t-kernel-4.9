@@ -494,7 +494,7 @@ static const unsigned int bm92t_extcon_cable[] = {
 	EXTCON_USB_HOST, /* Id */
 	EXTCON_USB,      /* Vbus */
 	EXTCON_USB_PD,   /* USB-PD */
-	EXTCON_DISP_DP,  /* DisplayPort. Must be declared. */
+	EXTCON_DISP_DP,  /* DisplayPort. Handled by HPD so not used. */
 	EXTCON_NONE
 };
 
@@ -1657,6 +1657,7 @@ src_fault:
 
 	case VDM_ACCEPT_ND_LED_ON_REPLY:
 		if (bm92t_is_success(alert_data)) {
+			msleep(500); /* Wait for hub to power up */
 			bm92t_send_vdm(info, vdm_usbhub_enable_msg,
 				sizeof(vdm_usbhub_enable_msg));
 			bm92t_state_machine(info, VDM_ND_ENABLE_USBHUB_SENT);
