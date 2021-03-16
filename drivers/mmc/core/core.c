@@ -2130,7 +2130,7 @@ void mmc_power_cycle(struct mmc_host *host, u32 ocr)
 {
 	mmc_power_off(host);
 	/* Wait at least 1 ms according to SD spec */
-	mmc_delay(1);
+	mmc_delay(100);
 	mmc_power_up(host, ocr);
 }
 
