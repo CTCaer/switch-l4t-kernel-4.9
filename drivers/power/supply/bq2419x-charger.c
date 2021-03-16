@@ -137,6 +137,7 @@ struct bq2419x_chip {
 	int				last_input_voltage;
 	int				wdt_refresh_timeout;
 	int				wdt_time_sec;
+	bool				no_otg_wdt;
 };
 
 static int current_to_reg(const unsigned int *tbl,
@@ -1869,6 +1870,10 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client,
 		if (!ret)
 			pdata->bcharger_pdata->wdt_timeout = wdt_timeout;
 
+		pdata->bcharger_pdata->no_otg_wdt =
+				of_property_read_bool(batt_reg_node,
+				"ti,no-otg-watchdog");
+
 		count = of_property_count_u32_elems(batt_reg_node,
 					"ti,soc-range");
 		soc_range_len = (count > 0) ? count : 0;
@@ -2147,6 +2152,7 @@ static int bq2419x_probe(struct i2c_client *client,
 	bq2419x->auto_rechg_power_on_time =
 			pdata->bcharger_pdata->auto_rechg_power_on_time;
 	bq2419x->wdt_time_sec = pdata->bcharger_pdata->wdt_timeout;
+	bq2419x->no_otg_wdt = pdata->bcharger_pdata->no_otg_wdt;
 
 	bq2419x_process_charger_plat_data(bq2419x, pdata->bcharger_pdata);
 
@@ -2324,7 +2330,7 @@ static int bq2419x_suspend(struct device *dev)
 		return 0;
 
 	mutex_lock(&bq2419x->mutex);
-	if (bq2419x->is_otg_connected) {
+	if (bq2419x->is_otg_connected && !bq2419x->no_otg_wdt) {
 		ret = bq2419x_reset_wdt(bq2419x, "Suspend");
 		if (ret < 0)
 			dev_err(bq2419x->dev, "Reset WDT failed: %d\n", ret);
