@@ -479,14 +479,14 @@ static struct cpu_dvfs cpu_fv_dvfs_table[] = {
 		.speedo_id = 3,
 		.process_id = 0,
 		.min_mv = 825,
-		.max_mv = 1227,
+		.max_mv = 1257, /* Allow OC max voltage of 1257 mV */
 		CPU_PLL_CVB_TABLE_ODN,
 	},
 	{
 		.speedo_id = 3,
 		.process_id = 1,
 		.min_mv = 825,
-		.max_mv = 1227,
+		.max_mv = 1257, /* Allow OC max voltage of 1257 mV */
 		CPU_PLL_CVB_TABLE_ODN,
 	},
 	{

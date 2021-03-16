@@ -244,10 +244,10 @@ static const unsigned long tegra210_cpu_max_freq_table[] = {
 		{1428000000UL,	{1116446, 0, 0} }, \
 		{1581000000UL,	{1130000, 0, 0} }, \
 		{1683000000UL,	{1168000, 0, 0} }, \
-		{1785000000UL,	{1227000, 0, 0} }, \
-		{1887000000UL,	{1227000, 0, 0} }, \
-		{1989000000UL,	{1227000, 0, 0} }, \
-		{2091000000UL,	{1227000, 0, 0} }, \
+		{1785000000UL,	{1225000, 0, 0} }, \
+		{1887000000UL,	{1225000, 0, 0} }, \
+		{1989000000UL,	{1227500, 0, 0} }, \
+		{2091000000UL,	{1256250, 0, 0} }, \
 		{0,           	{      0, 0, 0} }, \
 	}
 
@@ -415,7 +415,7 @@ struct cvb_table tegra210_cpu_cvb_tables[] = {
 		.speedo_id = 3,
 		.process_id = 0,
 		.min_millivolts = 825,
-		.max_millivolts = 1227,
+		.max_millivolts = 1257, /* Allow OC max voltage of 1257 mV */
 		CPU_CVB_TABLE_ODN,
 		.cpu_dfll_data = {
 			.tune0_low = 0xffead0ff,
@@ -428,7 +428,7 @@ struct cvb_table tegra210_cpu_cvb_tables[] = {
 		.speedo_id = 3,
 		.process_id = 1,
 		.min_millivolts = 825,
-		.max_millivolts = 1227,
+		.max_millivolts = 1257, /* Allow OC max voltage of 1257 mV */
 		CPU_CVB_TABLE_ODN,
 		.cpu_dfll_data = {
 			.tune0_low = 0xffead0ff,
