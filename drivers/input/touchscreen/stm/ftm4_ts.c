@@ -218,7 +218,7 @@ int fts_read_chip_id(struct fts_ts_info *info)
 	if ((val[1] == FTS_ID0) && (val[2] == FTS_ID1)) {
 		if ((val[5] == 0x00) && (val[6] == 0x00)) {
 			tsp_debug_err(&info->client->dev,
-				"\n\r[fts_read_chip_id] Error - No FW : %02X %02X",
+				"[fts_read_chip_id] Error - No FW : %02X %02X\n",
 				val[5], val[6]);
 			info->flash_corruption_info.fw_broken = true;
 		}  else {
@@ -337,19 +337,19 @@ int fts_cmd_completion_check(struct fts_ts_info *info, uint8_t event1, uint8_t e
 		fts_delay(10);
 		fts_read_reg(info, &reg[0], 1, &val[0], FTS_EVENT_SIZE);
 		if ((val[0] == event1) && (val[1] == event2) && (val[2] == event3)) {
-			tsp_debug_info(&info->client->dev,
-				"\n\r[fts_cmd_completion_check] OK [%02x][%02x][%02x]", val[0], val[1], val[2]);
+			tsp_debug_dbg(&info->client->dev,
+				"[fts_cmd_completion_check] OK [%02x][%02x][%02x]\n", val[0], val[1], val[2]);
 			return rc;
 		} else if (val[0] == 0x0F) {
 			tsp_debug_err(&info->client->dev,
-				"\n\r[fts_cmd_completion_check] Error - [%02x][%02x][%02x]", val[0], val[1], val[2]);
+				"[fts_cmd_completion_check] Error - [%02x][%02x][%02x]\n", val[0], val[1], val[2]);
 		}
 	}
 
 	rc = -1;
 	if (retry <= 0)
 		tsp_debug_err(&info->client->dev,
-			"\n\r[fts_cmd_completion_check] Error - Time Over [%02x][%02x][%02x]", event1, event2, event3);
+			"[fts_cmd_completion_check] Error - Time Over [%02x][%02x][%02x]\n", event1, event2, event3);
 	return rc;
 }
 
