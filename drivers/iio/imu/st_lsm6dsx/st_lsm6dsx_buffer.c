@@ -430,7 +430,7 @@ static int st_lsm6dsx_poll_thread(void *data)
 			st_lsm6dsx_handler_thread(0, data);
 			mutex_unlock(&hw->poll_lock);
 		}
-		msleep(50);
+		msleep(10);
 	}
 	return 0;
 }
@@ -480,13 +480,10 @@ int st_lsm6dsx_fifo_setup(struct st_lsm6dsx_hw *hw)
 				hw->irq);
 			return err;
 		}
-		hw->poll_started = false;
 	} else {
-		hw->poll_thread = kthread_run(st_lsm6dsx_poll_thread, hw, "st_lsm6dsx_poll");
-		if (IS_ERR(hw->poll_thread))
-			return -EIO;
-		hw->poll_started = true;
+		hw->poll_started = false;
 	}
+
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
 		buffer = devm_iio_kfifo_allocate(hw->dev);
 		if (!buffer)
