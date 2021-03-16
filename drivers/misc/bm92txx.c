@@ -1094,7 +1094,7 @@ static void bm92t_event_handler(struct work_struct *work)
 
 	/* Check if cable removed */
 	if (alert_data & ALERT_PLUGPULL) {
-		if (!bm92t_is_plugged(status1_data)) {
+		if (!bm92t_is_plugged(status1_data)) { /* Pull-out event */
 			cancel_delayed_work(&info->power_work);
 
 			bm92t_set_vbus_enable(info, false);
@@ -1109,13 +1109,23 @@ static void bm92t_event_handler(struct work_struct *work)
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
 			bm92t_state_machine(info, INIT_STATE);
-		} else if (status1_data & STATUS1_SRC_MODE && /* OTG event */
+			goto ret;
+		} else if (status1_data & STATUS1_SRC_MODE && /* OTG plug-in event */
 				   status2_data & STATUS2_OTG_INSERT) {
 			bm92t_set_vbus_enable(info, true);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
 			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, true);
-		}
-		goto ret;
+			goto ret;
+		} else if (alert_data & ALERT_CONTRACT && !info->first_init) {
+			/* When there's a plug-in wake-up, check if a new contract */
+			/* was received. If yes continue with init. */
+
+			/* In case of no new PDO, wait for it. Otherwise PD will fail. */
+			/* In case of non-PD charger, this doesn't affect the result. */
+			if (!(alert_data & ALERT_PDO))
+				msleep(500);
+		} else /* Simple plug-in event */
+			goto ret;
 	}
 
 	switch (info->state) {
