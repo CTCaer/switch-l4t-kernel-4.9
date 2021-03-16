@@ -96,6 +96,7 @@ struct max17042_chip {
 	int status;
 	int cap;
 	int override_min_soc;
+	u32 temp_alert_threshold;
 };
 
 static int max17042_get_battery_soc(struct battery_gauge_dev *bg_dev)
@@ -329,14 +330,14 @@ static int max17042_get_property(struct power_supply *psy,
 		if (ret < 0)
 			return ret;
 		/* LSB is Alert Minimum. In deci-centigrade */
-		val->intval = (data & 0xff) * 10;
+		val->intval = (int8_t)(data & 0xff) * 10;
 		break;
 	case POWER_SUPPLY_PROP_TEMP_ALERT_MAX:
 		ret = regmap_read(map, MAX17042_TALRT_Th, &data);
 		if (ret < 0)
 			return ret;
 		/* MSB is Alert Maximum. In deci-centigrade */
-		val->intval = (data >> 8) * 10;
+		val->intval = (int8_t)(data >> 8) * 10;
 		break;
 	case POWER_SUPPLY_PROP_TEMP_MIN:
 		val->intval = chip->pdata->temp_min;
@@ -419,7 +420,7 @@ static int max17042_set_property(struct power_supply *psy,
 		if (temp >= (int8_t)(data >> 8))
 			temp = (int8_t)(data >> 8) - 1;
 		/* Write both MAX and MIN ALERT */
-		data = (data & 0xff00) + temp;
+		data = (data & 0xff00) | (uint8_t)temp;
 		ret = regmap_write(map, MAX17042_TALRT_Th, data);
 		break;
 	case POWER_SUPPLY_PROP_TEMP_ALERT_MAX:
@@ -433,7 +434,7 @@ static int max17042_set_property(struct power_supply *psy,
 		if (temp <= (int8_t)(data & 0xff))
 			temp = (int8_t)(data & 0xff) + 1;
 		/* Write both MAX and MIN ALERT */
-		data = (data & 0xff) + (temp << 8);
+		data = (data & 0xff) | ((uint8_t)temp << 8);
 		ret = regmap_write(map, MAX17042_TALRT_Th, data);
 		break;
 	default:
@@ -831,6 +832,51 @@ static int max17042_init_chip(struct max17042_chip *chip)
 
 	chip->init_complete = 1;
 	return 0;
+}
+
+static void max17042_init_voltage_threshold(struct max17042_chip *chip)
+{
+	struct regmap *map = chip->regmap;
+	u32 volt_min, volt_tr;
+	int ret;
+
+	/* Program interrupt thresholds such that we should
+	 * get interrupt for 100mV less than minimum.
+	 */
+	if (chip->chip_type == MAXIM_DEVICE_TYPE_MAX17042)
+		ret = regmap_read(map, MAX17042_V_empty, &volt_min);
+	else
+		ret = regmap_read(map, MAX17047_V_empty, &volt_min);
+	if (ret < 0)
+		return;
+
+	volt_min >>= 7;
+	volt_min *= 10; /* Units of LSB = 10mV */
+	volt_min -= 100;
+	volt_min /= 20;
+
+	volt_tr = volt_min;
+	volt_tr |= 0xFF << 8; /* Max voltage */
+	regmap_write(map, MAX17042_VALRT_Th, volt_tr);
+}
+
+static void max17042_set_temp_threshold_suspend(struct max17042_chip *chip,
+				bool suspend)
+{
+	struct regmap *map = chip->regmap;
+	u32 temp_tr;
+
+	/* Save interrupt thresholds while entering suspend
+	 * and restore on resume.
+	 */
+	if (suspend) {
+		regmap_read(map, MAX17042_TALRT_Th, &temp_tr);
+		chip->temp_alert_threshold = temp_tr;
+		temp_tr = 0x7F << 8 | 0x81; /* -127 to 127 */
+	} else
+		temp_tr = chip->temp_alert_threshold;
+
+	regmap_write(map, MAX17042_TALRT_Th, temp_tr);
 }
 
 static void max17042_set_soc_threshold(struct max17042_chip *chip, u16 off)
@@ -1289,6 +1335,7 @@ static int max17042_probe(struct i2c_client *client,
 					CONFIG_ALRT_BIT_ENBL,
 					CONFIG_ALRT_BIT_ENBL);
 			max17042_set_soc_threshold(chip, 1);
+			max17042_init_voltage_threshold(chip);
 			/* Clear all threshold alert interrupts */
 			regmap_update_bits(chip->regmap, MAX17042_STATUS,
 					STATUS_INTR_THRESHOLDS, 0);
@@ -1303,6 +1350,7 @@ static int max17042_probe(struct i2c_client *client,
 		return -EIO;
 
 	if (val & STATUS_POR_BIT) {
+		dev_info(&client->dev, "battery gauge not initialized\n");
 		INIT_WORK(&chip->work, max17042_init_worker);
 		schedule_work(&chip->work);
 	} else {
@@ -1338,17 +1386,20 @@ static int max17042_suspend(struct device *dev)
 	 * Set min threshold to 0%.
 	 */
 	if (chip->client->irq) {
-		/* Clear all threshold alert interrupts */
-		regmap_update_bits(chip->regmap, MAX17042_STATUS,
-				STATUS_INTR_THRESHOLDS, 0);
+		disable_irq(chip->client->irq);
+		enable_irq_wake(chip->client->irq);
 
 		/* Program soc thresholds such that we should
 		 * get interrupt for 0% in soc.
 		 */
 		regmap_write(chip->regmap, MAX17042_SALRT_Th, 0xFF << 8 | 0);
 
-		disable_irq(chip->client->irq);
-		enable_irq_wake(chip->client->irq);
+		/* Disable temp thresholds */
+		max17042_set_temp_threshold_suspend(chip, true);
+
+		/* Clear all threshold alert interrupts */
+		regmap_update_bits(chip->regmap, MAX17042_STATUS,
+				STATUS_INTR_THRESHOLDS, 0);
 	}
 
 	return 0;
@@ -1363,8 +1414,9 @@ static int max17042_resume(struct device *dev)
 		/* Check for wake up interrupts */
 		regmap_read(chip->regmap, MAX17042_STATUS, &val);
 		if (val) {
+			dev_err(dev, "Alert Status = 0x%04X\n", val);
 			if (val & STATUS_INTR_SOCMIN_BIT)
-				dev_err(&chip->client->dev, "SOC critical 0%%!\n");
+				dev_err(dev, "SOC critical 0%%!\n");
 			else {
 				/* Clear all threshold alert interrupts */
 				regmap_update_bits(chip->regmap, MAX17042_STATUS,
@@ -1376,8 +1428,12 @@ static int max17042_resume(struct device *dev)
 
 		disable_irq_wake(chip->client->irq);
 		enable_irq(chip->client->irq);
-		/* re-program the SOC thresholds to 1% change */
+
+		/* Re-program the SOC thresholds to 1% change */
 		max17042_set_soc_threshold(chip, 1);
+
+		/* Restore temperature thresholds */
+		max17042_set_temp_threshold_suspend(chip, false);
 	}
 
 	return 0;
