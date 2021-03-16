@@ -2080,6 +2080,10 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 			}
 			/* Proceed to process the packet without buffering */
 			dev_dbg(dev, "received whole uart packet\n");
+		} else if (len > JC_MAX_RESP_SIZE) {
+			/* Toss out this packet if malformed */
+			dev_warn(dev, "received pkt is malformed\n");
+			return len;
 		} else {
 			/* This isn't yet the whole packet. */
 			memcpy(ctlr->partial_pkt, buf, len);
