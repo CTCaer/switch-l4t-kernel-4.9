@@ -460,10 +460,9 @@ static int joycon_serdev_send_sync(struct joycon_ctlr *ctlr, u8 *data,
 		 * report prior to sending the subcommand. This improves
 		 * reliability considerably.
 		 */
-		if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ) {
-			unsigned long flags;
-
-			spin_lock_irqsave(&ctlr->lock, flags);
+		unsigned long flags;
+		spin_lock_irqsave(&ctlr->lock, flags);
+		if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ && !ctlr->suspending) {
 			ctlr->received_input_report = false;
 			spin_unlock_irqrestore(&ctlr->lock, flags);
 			ret = wait_event_timeout(ctlr->wait,
@@ -477,8 +476,8 @@ static int joycon_serdev_send_sync(struct joycon_ctlr *ctlr, u8 *data,
 				spin_unlock_irqrestore(&ctlr->lock, flags);
 				goto err;
 			}
-			spin_unlock_irqrestore(&ctlr->lock, flags);
 		}
+		spin_unlock_irqrestore(&ctlr->lock, flags);
 
 		ret = joycon_serdev_send(ctlr, data, len, timeout);
 		if (ret) {
@@ -943,7 +942,6 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 		dev_warn(&ctlr->sdev->dev, "Invalid battery status\n");
 		break;
 	}
-	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	/*
 	 * When the battery is full, stop charging. This prevents long term
@@ -951,18 +949,20 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 	 * We re-enable charging once the capacity drops below HIGH (to prevent
 	 * oscillating between HIGH/FULL constantly).
 	 */
-	if (ctlr->battery_capacity == POWER_SUPPLY_CAPACITY_LEVEL_FULL) {
+	if (ctlr->battery_capacity == POWER_SUPPLY_CAPACITY_LEVEL_FULL && !ctlr->suspending) {
 		/* stop charging */
 		if (!IS_ERR_OR_NULL(ctlr->charger_reg) &&
 		    regulator_is_enabled(ctlr->charger_reg) > 0)
 			regulator_disable(ctlr->charger_reg);
-	} else if (ctlr->battery_capacity != POWER_SUPPLY_CAPACITY_LEVEL_HIGH) {
+	} else if (ctlr->battery_capacity != POWER_SUPPLY_CAPACITY_LEVEL_HIGH && !ctlr->suspending) {
 		/* start charging */
 		if (!IS_ERR_OR_NULL(ctlr->charger_reg) &&
 		    !regulator_is_enabled(ctlr->charger_reg) &&
 		    regulator_enable(ctlr->charger_reg))
 			dev_err(&ctlr->sdev->dev, "Failed to enable charger\n");
 	}
+
+	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	/* Parse the buttons and sticks */
 	btns = field_extract(rep->button_status, 0, 24);
