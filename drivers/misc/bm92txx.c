@@ -1349,23 +1349,29 @@ src_fault:
 					sizeof(vdm_discover_id_msg));
 				bm92t_state_machine(info, VDM_DISC_ID_SENT);
 			}
-			goto ret;
+			break;
 		}
 
 		if (status1_data & STATUS1_SRC_MODE &&
 				status2_data & STATUS2_OTG_INSERT) {
 			info->first_init = false;
 			dev_info(dev, "Device in OTG mode (no alert)\n");
-			goto ret;
+			break;
 		}
 
 		if ((alert_data & ALERT_CONTRACT) || info->first_init) {
-			info->first_init = false;
-
 			/* Disable USB if first init and unplugged */
 			if (!bm92t_is_plugged(status1_data)) {
 				bm92t_extcon_cable_update(info, EXTCON_USB, false);
-				goto ret;
+				goto init_contract_out;
+			}
+
+			/* Check if sink mode is enabled for first init */
+			/* If not, exit and wait for next alert */
+			if (info->first_init &&
+				 !(alert_data & ALERT_CONTRACT) &&
+				 !(status1_data & STATUS1_SPDSNK)) {
+				goto init_contract_out;
 			}
 
 			/* Negotiate new power profile */
@@ -1374,12 +1380,17 @@ src_fault:
 				bm92t_state_machine(info, INIT_STATE);
 				msleep(550); /* WAR: BQ2419x good power test */
 				bm92t_extcon_cable_update(info, EXTCON_USB, true);
-				goto ret;
+				goto init_contract_out;
 			}
+
+			/* Power negotiation succeeded */
 			bm92t_send_rdo(info);
 			bm92t_state_machine(info, NEW_PDO);
 			msleep(20);
-			goto ret;
+
+init_contract_out:
+			info->first_init = false;
+			break;
 		}
 
 		/* Check if forced workqueue and unplugged */
@@ -1425,7 +1436,7 @@ src_fault:
 				/* Check if Dual-Role Data is supported */
 				if (!info->cable.drd_support) {
 					dev_err(dev, "Device in UFP and DRD not supported!\n");
-					goto ret;
+					break;
 				}
 
 				cmd = DR_SWAP_CMD;
@@ -1574,7 +1585,7 @@ src_fault:
 				vdm[2] == (VDM_STRUCTURED | 1) &&
 				vdm[3] == 0x7e && vdm[4] == 0x05)) {
 				dev_err(dev, "Failed to enter Nintendo Alt Mode!\n");
-				goto ret;
+				break;
 			}
 
 			/* Enter automatic DisplayPort handling */
@@ -1688,7 +1699,7 @@ src_fault:
 						sizeof(vdm_usbhub_enable_msg));
 					bm92t_state_machine(info, VDM_ND_ENABLE_USBHUB_SENT);
 					retries_usbhub--;
-					goto ret;
+					break;
 				}
 			} else if (!retries_usbhub)
 				dev_err(dev, "USB HUB enable timed out!\n");
