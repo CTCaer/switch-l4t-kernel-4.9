@@ -199,6 +199,9 @@
 #define SYS_CONFIG2_PDO_SRC_PROV_SHIFT   9 /* Number of Source provisioned PDOs */
 #define SYS_CONFIG2_PDO_SRC_PROV_MASK    (7 << SYS_CONFIG2_PDO_SRC_PROV_SHIFT)
 
+/* VENDOR_CONFIG_REG */
+#define VENDOR_CONFIG_OCP_DISABLE  BIT(2) /* Disable Over-current protection */
+
 /* DEV_CAPS_REG */
 #define DEV_CAPS_ALERT_STS  BIT(0)
 #define DEV_CAPS_ALERT_EN   BIT(1)
@@ -550,7 +553,7 @@ unsigned char vdm_usbhub_reset_msg[10] = {OUTGOING_VDM_REG, 8,
 	VDM_ND_REQST, VDM_UNSTRUCTURED, 0x7E, 0x05,
 	VDM_ND_READ,  VDM_ND_HOST, VDM_NCMD_HUB_RESET, 0x00};
 
-unsigned char vdm_dp_signal_ctrl_msg[10] = {OUTGOING_VDM_REG, 8,
+unsigned char vdm_usbhub_dp_sleep_msg[10] = {OUTGOING_VDM_REG, 8,
 	VDM_ND_REQST, VDM_UNSTRUCTURED, 0x7E, 0x05,
 	0x00,         VDM_ND_HOST, VDM_NCMD_DP_SIGNAL_DISABLE, 0x00};
 
@@ -805,6 +808,24 @@ static int bm92t_set_dp_alerts(struct bm92t_info *info, bool enable)
 	return err;
 }
 
+static int bm92t_enable_ocp(struct bm92t_info *info)
+{
+	int err = 0;
+	unsigned short value;
+	unsigned char msg[3] = {VENDOR_CONFIG_REG, 0, 0};
+
+	bm92t_read_reg(info, VENDOR_CONFIG_REG,
+		(unsigned char *) &value, sizeof(value));
+	if (value & VENDOR_CONFIG_OCP_DISABLE) {
+		value &= ~VENDOR_CONFIG_OCP_DISABLE;
+		msg[1] = value & 0xFF;
+		msg[2] = (value >> 8) & 0xFF;
+		bm92t_write_reg(info, msg, sizeof(msg));
+	}
+
+	return err;
+}
+
 static int bm92t_system_reset_auto(struct bm92t_info *info, bool force)
 {
 	int err = 0;
@@ -943,8 +964,6 @@ static void bm92t_power_work(struct work_struct *work)
 static void
 	bm92t_extcon_cable_set_init_state(struct work_struct *work)
 {
-	unsigned short value;
-	unsigned char msg[3] = {VENDOR_CONFIG_REG, 0, 0};
 	struct bm92t_info *info = container_of(
 		to_delayed_work(work), struct bm92t_info, oneshot_work);
 
@@ -958,15 +977,8 @@ static void
 	/* In case UFP is in an invalid state, request a SYS reset */
 	bm92t_system_reset_auto(info, false);
 
-	/* Enable OTG detection */
-	bm92t_read_reg(info, VENDOR_CONFIG_REG,
-		(unsigned char *) &value, sizeof(value));
-	if (value & 4) {
-		value &= 0xFFFB;
-		msg[1] = value & 0xFF;
-		msg[2] = (value >> 8) & 0xFF;
-		bm92t_write_reg(info, msg, sizeof(msg));
-	}
+	/* Enable over current protection */
+	bm92t_enable_ocp(info);
 
 	/* Enable power to SPDSRC for supporting both OTG and Charger */
 	bm92t_set_source_mode(info, SPDSRC12_ON);
@@ -1158,7 +1170,7 @@ static void bm92t_usbhub_led_cfg_wait(struct bm92t_info *info,
 	}
 }
 
-static void bm92t_dp_signal_ctrl(struct bm92t_info *info, bool enable)
+static void bm92t_usbhub_dp_sleep(struct bm92t_info *info, bool sleep)
 {
 	int retries = 100;
 	if (info->state == NINTENDO_CONFIG_HANDLED ||
@@ -1169,10 +1181,10 @@ static void bm92t_dp_signal_ctrl(struct bm92t_info *info, bool enable)
 		else
 			bm92t_state_machine(info, VDM_CUSTOM_CMD_SENT);
 
-		vdm_dp_signal_ctrl_msg[6] = enable ? VDM_ND_READ : VDM_ND_WRITE;
+		vdm_usbhub_dp_sleep_msg[6] = sleep ? 1 : 0;
 
-		bm92t_send_vdm(info, vdm_dp_signal_ctrl_msg,
-			sizeof(vdm_dp_signal_ctrl_msg));
+		bm92t_send_vdm(info, vdm_usbhub_dp_sleep_msg,
+			sizeof(vdm_usbhub_dp_sleep_msg));
 
 		while (info->state != NINTENDO_CONFIG_HANDLED ||
 			   info->state != NORMAL_CONFIG_HANDLED) {
@@ -1217,6 +1229,8 @@ static void bm92t_print_dp_dev_info(struct device *dev,
 
 static void bm92t_event_handler(struct work_struct *work)
 {
+	static bool sys_reset = false;
+	static int retries_usbhub = 10;
 	int i, err;
 	struct bm92t_info *info;
 	struct device *dev;
@@ -1228,8 +1242,6 @@ static void bm92t_event_handler(struct work_struct *work)
 	unsigned short status2_data;
 	unsigned short dp_data;
 	unsigned char vdm[29], pdo[5], rdo[5];
-
-	static int retries_usbhub = 10;
 
 	info = container_of(work, struct bm92t_info, work);
 	dev = &info->i2c_client->dev;
@@ -1280,9 +1292,23 @@ static void bm92t_event_handler(struct work_struct *work)
 		bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 		bm92t_extcon_cable_update(info, EXTCON_USB, false);
 		bm92t_set_vbus_enable(info, false);
-		if (bm92t_is_plugged(status1_data) || alert_data == 0) // || alert_data & ALERT_SNK_FAULT
+		if (bm92t_is_plugged(status1_data) || alert_data & ALERT_SNK_FAULT || alert_data == 0) {
 			bm92t_system_reset_auto(info, true);
+			sys_reset = true;
+		}
 		goto ret;
+	}
+
+	/* Check if sys reset happened */
+	if (sys_reset) {
+		sys_reset = false;
+		msleep(100);
+
+		/* Enable over current protection */
+		bm92t_enable_ocp(info);
+
+		/* Enable power to SPDSRC for supporting both OTG and Charger */
+		bm92t_set_source_mode(info, SPDSRC12_ON);
 	}
 
 	/* Do a PD hard reset in case of a source fault */
@@ -1973,9 +1999,7 @@ static ssize_t bm92t_led_write(struct file *file,
 		else
 			dev_err(&info->i2c_client->dev,
 				"Led is not supported\n");
-	}
-	else
-	{
+	} else {
 		dev_err(&info->i2c_client->dev,
 				"Led syntax is: duty time_on time_off fade\n");
 		return -EINVAL;
@@ -2009,9 +2033,7 @@ static ssize_t bm92t_cmd_write(struct file *file,
 	if (ret == 1) {
 		cmd = val;
 		bm92t_send_cmd(info, &cmd);
-	}
-	else
-	{
+	} else {
 		dev_err(&info->i2c_client->dev, "Cmd syntax is: cmd\n");
 		return -EINVAL;
 	}
@@ -2024,7 +2046,7 @@ static const struct file_operations bm92t_cmd_fops = {
 	.write = bm92t_cmd_write,
 };
 
-static ssize_t bm92t_dp_signal_write(struct file *file,
+static ssize_t bm92t_usbhub_dp_sleep_write(struct file *file,
 		     const char __user *userbuf, size_t count, loff_t *ppos)
 {
 	struct bm92t_info *info = (struct bm92t_info *) (file->private_data);
@@ -2041,9 +2063,8 @@ static ssize_t bm92t_dp_signal_write(struct file *file,
 	ret = sscanf(buf, "%i", &val);
 
 	if (ret == 1)
-		bm92t_dp_signal_ctrl(info, val ? true : false);
-	else
-	{
+		bm92t_usbhub_dp_sleep(info, val ? true : false);
+	else {
 		dev_err(&info->i2c_client->dev, "Syntax is: 0 or number\n");
 		return -EINVAL;
 	}
@@ -2051,9 +2072,9 @@ static ssize_t bm92t_dp_signal_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations bm92t_dp_signal_fops = {
+static const struct file_operations bm92t_usbhub_dp_sleep_fops = {
 	.open = simple_open,
-	.write = bm92t_dp_signal_write,
+	.write = bm92t_usbhub_dp_sleep_write,
 };
 
 static int bm92t_debug_init(struct bm92t_info *info)
@@ -2094,10 +2115,10 @@ static int bm92t_debug_init(struct bm92t_info *info)
 				 &bm92t_cmd_fops))
 		goto failed;
 
-	if (!debugfs_create_file("dp_signal_ctrl", S_IWUGO,
+	if (!debugfs_create_file("sleep", S_IWUGO,
 				 info->debugfs_root,
 				 info,
-				 &bm92t_dp_signal_fops))
+				 &bm92t_usbhub_dp_sleep_fops))
 		goto failed;
 
 	return 0;
@@ -2330,8 +2351,8 @@ static int bm92t_pm_resume(struct device *dev)
 	 * led effects.
 	 */
 	if (info->pdata->dp_signal_toggle_on_resume) {
-		bm92t_dp_signal_ctrl(info, false);
-		bm92t_dp_signal_ctrl(info, true);
+		bm92t_usbhub_dp_sleep(info, true);
+		bm92t_usbhub_dp_sleep(info, false);
 	}
 
 	/* Set Dock LED to ON state */
