@@ -2311,9 +2311,9 @@ static int find_matching_input(struct emc_table *table, struct emc_sel *sel)
 #define EMC_TABLE_ADDR      0xaa
 #define EMC_TABLE_SIZE      0xbb
 
-static struct resource tegra210_init_emc_data_smc(struct platform_device *pdev)
+static void tegra210_init_emc_data_smc(struct platform_device *pdev,
+						struct resource *table)
 {
-	struct resource table;
 	struct pmc_smc_regs regs;
 	u64 size, base;
 
@@ -2335,11 +2335,10 @@ static struct resource tegra210_init_emc_data_smc(struct platform_device *pdev)
 	pmc_send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
 	size = regs.args[0];
 
-	table.start = base;
-	table.end = base + size;
-	table.flags = IORESOURCE_MEM;
-
-	return table;
+	table->start = base;
+	table->end = base + size;
+	table->name = "EMC DVFS Table";
+	table->flags = IORESOURCE_MEM;
 }
 
 static int tegra210_init_emc_data(struct platform_device *pdev)
@@ -2387,8 +2386,7 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 	}
 
 	if (of_find_property(pdev->dev.of_node, "nvidia,use-smc-emc-tables", NULL)) {
-		table_res = tegra210_init_emc_data_smc(pdev);
-
+		tegra210_init_emc_data_smc(pdev, &table_res);
 		tegra_emc_table_normal = devm_ioremap_resource(&pdev->dev, &table_res);
 		tegra_emc_table_derated = NULL;
 		tegra_emc_table_size = 10;
