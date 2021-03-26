@@ -1237,7 +1237,7 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 
 		/* report buttons */
 		input_report_key(dev, BTN_TL, btns & JC_BTN_L);
-		input_report_key(dev, BTN_TL2, btns & JC_BTN_ZL);
+		input_report_abs(dev, ABS_Z, !!(btns & JC_BTN_ZL));
 		input_report_key(dev, BTN_SELECT, btns & JC_BTN_MINUS);
 		input_report_key(dev, BTN_THUMBL, btns & JC_BTN_LSTICK);
 		input_report_key(dev, BTN_Z, btns & JC_BTN_CAP);
@@ -1245,7 +1245,7 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 		if (jc_type_is_joycon(ctlr)) {
 			/* Report the S buttons as the non-existent triggers */
 			input_report_key(dev, BTN_TR, btns & JC_BTN_SL_L);
-			input_report_key(dev, BTN_TR2, btns & JC_BTN_SR_L);
+			input_report_abs(dev, ABS_RZ, !!(btns & JC_BTN_SR_L));
 
 			/* Report d-pad as digital buttons for the joy-cons */
 			input_report_key(dev, BTN_DPAD_DOWN,
@@ -1293,11 +1293,11 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 
 		/* report buttons */
 		input_report_key(dev, BTN_TR, btns & JC_BTN_R);
-		input_report_key(dev, BTN_TR2, btns & JC_BTN_ZR);
+		input_report_abs(dev, ABS_RZ, !!(btns & JC_BTN_ZR));
 		if (jc_type_is_joycon(ctlr)) {
 			/* Report the S buttons as the non-existent triggers */
 			input_report_key(dev, BTN_TL, btns & JC_BTN_SL_R);
-			input_report_key(dev, BTN_TL2, btns & JC_BTN_SR_R);
+			input_report_abs(dev, ABS_Z, !!(btns & JC_BTN_SR_R));
 		}
 		input_report_key(dev, BTN_START, btns & JC_BTN_PLUS);
 		input_report_key(dev, BTN_THUMBR, btns & JC_BTN_RSTICK);
@@ -1490,14 +1490,14 @@ static int joycon_play_effect(struct input_dev *dev, void *data,
 
 static const unsigned int joycon_button_inputs_l[] = {
 	BTN_SELECT, BTN_Z, BTN_THUMBL,
-	BTN_TL, BTN_TL2,
+	BTN_TL,
 	0 /* 0 signals end of array */
 };
 
 static const unsigned int joycon_button_inputs_r[] = {
 	BTN_START, BTN_MODE, BTN_THUMBR,
 	BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST,
-	BTN_TR, BTN_TR2,
+	BTN_TR,
 	0 /* 0 signals end of array */
 };
 
@@ -1562,6 +1562,7 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
 		input_set_abs_params(ctlr->input, ABS_Y,
 				     -JC_MAX_STICK_MAG, JC_MAX_STICK_MAG,
 				     JC_STICK_FUZZ, JC_STICK_FLAT);
+		input_set_abs_params(ctlr->input, ABS_Z, 0, 1, 0, 0);
 
 		for (i = 0; joycon_button_inputs_l[i] > 0; i++)
 			input_set_capability(ctlr->input, EV_KEY,
@@ -1588,6 +1589,7 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
 		input_set_abs_params(ctlr->input, ABS_RY,
 				     -JC_MAX_STICK_MAG, JC_MAX_STICK_MAG,
 				     JC_STICK_FUZZ, JC_STICK_FLAT);
+		input_set_abs_params(ctlr->input, ABS_RZ, 0, 1, 0, 0);
 
 		for (i = 0; joycon_button_inputs_r[i] > 0; i++)
 			input_set_capability(ctlr->input, EV_KEY,
@@ -1597,10 +1599,10 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
 	/* Let's report joy-con S triggers separately */
 	if (hdev->product == USB_DEVICE_ID_NINTENDO_JOYCONL) {
 		input_set_capability(ctlr->input, EV_KEY, BTN_TR);
-		input_set_capability(ctlr->input, EV_KEY, BTN_TR2);
+		input_set_abs_params(ctlr->input, ABS_RZ, 0, 1, 0, 0);
 	} else if (hdev->product == USB_DEVICE_ID_NINTENDO_JOYCONR) {
 		input_set_capability(ctlr->input, EV_KEY, BTN_TL);
-		input_set_capability(ctlr->input, EV_KEY, BTN_TL2);
+		input_set_abs_params(ctlr->input, ABS_Z, 0, 1, 0, 0);
 	}
 
 #if IS_ENABLED(CONFIG_NINTENDO_FF)
