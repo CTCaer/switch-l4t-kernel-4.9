@@ -606,10 +606,9 @@ static int max77620_read_es_version(struct max77620_chip *chip)
 	return ret;
 }
 
-static int max77620_init_hard_power_off(struct max77620_chip *chip,
-				    struct device *dev)
+static int max77620_init_hard_power_off(struct max77620_chip *chip)
 {
-	struct device_node *np = dev->of_node;
+	struct device_node *np = chip->dev->of_node;
 	u32 mrt_time = 0;
 	u8 reg_val;
 	int ret;
@@ -629,7 +628,7 @@ static int max77620_init_hard_power_off(struct max77620_chip *chip,
 	ret = regmap_update_bits(chip->rmap, MAX77620_REG_ONOFFCNFG1,
 				 MAX77620_ONOFFCNFG1_MRT_MASK, reg_val);
 	if (ret < 0) {
-		dev_err(dev, "REG ONOFFCNFG1 update failed: %d\n", ret);
+		dev_err(chip->dev, "REG ONOFFCNFG1 update failed: %d\n", ret);
 		return ret;
 	}
 
@@ -682,7 +681,11 @@ static int max77620_probe(struct i2c_client *client,
 	if (ret < 0)
 		return ret;
 
-	ret = max77620_init_hard_power_off(chip, &client->dev);
+	ret = max77620_init_hard_power_off(chip);
+	if (ret < 0)
+		return ret;
+
+	ret = max77620_irq_global_unmask(chip);
 	if (ret < 0)
 		return ret;
 
