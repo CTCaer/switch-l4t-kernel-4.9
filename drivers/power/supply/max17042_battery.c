@@ -136,9 +136,9 @@ static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_TEMP_MIN,
 	POWER_SUPPLY_PROP_TEMP_MAX,
 	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
-	POWER_SUPPLY_PROP_STATUS,
 };
 
 static int max17042_get_temperature(struct max17042_chip *chip, int *temp)
@@ -1229,7 +1229,7 @@ static const struct regmap_config max17042_regmap_config = {
 };
 
 static const struct power_supply_desc max17042_psy_desc = {
-	.name		= "max170xx_battery",
+	.name		= "battery",
 	.type		= POWER_SUPPLY_TYPE_BATTERY,
 	.get_property	= max17042_get_property,
 	.set_property	= max17042_set_property,
@@ -1239,7 +1239,7 @@ static const struct power_supply_desc max17042_psy_desc = {
 };
 
 static const struct power_supply_desc max17042_no_current_sense_psy_desc = {
-	.name		= "max170xx_battery",
+	.name		= "battery",
 	.type		= POWER_SUPPLY_TYPE_BATTERY,
 	.get_property	= max17042_get_property,
 	.set_property	= max17042_set_property,
