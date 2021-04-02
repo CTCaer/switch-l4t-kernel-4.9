@@ -139,6 +139,8 @@ static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
+	POWER_SUPPLY_PROP_POWER_NOW,
+	POWER_SUPPLY_PROP_POWER_AVG,
 };
 
 static int max17042_get_temperature(struct max17042_chip *chip, int *temp)
@@ -218,6 +220,35 @@ out:
 
 health_error:
 	return ret;
+}
+
+static int max17042_get_current(struct max17042_chip *chip,
+				bool average, int *ua)
+{
+	int ret;
+	u32 data;
+
+	if (chip->pdata->enable_current_sense) {
+		if (!average)
+			ret = regmap_read(chip->regmap, MAX17042_Current, &data);
+		else
+			ret = regmap_read(chip->regmap, MAX17042_AvgCurrent, &data);
+		if (ret < 0)
+			return ret;
+
+		*ua = data;
+		if (*ua & 0x8000) {
+			/* Negative */
+			*ua = ~(*ua) & 0x7fff;
+			(*ua)++;
+			(*ua) *= -1;
+		}
+		(*ua) *= 1562500 / chip->pdata->r_sns;
+
+		return ret;
+	}
+	
+	return -EINVAL;
 }
 
 static int max17042_get_property(struct power_supply *psy,
@@ -351,40 +382,38 @@ static int max17042_get_property(struct power_supply *psy,
 			return ret;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		if (chip->pdata->enable_current_sense) {
-			ret = regmap_read(map, MAX17042_Current, &data);
-			if (ret < 0)
-				return ret;
-
-			val->intval = data;
-			if (val->intval & 0x8000) {
-				/* Negative */
-				val->intval = ~val->intval & 0x7fff;
-				val->intval++;
-				val->intval *= -1;
-			}
-			val->intval *= 1562500 / chip->pdata->r_sns;
-		} else {
-			return -EINVAL;
-		}
+		ret = max17042_get_current(chip, false, &val->intval);
+		if (ret < 0)
+			return ret;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_AVG:
-		if (chip->pdata->enable_current_sense) {
-			ret = regmap_read(map, MAX17042_AvgCurrent, &data);
-			if (ret < 0)
-				return ret;
+		ret = max17042_get_current(chip, true, &val->intval);
+		if (ret < 0)
+			return ret;
+		break;
+	case POWER_SUPPLY_PROP_POWER_NOW:
+		ret = regmap_read(map, MAX17042_VCELL, &data);
+		if (ret < 0)
+			return ret;
 
-			val->intval = data;
-			if (val->intval & 0x8000) {
-				/* Negative */
-				val->intval = ~val->intval & 0x7fff;
-				val->intval++;
-				val->intval *= -1;
-			}
-			val->intval *= 1562500 / chip->pdata->r_sns;
-		} else {
-			return -EINVAL;
-		}
+		ret = max17042_get_current(chip, false, &val->intval);
+		if (ret < 0)
+			return ret;
+
+		data = data * 625 / 8;
+		val->intval = ((int64_t)val->intval) * data / 1000000LL;
+		break;
+	case POWER_SUPPLY_PROP_POWER_AVG:
+		ret = regmap_read(map, MAX17042_AvgVCELL, &data);
+		if (ret < 0)
+			return ret;
+
+		ret = max17042_get_current(chip, true, &val->intval);
+		if (ret < 0)
+			return ret;
+
+		data = data * 625 / 8;
+		val->intval = ((int64_t)val->intval) * data / 1000000LL;
 		break;
 	case POWER_SUPPLY_PROP_STATUS:
 		val->intval = chip->status;
@@ -1245,7 +1274,7 @@ static const struct power_supply_desc max17042_no_current_sense_psy_desc = {
 	.set_property	= max17042_set_property,
 	.property_is_writeable	= max17042_property_is_writeable,
 	.properties	= max17042_battery_props,
-	.num_properties	= ARRAY_SIZE(max17042_battery_props) - 2,
+	.num_properties	= ARRAY_SIZE(max17042_battery_props) - 4,
 };
 
 static int max17042_probe(struct i2c_client *client,
