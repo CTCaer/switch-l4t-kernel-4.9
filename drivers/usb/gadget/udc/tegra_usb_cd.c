@@ -74,13 +74,21 @@ static void tegra_usb_cd_update_charging_extcon_state(struct tegra_usb_cd *ucd)
 static int tegra_usb_cd_set_current_limit(struct tegra_usb_cd *ucd, int max_ua)
 {
 	int ret = 0;
+	bool pd_charging = false;
 
 	if (max_ua > 0 && ucd->hw_ops->vbus_pad_protection)
 		ucd->hw_ops->vbus_pad_protection(ucd, true);
 
 	if (ucd->vbus_reg != NULL) {
-		dev_info(ucd->dev, "set current %dma\n", max_ua/1000);
-		ret = regulator_set_current_limit(ucd->vbus_reg, 0, max_ua);
+		if (ucd->pd_ucd)
+			pd_charging = extcon_get_state(ucd->pd_ucd, EXTCON_USB_PD);
+
+		if (!pd_charging) {
+			dev_info(ucd->dev, "set current %dma\n", max_ua/1000);
+			ret = regulator_set_current_limit(ucd->vbus_reg, 0, max_ua);
+		} else {
+			dev_info(ucd->dev, "External PD charging enabled. Non-PD disallowed\n");
+		}
 	}
 
 	if (max_ua == 0 && ucd->hw_ops->vbus_pad_protection)
@@ -319,14 +327,17 @@ static const struct of_device_id tegra_usb_cd_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, tegra_usb_cd_of_match);
 
-static void tegra_usb_cd_parse_dt(struct platform_device *pdev,
+static int tegra_usb_cd_parse_dt(struct platform_device *pdev,
 					struct tegra_usb_cd *ucd)
 {
 	struct device_node *np = pdev->dev.of_node;
+	struct extcon_dev *edev;
+	int count;
+	int err = 0;
 	u32 current_ua = 0;
 
 	if (!np)
-		return;
+		goto out;
 
 	of_property_read_u32(np, "nvidia,dcp-current-limit-ua", &current_ua);
 	ucd->dcp_current_limit_ma = current_ua / 1000;
@@ -334,6 +345,28 @@ static void tegra_usb_cd_parse_dt(struct platform_device *pdev,
 	ucd->qc2_current_limit_ma = current_ua / 1000;
 	of_property_read_u32(np, "nvidia,qc2-input-voltage",
 					&ucd->qc2_voltage);
+
+	count = of_count_phandle_with_args(np,
+			"extcon-cables", "#extcon-cells");
+	if (count <= 0) {
+		dev_info(&pdev->dev, "extcon is missing\n");
+		return 0;
+	}
+
+	edev = extcon_get_extcon_dev_by_cable(&pdev->dev, "pd");
+	if (IS_ERR(edev)) {
+		if (PTR_ERR(edev) == -EPROBE_DEFER) {
+			dev_info(&pdev->dev, "pd-ucd is not available yet\n");
+			err = PTR_ERR(edev);
+		} else {
+			dev_info(&pdev->dev, "pd-ucd is not available\n");
+		}
+		goto out;
+	}
+	ucd->pd_ucd = edev;
+
+out:
+	return err;
 }
 
 static int tegra_usb_cd_probe(struct platform_device *pdev)
@@ -376,7 +409,9 @@ static int tegra_usb_cd_probe(struct platform_device *pdev)
 	soc_data = (struct tegra_usb_cd_soc_data *)match->data;
 	platform_set_drvdata(pdev, ucd);
 
-	tegra_usb_cd_parse_dt(pdev, ucd);
+	err = tegra_usb_cd_parse_dt(pdev, ucd);
+	if (err)
+		return err;
 
 	/* Prepare and register extcon device for charging notification */
 	ucd->edev = devm_extcon_dev_allocate(&pdev->dev,

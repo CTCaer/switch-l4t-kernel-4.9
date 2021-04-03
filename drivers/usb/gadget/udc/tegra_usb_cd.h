@@ -52,6 +52,7 @@ struct tegra_usb_cd {
 	struct device *dev;
 	struct tegra_usb_cd_ops *hw_ops;
 	struct extcon_dev *edev;
+	struct extcon_dev *pd_ucd;
 	struct regulator *vbus_reg;
 	struct phy *phy;
 	struct tegra_xusb_padctl *padctl;
