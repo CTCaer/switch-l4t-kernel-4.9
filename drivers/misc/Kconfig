@@ -810,7 +810,7 @@ config CPULOAD_MONITOR
 	  frequency controllers.
 
 config BM92TXX
-	bool "Rohm Semiconductor BM92TXX USB Type-C Support"
+	tristate "Rohm Semiconductor BM92TXX USB Type-C Support"
 	depends on I2C=y
 	help
 	  Say yes here to support for Rohm Semiconductor BM92TXX. This is a USB
