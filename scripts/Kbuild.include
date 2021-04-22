@@ -475,7 +475,7 @@ tegra-path = $(if  $(wildcard $(srctree)/../$(1)),$(call _TEGRA_REL_PATH)/$(1)/$
 ifneq ($(NV_BUILD_KERNEL_DTS_ROOT),)
 tegra-dtstree = $(NV_BUILD_KERNEL_DTS_ROOT)
 else
-tegra-dtstree = $(srctree)/../../hardware/nvidia
+tegra-dtstree = $(srctree)/../../../hardware/nvidia
 endif
 
 tegra-root-dtstree = $(subst ^$(realpath $(tegra-dtstree)/../..)/,,^$(realpath $(srctree)/arch/arm64/boot/dts))
