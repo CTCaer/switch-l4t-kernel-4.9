@@ -509,7 +509,7 @@ static struct ctl_table kern_table[] = {
 #ifdef CONFIG_CGROUP_SCHEDTUNE
 		.mode		= 0444,
 #else
-		.mode		= 0644,
+		.mode		= 0666,
 #endif
 		.proc_handler	= &sysctl_sched_cfs_boost_handler,
 		.extra1		= &zero,
