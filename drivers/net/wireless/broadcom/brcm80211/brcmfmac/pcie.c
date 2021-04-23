@@ -277,6 +277,7 @@ struct brcmf_pciedev_info {
 			  u16 value);
 	struct brcmf_mp_device *settings;
 	struct work_struct bus_reset;
+	struct work_struct bus_reinit;
 	bool bus_in_reset;
 };
 
@@ -1352,13 +1353,9 @@ static int brcmf_pcie_get_memdump(struct device *dev, void *data, size_t len)
 	return 0;
 }
 
-static void brcmf_pcie_reset(struct work_struct *work)
+static void brcmf_pcie_reset(struct brcmf_pciedev_info *devinfo, bool console)
 {
-	struct brcmf_pciedev_info *devinfo =
-			container_of(work, struct brcmf_pciedev_info,
-					      bus_reset);
 	struct device *dev = &devinfo->pdev->dev;
-	int err;
 
 	if (devinfo->bus_in_reset) {
 		dev_err(dev, "Already into reset, aborting...\n");
@@ -1369,7 +1366,8 @@ static void brcmf_pcie_reset(struct work_struct *work)
 
 	brcmf_pcie_intr_disable(devinfo);
 
-	brcmf_pcie_bus_console_read(devinfo, true);
+	if (console)
+		brcmf_pcie_bus_console_read(devinfo, true);
 
 	brcmf_detach(dev);
 
@@ -1377,6 +1375,41 @@ static void brcmf_pcie_reset(struct work_struct *work)
 	brcmf_pcie_release_scratchbuffers(devinfo);
 	brcmf_pcie_release_ringbuffers(devinfo);
 	brcmf_pcie_reset_device(devinfo);
+}
+
+static void brcmf_pcie_reset_reinit(struct work_struct *work)
+{
+	struct brcmf_pciedev_info *devinfo =
+			container_of(work, struct brcmf_pciedev_info,
+					      bus_reset);
+	struct device *dev = &devinfo->pdev->dev;
+	int err;
+
+	brcmf_pcie_reset(devinfo, true);
+
+	err = brcmf_fw_get_firmwares_pcie(dev, BRCMF_FW_REQUEST_NVRAM |
+						    BRCMF_FW_REQ_NV_OPTIONAL,
+					  devinfo->fw_name, devinfo->nvram_name,
+					  brcmf_pcie_setup,
+					  pci_domain_nr(devinfo->pdev->bus),
+					  devinfo->pdev->bus->number);
+	if (err) {
+		dev_err(dev, "Failed to prepare FW request\n");
+	}
+}
+
+static void brcmf_pcie_reinit(struct work_struct *work)
+{
+	struct brcmf_pciedev_info *devinfo =
+			container_of(work, struct brcmf_pciedev_info,
+					      bus_reinit);
+	struct device *dev = &devinfo->pdev->dev;
+	int err;
+
+	if (!devinfo->bus_in_reset) {
+		dev_err(dev, "Not into reset, aborting...\n");
+		return;
+	}
 
 	err = brcmf_fw_get_firmwares_pcie(dev, BRCMF_FW_REQUEST_NVRAM |
 						    BRCMF_FW_REQ_NV_OPTIONAL,
@@ -1709,6 +1742,9 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 	if (ret)
 		goto fail;
 
+	/* Wait POR in case the device was powered off */
+	msleep(150);
+
 	bus = dev_get_drvdata(dev);
 	pcie_bus_dev = bus->bus_priv.pcie;
 	devinfo = pcie_bus_dev->devinfo;
@@ -1858,7 +1894,8 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 					  devinfo->fw_name, devinfo->nvram_name,
 					  brcmf_pcie_setup, domain_nr, bus_nr);
 
-	INIT_WORK(&devinfo->bus_reset, brcmf_pcie_reset);
+	INIT_WORK(&devinfo->bus_reset, brcmf_pcie_reset_reinit);
+	INIT_WORK(&devinfo->bus_reinit, brcmf_pcie_reinit);
 
 	if (ret == 0)
 		return 0;
@@ -1934,7 +1971,8 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 
 	/* 
 	 * Some devices hang in D3 randomly or when not connected.
-	 * To mitigate that issue do not inform them that host enters D3.
+	 * To mitigate that issue do not inform them that host enters D3
+	 * and simply reset them.
 	 */
 	if (devinfo->settings->bus.pcie.reset_on_wake) {
 		/* Check if suspend was asked too soon */
@@ -1943,7 +1981,9 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 			return -EPERM;
 		}
 
+		brcmf_err("Resetting device!\n");
 		brcmf_bus_change_state(bus, BRCMF_BUS_DOWN);
+		brcmf_pcie_reset(devinfo, false);
 
 		return 0;
 	}
@@ -1980,10 +2020,10 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
 	devinfo = bus->bus_priv.pcie->devinfo;
 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
 
-	/* Check if device requires a reset after D3 */
+	/* Check if device requires a reinit after D3 */
 	if (devinfo->settings->bus.pcie.reset_on_wake) {
-		brcmf_err("Resetting device after wake up!\n");
-		schedule_work(&devinfo->bus_reset);
+		brcmf_err("Reinit after wake up!\n");
+		schedule_work(&devinfo->bus_reinit);
 		return 0;
 	}
 
