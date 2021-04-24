@@ -31,6 +31,9 @@ always		:= $(dtb-y)
 
 targets += dtbs
 
+# Enable DTB symbols
+DTC_FLAGS += -@
+
 DTC_FLAGS := -i $(tegra-dtstree)/soc/tegra/kernel-include
 DTC_FLAGS += -i $(tegra-dtstree)/platform/tegra/common/kernel-dts
 DTCCPP_FLAGS := -I$(tegra-dtstree)/soc/tegra/kernel-include
