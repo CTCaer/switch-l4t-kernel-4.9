@@ -996,7 +996,7 @@ calc_td0_0:
 	tdelta = dst_emc_entry->current_dram_clktree_c0d0u1 - (dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D0U1_INDEX] / 100);
 	if (tdelta < 0)
 		tdelta *= -1;
-	if (tdelta > adelta)
+	if ((u32)tdelta > adelta)
 		adelta = tdelta;
 	if (((dst_rate_mhz * tdelta * 128) / 1000000) > dst_emc_entry->tree_margin)
 		dst_emc_entry->current_dram_clktree_c0d0u1 = dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D0U1_INDEX] / 100;
@@ -1026,7 +1026,7 @@ calc_td1_0:
 		tdelta = dst_emc_entry->current_dram_clktree_c1d0u0 - (dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U0_INDEX] / 100);
 		if (tdelta < 0)
 			tdelta *= -1;
-		if (tdelta > adelta)
+		if ((u32)tdelta > adelta)
 			adelta = tdelta;
 		if (((dst_rate_mhz * tdelta * 128) / 1000000) > dst_emc_entry->tree_margin)
 			dst_emc_entry->current_dram_clktree_c1d0u0 = dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U0_INDEX] / 100;
@@ -1054,7 +1054,7 @@ calc_td1_1:
 		tdelta = dst_emc_entry->current_dram_clktree_c1d0u1 - (dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U1_INDEX] / 100);
 		if (tdelta < 0)
 			tdelta *= -1;
-		if (tdelta > adelta)
+		if ((u32)tdelta > adelta)
 			adelta = tdelta;
 		if (((dst_rate_mhz * tdelta * 128) / 1000000) > dst_emc_entry->tree_margin)
 			dst_emc_entry->current_dram_clktree_c1d0u1 = dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U1_INDEX] / 100;
@@ -1107,7 +1107,7 @@ calc_dev2:
 	tdelta = dst_emc_entry->current_dram_clktree_c0d1u0 - (dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U0_INDEX] / 100);
 	if (tdelta < 0)
 		tdelta *= -1;
-	if (tdelta > adelta)
+	if ((u32)tdelta > adelta)
 		adelta = tdelta;
 	if (((dst_rate_mhz * tdelta * 128) / 1000000) > dst_emc_entry->tree_margin)
 		dst_emc_entry->current_dram_clktree_c0d1u0 = dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U0_INDEX] / 100;
@@ -1135,7 +1135,7 @@ calc_tmp_td0_1:
 	tdelta = dst_emc_entry->current_dram_clktree_c0d1u1 - (dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U1_INDEX] / 100);
 	if (tdelta < 0)
 		tdelta *= -1;
-	if (tdelta > adelta)
+	if ((u32)tdelta > adelta)
 		adelta = tdelta;
 	if (((dst_rate_mhz * tdelta * 128) / 1000000) > dst_emc_entry->tree_margin)
 		dst_emc_entry->current_dram_clktree_c0d1u1 = dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U1_INDEX] / 100;
@@ -1165,7 +1165,7 @@ calc_tmp_td1_0:
 		tdelta = dst_emc_entry->current_dram_clktree_c1d1u0 - (dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D1U0_INDEX] / 100);
 		if (tdelta < 0)
 			tdelta *= -1;
-		if (tdelta > adelta)
+		if ((u32)tdelta > adelta)
 			adelta = tdelta;
 		if (((dst_rate_mhz * tdelta * 128) / 1000000) > dst_emc_entry->tree_margin)
 			dst_emc_entry->current_dram_clktree_c1d1u0 = dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D1U0_INDEX] / 100;
@@ -1193,7 +1193,7 @@ calc_tmp_td1_1:
 		tdelta = dst_emc_entry->current_dram_clktree_c1d1u1 - (dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D1U1_INDEX] / 100);
 		if (tdelta < 0)
 			tdelta *= -1;
-		if (tdelta > adelta)
+		if ((u32)tdelta > adelta)
 			adelta = tdelta;
 		if (((dst_rate_mhz * tdelta * 128) / 1000000) > dst_emc_entry->tree_margin)
 			dst_emc_entry->current_dram_clktree_c1d1u1 = dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D1U1_INDEX] / 100;
