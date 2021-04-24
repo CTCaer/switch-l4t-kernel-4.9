@@ -745,9 +745,9 @@ u32 tegra210_apply_periodic_compensation_trimmer(
 				     (s32)next_timing_rate_mhz) / 1000000;
 
 		for (i = 0; i < 4; i++) {
-			if ((tree_delta_taps[i] > next_timing->tree_margin) ||
+			if ((tree_delta_taps[i] > (s32)next_timing->tree_margin) ||
 			    (tree_delta_taps[i] <
-			    (-1 * next_timing->tree_margin))) {
+			    (-1 * (s32)next_timing->tree_margin))) {
 				new[i * 2] = new[i * 2] + tree_delta_taps[i];
 				new[i * 2 + 1] = new[i * 2 + 1] +
 						 tree_delta_taps[i];
@@ -791,9 +791,9 @@ u32 tegra210_apply_periodic_compensation_trimmer(
 				     (s32)next_timing_rate_mhz) / 1000000;
 
 		for (i = 0; i < 4; i++) {
-			if ((tree_delta_taps[i] > next_timing->tree_margin) ||
+			if ((tree_delta_taps[i] > (s32)next_timing->tree_margin) ||
 			    (tree_delta_taps[i] <
-			     (-1 * next_timing->tree_margin))) {
+			     (-1 * (s32)next_timing->tree_margin))) {
 				new[8 + i * 2] = new[8 + i * 2] +
 						 tree_delta_taps[i];
 				new[8 + i * 2 + 1] = new[8 + i * 2 + 1] +
