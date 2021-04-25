@@ -434,7 +434,8 @@ static int max17042_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_STATUS:
 		val->intval = chip->status;
 
-		if (chip->cap >= 100)
+		if (chip->status == POWER_SUPPLY_STATUS_CHARGING &&
+			chip->cap >= 100)
 			val->intval = POWER_SUPPLY_STATUS_FULL;
 		break;
 	default:
@@ -1247,10 +1248,23 @@ static int max17042_update_battery_status(struct battery_gauge_dev *bg_dev,
 		enum battery_charger_status status)
 {
 	struct max17042_chip *chip = battery_gauge_get_drvdata(bg_dev);
+	int soc;
 
 	if (status == BATTERY_CHARGING)
 		chip->status = POWER_SUPPLY_STATUS_CHARGING;
-	else
+	else if (status == BATTERY_CHARGING_DONE) {
+		chip->status = POWER_SUPPLY_STATUS_DISCHARGING;
+
+		soc = max17042_get_battery_soc(bg_dev);
+		if (soc >= 0) {
+			if (chip->override_min_soc > soc)
+				soc = chip->override_min_soc;
+			chip->cap = soc;
+		}
+
+		if (chip->cap >= 0)
+			chip->status = POWER_SUPPLY_STATUS_FULL;
+	} else
 		chip->status = POWER_SUPPLY_STATUS_DISCHARGING;
 
 	power_supply_changed(chip->battery);
