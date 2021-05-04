@@ -150,6 +150,12 @@ static DEVICE_ATTR(ios_timing, S_IRUGO,	ios_timing_show, NULL);
 #define SD_POWEROFF_NOTIFY_TIMEOUT_MS 2000
 #define SD_WRITE_EXTR_SINGLE_TIMEOUT_MS 1000
 
+#define SD_POWEROFF_NOTIFY_TIMEOUT_MS 2000
+
+struct sd_busy_data {
+	struct mmc_card *card;
+	u8 *reg_buf;
+};
 
 /*
  * Given the decoded CSD structure, decode the raw CID to our CID structure.
@@ -1070,18 +1076,6 @@ unsigned mmc_sd_get_max_clock(struct mmc_card *card)
 	return max_dtr;
 }
 
-static bool mmc_sd_card_using_v18(struct mmc_card *card)
-{
-	/*
-	 * According to the SD spec., the Bus Speed Mode (function group 1) bits
-	 * 2 to 4 are zero if the card is initialized at 3.3V signal level. Thus
-	 * they can be used to determine if the card has already switched to
-	 * 1.8V signaling.
-	 */
-	return card->sw_caps.sd3_bus_mode &
-	       (SD_MODE_UHS_SDR50 | SD_MODE_UHS_SDR104 | SD_MODE_UHS_DDR50);
-}
-
 static int sd_write_ext_reg(struct mmc_card *card, u8 fno, u8 page, u16 offset,
 			    u8 reg_data)
 {
@@ -1681,8 +1675,69 @@ static void mmc_sd_detect(struct mmc_host *host)
 	}
 }
 
+static int sd_can_poweroff_notify(struct mmc_card *card)
+{
+	return card->ext_power.feature_support & SD_EXT_POWER_OFF_NOTIFY;
+}
+
+static int sd_busy_poweroff_notify_cb(void *cb_data, bool *busy)
+{
+	struct sd_busy_data *data = cb_data;
+	struct mmc_card *card = data->card;
+	int err;
+
+	/*
+	 * Read the status register for the power management function. It's at
+	 * one byte offset and is one byte long. The Power Off Notification
+	 * Ready is bit 0.
+	 */
+	err = sd_read_ext_reg(card, card->ext_power.fno, card->ext_power.page,
+			      card->ext_power.offset + 1, 1, data->reg_buf);
+	if (err) {
+		pr_warn("%s: error %d reading status reg of PM func\n",
+			mmc_hostname(card->host), err);
+		return err;
+	}
+
+	*busy = !(data->reg_buf[0] & BIT(0));
+	return 0;
+}
+
+static int sd_poweroff_notify(struct mmc_card *card)
+{
+	struct sd_busy_data cb_data;
+	u8 *reg_buf;
+	int err;
+
+	reg_buf = kzalloc(512, GFP_KERNEL);
+	if (!reg_buf)
+		return -ENOMEM;
+
+	/*
+	 * Set the Power Off Notification bit in the power management settings
+	 * register at 2 bytes offset.
+	 */
+	err = sd_write_ext_reg(card, card->ext_power.fno, card->ext_power.page,
+			       card->ext_power.offset + 2, BIT(0));
+	if (err) {
+		pr_warn("%s: error %d writing Power Off Notify bit\n",
+			mmc_hostname(card->host), err);
+		goto out;
+	}
+
+	cb_data.card = card;
+	cb_data.reg_buf = reg_buf;
+	err = __mmc_poll_for_busy(card, SD_POWEROFF_NOTIFY_TIMEOUT_MS,
+				  &sd_busy_poweroff_notify_cb, &cb_data);
+
+out:
+	kfree(reg_buf);
+	return err;
+}
+
 static int _mmc_sd_suspend(struct mmc_host *host)
 {
+	struct mmc_card *card = host->card;
 	int err = 0;
 
 	BUG_ON(!host);
@@ -1690,15 +1745,17 @@ static int _mmc_sd_suspend(struct mmc_host *host)
 
 	mmc_claim_host(host);
 
-	if (mmc_card_suspended(host->card))
+	if (mmc_card_suspended(card))
 		goto out;
 
-	if (!mmc_host_is_spi(host))
+	if (sd_can_poweroff_notify(card))
+		err = sd_poweroff_notify(card);
+	else if (!mmc_host_is_spi(host))
 		err = mmc_deselect_cards(host);
 
 	if (!err) {
 		mmc_power_off(host);
-		mmc_card_set_suspended(host->card);
+		mmc_card_set_suspended(card);
 	}
 
 out:
