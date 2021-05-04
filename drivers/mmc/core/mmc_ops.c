@@ -278,9 +278,8 @@ mmc_send_cxd_native(struct mmc_host *host, u32 arg, u32 *cxd, int opcode)
  * NOTE: void *buf, caller for the buf is required to use DMA-capable
  * buffer or on-stack buffer (with some overhead in callee).
  */
-static int
-mmc_send_cxd_data(struct mmc_card *card, struct mmc_host *host,
-		u32 opcode, void *buf, unsigned len)
+int mmc_send_adtc_data(struct mmc_card *card, struct mmc_host *host, u32 opcode,
+		       u32 args, void *buf, unsigned len)
 {
 	struct mmc_request mrq = {NULL};
 	struct mmc_command cmd = {0};
@@ -291,7 +290,7 @@ mmc_send_cxd_data(struct mmc_card *card, struct mmc_host *host,
 	mrq.data = &data;
 
 	cmd.opcode = opcode;
-	cmd.arg = 0;
+	cmd.arg = args;
 
 	/* NOTE HACK:  the MMC_RSP_SPI_R1 is always correct here, but we
 	 * rely on callers to never use this with "native" calls for reading
@@ -349,7 +348,7 @@ int mmc_send_csd(struct mmc_card *card, u32 *csd)
 	if (!csd_tmp)
 		return -ENOMEM;
 
-	ret = mmc_send_cxd_data(card, card->host, MMC_SEND_CSD, csd_tmp, 16);
+	ret = mmc_send_adtc_data(card, card->host, MMC_SEND_CSD, 0, csd_tmp, 16);
 	if (ret)
 		goto err;
 
@@ -377,7 +376,7 @@ int mmc_send_cid(struct mmc_host *host, u32 *cid)
 	if (!cid_tmp)
 		return -ENOMEM;
 
-	ret = mmc_send_cxd_data(NULL, host, MMC_SEND_CID, cid_tmp, 16);
+	ret = mmc_send_adtc_data(NULL, host, MMC_SEND_CID, 0, cid_tmp, 16);
 	if (ret)
 		goto err;
 
@@ -408,7 +407,7 @@ int mmc_get_ext_csd(struct mmc_card *card, u8 **new_ext_csd)
 	if (!ext_csd)
 		return -ENOMEM;
 
-	err = mmc_send_cxd_data(card, card->host, MMC_SEND_EXT_CSD, ext_csd,
+	err = mmc_send_adtc_data(card, card->host, MMC_SEND_EXT_CSD, 0, ext_csd,
 				512);
 	if (err)
 		kfree(ext_csd);
