@@ -1437,6 +1437,15 @@ static struct ctl_table vm_table[] = {
 		.extra1		= &zero,
 		.extra2		= &one_hundred,
 	},
+#ifdef CONFIG_PROTECTED_ACTIVEFILE
+	{
+		.procname	= "protected_activefile_mbytes",
+		.data		= &vm_protected_activefile_mbytes,
+		.maxlen		= sizeof(vm_protected_activefile_mbytes),
+		.mode		= 0644,
+		.proc_handler	= proc_doulongvec_minmax,
+	},
+#endif
 #ifdef CONFIG_HUGETLB_PAGE
 	{
 		.procname	= "nr_hugepages",

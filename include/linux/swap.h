@@ -346,6 +346,9 @@ extern unsigned long mem_cgroup_shrink_node(struct mem_cgroup *mem,
 						unsigned long *nr_scanned);
 extern unsigned long shrink_all_memory(unsigned long nr_pages);
 extern int vm_swappiness;
+#ifdef CONFIG_PROTECTED_ACTIVEFILE
+extern unsigned long vm_protected_activefile_mbytes;
+#endif
 extern int remove_mapping(struct address_space *mapping, struct page *page);
 extern unsigned long vm_total_pages;
 

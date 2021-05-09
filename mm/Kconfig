@@ -61,6 +61,34 @@ config SPARSEMEM_MANUAL
 
 endchoice
 
+config PROTECTED_ACTIVEFILE
+	bool "Reserve active file pages to prevent disk thrashing"
+	depends on SYSCTL
+	def_bool y
+	help
+	  Keep active file pages in RAM to avoid system freeze due to
+	  disk thrashing that occurs because the running executable
+	  code is being reclaimed during low-mem conditions which is
+	  why it also prevents oom-killer from triggering until
+	  minutes later on some systems.
+
+	  see Documentation/admin-guide/sysctl/vm.rst for more info
+
+config PROTECTED_ACTIVEFILE_MBYTES
+	int "Set default value for vm.vm_protected_activefile_mbytes"
+	depends on PROTECTED_ACTIVEFILE
+	default "64"
+	help
+	  This is the default value(in MiB) that vm.vm_protected_activefile_mbytes gets.
+	  A value of at least 64 or at most 256 is recommended to avoid disk
+	  thrashing on low-memory/memory-pressure conditions, ie. mouse freeze with
+	  constant disk activity.
+
+	  sysctl set vm.vm_protected_activefile_mbytes to a value of 0 disables the
+	  feature at runtime.
+
+	  see Documentation/admin-guide/sysctl/vm.rst for more info
+
 config DISCONTIGMEM
 	def_bool y
 	depends on (!SELECT_MEMORY_MODEL && ARCH_DISCONTIGMEM_ENABLE) || DISCONTIGMEM_MANUAL

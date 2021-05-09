@@ -798,6 +798,20 @@ The default value is 60.
 
 ==============================================================
 
+protected_activefile_mbytes
+
+How much of active file pages in MiB to never evict during high-pressure
+low-memory situations. ie. never reclaim active file pages if under this value.
+This will help prevent disk thrashing caused by Active(file) being close to zero
+in such situations, especially when no swap is used.
+
+Set it to 0 to keep the default behaviour, as if this option was never
+implemented, so you can see the disk thrashing as usual.
+
+The default value is 64.
+
+==============================================================
+
 - user_reserve_kbytes
 
 When overcommit_memory is set to 2, "never overcommit" mode, reserve

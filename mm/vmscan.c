@@ -148,6 +148,11 @@ int vm_swappiness = 60;
  */
 unsigned long vm_total_pages;
 
+#ifdef CONFIG_PROTECTED_ACTIVEFILE
+unsigned long vm_protected_activefile_mbytes __read_mostly =
+									CONFIG_PROTECTED_ACTIVEFILE_MBYTES;
+#endif
+
 static LIST_HEAD(shrinker_list);
 static DECLARE_RWSEM(shrinker_rwsem);
 
@@ -2374,6 +2379,17 @@ out:
 				/* Look ma, no brain */
 				BUG();
 			}
+
+#ifdef CONFIG_PROTECTED_ACTIVEFILE
+			if (LRU_ACTIVE_FILE == lru) {
+				const unsigned long active_file_kib =
+						global_node_page_state(NR_ACTIVE_FILE) * MAX_NR_ZONES;
+				if (active_file_kib <= (vm_protected_activefile_mbytes * 1024)) {
+					nr[lru] = 0;
+					continue;
+				}
+			}
+#endif
 
 			*lru_pages += size;
 			nr[lru] = scan;
