@@ -544,6 +544,7 @@ CONFIG_MTD_SPI_NOR=y
 CONFIG_OF_PLUGIN_MANAGER=y
 CONFIG_ZRAM=y
 CONFIG_BLK_DEV_LOOP=y
+CONFIG_BLK_DEV_NBD=m
 CONFIG_BLK_DEV_RAM=y
 CONFIG_BLK_DEV_RAM_SIZE=8192
 
@@ -1251,6 +1252,7 @@ CONFIG_DRM_TEGRA_UDRM=m
 # Frame buffer Devices
 #
 CONFIG_FB=y
+CONFIG_FB_MODE_PIXCLOCK_HZ=y
 
 #
 # Frame buffer hardware drivers
@@ -1848,6 +1850,7 @@ CONFIG_FAULT_INJECTION=y
 # Runtime Testing
 #
 # CONFIG_DEBUG_SET_MODULE_RONX is not set
+CONFIG_MEMTEST=y
 
 #
 # Security options
@@ -1862,6 +1865,7 @@ CONFIG_HARDENED_USERCOPY=y
 # Crypto core or helper
 #
 CONFIG_CRYPTO_DH=y
+CONFIG_CRYPTO_AUTHENC=m
 
 #
 # Authenticated Encryption with Associated Data
