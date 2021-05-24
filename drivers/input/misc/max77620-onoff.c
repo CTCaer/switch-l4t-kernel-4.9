@@ -22,8 +22,15 @@
 #define ONOFF_IRQF 2
 #define ONOFF_IRQR 3
 
-#define ONOFF_IRQF_MASK BIT(2)
-#define ONOFF_IRQR_MASK BIT(3)
+/* MAX77620 IRQ ONOFF interrupts */
+#define MAX77620_IRQ_ONOFF_MRWRN	0
+#define MAX77620_IRQ_ONOFF_EN0_1SEC	1
+#define MAX77620_IRQ_ONOFF_EN0_F	2
+#define MAX77620_IRQ_ONOFF_EN0_R	3
+#define MAX77620_IRQ_ONOFF_LID_F	4
+#define MAX77620_IRQ_ONOFF_LID_R	5
+#define MAX77620_IRQ_ONOFF_ACOK_F	6
+#define MAX77620_IRQ_ONOFF_ACOK_R	7
 
 struct max77620_onoff {
 	struct regmap *rmap;
@@ -34,30 +41,14 @@ struct max77620_onoff {
 };
 
 static const struct regmap_irq max77620_onoff_irqs[] = {
-	[0] = {
-		.mask = MAX77620_IRQ_LVL2_ONOFF_MRWRN,
-		.reg_offset = 0,
-	},
-	[1] = {
-		.mask = MAX77620_IRQ_LVL2_ONOFF_EN0_1SEC,
-		.reg_offset = 0,
-	},
-	[2] = {
-		.mask = MAX77620_IRQ_LVL2_ONOFF_EN0_F,
-		.reg_offset = 0,
-	},
-	[3] = {
-		.mask = MAX77620_IRQ_LVL2_ONOFF_EN0_R,
-		.reg_offset = 0,
-	},
-	[4] = {
-		.mask = MAX77620_IRQ_LVL2_ONOFF_ACOK_F,
-		.reg_offset = 0,
-	},
-	[5] = {
-		.mask = MAX77620_IRQ_LVL2_ONOFF_ACOK_R,
-		.reg_offset = 0,
-	},
+	REGMAP_IRQ_REG(MAX77620_IRQ_ONOFF_MRWRN, 0, MAX77620_IRQ_ONOFF_MRWRN_MASK),
+	REGMAP_IRQ_REG(MAX77620_IRQ_ONOFF_EN0_1SEC, 0, MAX77620_IRQ_ONOFF_EN0_1SEC_MASK),
+	REGMAP_IRQ_REG(MAX77620_IRQ_ONOFF_EN0_F, 0, MAX77620_IRQ_ONOFF_EN0_F_MASK),
+	REGMAP_IRQ_REG(MAX77620_IRQ_ONOFF_EN0_R, 0, MAX77620_IRQ_ONOFF_EN0_R_MASK),
+	REGMAP_IRQ_REG(MAX77620_IRQ_ONOFF_LID_F, 0, MAX77620_IRQ_ONOFF_LID_F_MASK),
+	REGMAP_IRQ_REG(MAX77620_IRQ_ONOFF_LID_R, 0, MAX77620_IRQ_ONOFF_LID_R_MASK),
+	REGMAP_IRQ_REG(MAX77620_IRQ_ONOFF_ACOK_F, 0, MAX77620_IRQ_ONOFF_ACOK_F_MASK),
+	REGMAP_IRQ_REG(MAX77620_IRQ_ONOFF_ACOK_R, 0, MAX77620_IRQ_ONOFF_ACOK_R_MASK),
 };
 
 static struct regmap_irq_chip max77620_onoff_irq_chip = {
@@ -137,16 +128,20 @@ static int max77620_onoff_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	onoff->irq_f = regmap_irq_get_virq(chip->onoff_irq_data, ONOFF_IRQF);
-	onoff->irq_r = regmap_irq_get_virq(chip->onoff_irq_data, ONOFF_IRQR);
+	onoff->irq_f = regmap_irq_get_virq(chip->onoff_irq_data,
+					   MAX77620_IRQ_ONOFF_EN0_F);
+	onoff->irq_r = regmap_irq_get_virq(chip->onoff_irq_data,
+					   MAX77620_IRQ_ONOFF_EN0_R);
 
-	ret = devm_request_any_context_irq(dev, onoff->irq_f, max77620_onoff_handler,
-					     IRQF_ONESHOT, "en0-down", onoff);
+	ret = devm_request_any_context_irq(dev, onoff->irq_f,
+					   max77620_onoff_handler,
+					   IRQF_ONESHOT, "en0-down", onoff);
 	if (ret < 0)
 		goto fail;
 
-	ret = devm_request_any_context_irq(dev, onoff->irq_r, max77620_onoff_handler,
-					     IRQF_ONESHOT, "en0-up", onoff);
+	ret = devm_request_any_context_irq(dev, onoff->irq_r,
+					   max77620_onoff_handler,
+					   IRQF_ONESHOT, "en0-up", onoff);
 	if (ret < 0)
 		goto fail;
 
@@ -187,7 +182,7 @@ static int max77620_onoff_resume(struct device *dev)
 	onoff->suspended = false;
 
 	/* If ON/OFF was pressed, report it */
-	if (val & ONOFF_IRQR_MASK) {
+	if (val & MAX77620_IRQ_ONOFF_EN0_R_MASK) {
 		input_report_key(onoff->input, onoff->code, 1);
 		input_sync(onoff->input);
 	}
