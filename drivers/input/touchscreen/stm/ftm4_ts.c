@@ -795,7 +795,7 @@ static int fts_power_ctrl(void *data, bool on)
 	if (gpio_is_valid(pdata->vdd_gpio)) {
 		gpio_request(pdata->vdd_gpio, "touch-vdd");
 	} else {
-		regulator_avdd = regulator_get(NULL, pdata->regulator_avdd);
+		regulator_avdd = regulator_get(dev, pdata->regulator_avdd);
 		if (IS_ERR_OR_NULL(regulator_avdd)) {
 			tsp_debug_err(dev, "%s: Failed to get %s regulator.\n", __func__, pdata->regulator_avdd);
 			goto out;
@@ -804,7 +804,7 @@ static int fts_power_ctrl(void *data, bool on)
 	if (gpio_is_valid(pdata->vio_gpio)) {
 		gpio_request(pdata->vio_gpio, "touch-vio");
 	} else {
-		regulator_dvdd = regulator_get(NULL, pdata->regulator_dvdd);
+		regulator_dvdd = regulator_get(dev, pdata->regulator_dvdd);
 		if (IS_ERR_OR_NULL(regulator_dvdd)) {
 			tsp_debug_err(dev, "%s: Failed to get %s regulator.\n", __func__, pdata->regulator_dvdd);
 			retval = -EPROBE_DEFER;
