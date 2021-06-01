@@ -1797,9 +1797,6 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 		ctlr->is_hori = false;
 	}
 
-	for (i = 5, j = 1; i >= 0; i--, j++)
-		ctlr->mac_addr[i] = packet->data[j];
-
 	ctlr->mac_addr_str = devm_kasprintf(&ctlr->sdev->dev, GFP_KERNEL,
 					    "%02X:%02X:%02X:%02X:%02X:%02X",
 					    ctlr->mac_addr[0],
