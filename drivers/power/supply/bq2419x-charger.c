@@ -617,8 +617,8 @@ static int bq2419x_charger_input_voltage_configure(
 	return 0;
 }
 
-static int bq2419x_configure_charging_current(struct bq2419x_chip *bq2419x,
-	int in_current_limit)
+static int bq2419x_configure_input_charging_current(
+		struct bq2419x_chip *bq2419x, int in_current_limit)
 {
 	int val = 0;
 	int ret = 0;
@@ -653,7 +653,7 @@ static int bq2419x_configure_charging_current(struct bq2419x_chip *bq2419x,
 
 	for (; floor <= val; floor++) {
 		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_INPUT_SRC_REG,
-				BQ2419x_CONFIG_MASK, floor);
+				BQ2419x_INPUT_CURRENT_MASK, floor);
 		if (ret < 0)
 			dev_err(bq2419x->dev,
 				"INPUT_SRC_REG update failed: %d\n", ret);
@@ -671,7 +671,7 @@ static int bq2419x_configure_charging_current(struct bq2419x_chip *bq2419x,
 	return ret;
 }
 
-static int bq2419x_set_charging_current(struct regulator_dev *rdev,
+static int bq2419x_reg_set_input_charging_current(struct regulator_dev *rdev,
 			int min_uA, int max_uA)
 {
 	struct bq2419x_chip *bq2419x = rdev_get_drvdata(rdev);
@@ -740,7 +740,7 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 	}
 	if (bq2419x->wake_lock_released)
 		in_current_limit = 500;
-	ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
+	ret = bq2419x_configure_input_charging_current(bq2419x, in_current_limit);
 	if (ret < 0)
 		goto error;
 
@@ -759,11 +759,11 @@ error:
 	return ret;
 }
 
-static struct regulator_ops bq2419x_tegra_regulator_ops = {
-	.set_current_limit = bq2419x_set_charging_current,
+static struct regulator_ops bq2419x_regulator_ops = {
+	.set_current_limit	= bq2419x_reg_set_input_charging_current,
 };
 
-static int bq2419x_set_charging_current_suspend(struct bq2419x_chip *bq2419x,
+static int bq2419x_set_input_charging_current_suspend(struct bq2419x_chip *bq2419x,
 			int in_current_limit)
 {
 	int ret;
@@ -785,7 +785,7 @@ static int bq2419x_set_charging_current_suspend(struct bq2419x_chip *bq2419x,
 		dev_err(bq2419x->dev, "SYS_STAT_REG read failed: %d\n", ret);
 
 	if (!bq2419x->cable_connected) {
-		ret = bq2419x_configure_charging_current(bq2419x,
+		ret = bq2419x_configure_input_charging_current(bq2419x,
 				in_current_limit);
 		if (ret < 0)
 			return ret;
@@ -806,7 +806,7 @@ static int bq2419x_reconfigure_charger_param(struct bq2419x_chip *bq2419x,
 		return ret;
 	}
 
-	ret = bq2419x_configure_charging_current(bq2419x,
+	ret = bq2419x_configure_input_charging_current(bq2419x,
 			bq2419x->in_current_limit);
 	if (ret < 0) {
 		dev_err(bq2419x->dev, "Current config failed: %d\n", ret);
@@ -1083,7 +1083,7 @@ out:
 
 static struct regulator_desc bq2419x_chg_reg_desc = {
 	.name		= "bq2419x-charger",
-	.ops		= &bq2419x_tegra_regulator_ops,
+	.ops		= &bq2419x_regulator_ops,
 	.type		= REGULATOR_CURRENT,
 	.owner		= THIS_MODULE,
 };
@@ -1247,7 +1247,7 @@ static ssize_t bq2419x_enable_suspend_on_charging(struct file *file,
 	if (enabled && !bq2419x->wake_lock_released) {
 		if (bq2419x->in_current_limit == 500)
 			return -EINVAL;
-		ret = bq2419x_configure_charging_current(bq2419x, 500);
+		ret = bq2419x_configure_input_charging_current(bq2419x, 500);
 		if (ret  < 0) {
 			dev_err(bq2419x->dev,
 				"Charging Current config faild: %d\n", ret);
@@ -1257,7 +1257,7 @@ static ssize_t bq2419x_enable_suspend_on_charging(struct file *file,
 		bq2419x->wake_lock_released = true;
 	} else if (!enabled && bq2419x->wake_lock_released) {
 		bq2419x->wake_lock_released = false;
-		ret = bq2419x_configure_charging_current(bq2419x,
+		ret = bq2419x_configure_input_charging_current(bq2419x,
 				bq2419x->last_charging_current/1000);
 		if (ret  < 0) {
 			dev_err(bq2419x->dev,
@@ -1332,7 +1332,7 @@ static ssize_t bq2419x_show_input_charging_current(struct device *dev,
 		dev_err(bq2419x->dev, "INPUT_SRC read failed: %d\n", ret);
 		return ret;
 	}
-	ret = iinlim[BQ2419x_CONFIG_MASK & reg_val];
+	ret = iinlim[BQ2419x_INPUT_CURRENT_MASK & reg_val];
 	return snprintf(buf, MAX_STR_PRINT, "%d mA\n", ret);
 }
 
@@ -1351,7 +1351,7 @@ static ssize_t bq2419x_set_input_charging_current(struct device *dev,
 		return -EIO;
 	}
 	in_current_limit = memparse(p, &p);
-	ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
+	ret = bq2419x_configure_input_charging_current(bq2419x, in_current_limit);
 	mutex_unlock(&bq2419x->mutex);
 	if (ret  < 0) {
 		dev_err(dev, "Current %d mA configuration failed: %d\n",
@@ -2361,7 +2361,7 @@ static int bq2419x_suspend(struct device *dev)
 
 	if (bq2419x->in_current_limit <= 500) {
 		dev_info(bq2419x->dev, "Battery charging with 500mA\n");
-		ret = bq2419x_set_charging_current_suspend(bq2419x, 500);
+		ret = bq2419x_set_input_charging_current_suspend(bq2419x, 500);
 		if (ret < 0)
 			dev_err(bq2419x->dev,
 			"Config of charging failed: %d\n", ret);
