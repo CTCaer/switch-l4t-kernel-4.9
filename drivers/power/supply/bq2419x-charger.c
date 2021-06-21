@@ -6,6 +6,8 @@
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  * Author: Syed Rafiuddin <srafiuddin@nvidia.com>
  *
+ * Copyright (c) 2020-2021, CTCaer <ctcaer@gmail.com>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation version 2.
@@ -150,6 +152,7 @@ struct bq2419x_chip {
 	int				wdt_time_sec;
 	bool				no_otg_wdt;
 	int				soc_reg_limit;
+	bool				soc_reg_reached_max;
 };
 
 static int current_to_reg(const unsigned int *tbl,
@@ -534,14 +537,64 @@ static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 	return ret;
 }
 
+static int bq2419x_soc_regulation_control(struct bq2419x_chip *bq2419x)
+{
+	int limit_min = bq2419x->soc_reg_limit - 5;
+	int limit_max = bq2419x->soc_reg_limit - 5;
+	int res, val, battery_soc;
+	unsigned int charge_val;
+	bool set_value = false;
+
+	/*
+	 * SOC regulation management:
+	 * Case            | Charging
+	 * ---------------------------
+	 * Disabled        | Enabled
+	 * SOC <= min      | Enabled
+	 * SOC >= max      | Disabled
+	 * min < SOC < max |---------
+	 *  Reached max    | Disabled
+	 *  Reached min    | Enabled
+	 */
+	battery_soc = battery_gauge_get_battery_soc(bq2419x->bc_dev);
+
+	if (!bq2419x->soc_reg_limit ||
+	    (battery_soc > 0 && battery_soc <= limit_min)) {
+	    	bq2419x->soc_reg_reached_max = false;
+		charge_val = BQ2419X_ENABLE_CHARGE;
+		set_value = true;
+	} else if (battery_soc > 0 && battery_soc >= limit_max) {
+		bq2419x->soc_reg_reached_max = true;
+		charge_val = BQ2419X_DISABLE_CHARGE;
+		set_value = true;
+	} else if (bq2419x->soc_reg_reached_max && battery_soc > 0 &&
+		   battery_soc > limit_min && battery_soc < limit_max) {
+		charge_val = BQ2419X_DISABLE_CHARGE;
+		set_value = true;
+	}
+
+	if (!set_value)
+		return 0;
+
+	res = regmap_read(bq2419x->regmap, BQ2419X_PWR_ON_REG, &val);
+	if (res < 0)
+		return res;
+
+	val &= BQ2419X_ENABLE_CHARGE_MASK;
+	if (val != charge_val) {
+		res = regmap_update_bits(bq2419x->regmap,
+			BQ2419X_PWR_ON_REG,
+			BQ2419X_ENABLE_CHARGE_MASK,
+			charge_val);
+	}
+	return res;
+}
+
 static void bq2419x_soc_regulation_work_handler(struct work_struct *work)
 {
 	struct bq2419x_chip *bq2419x = container_of(to_delayed_work(work),
 			struct bq2419x_chip, soc_regulation_work);
-	unsigned int charge_val;
 	int res = -1;
-	int val;
-	int battery_soc;
 
 	if (mutex_is_locked(&bq2419x->otg_mutex))
 		goto out;
@@ -550,41 +603,17 @@ static void bq2419x_soc_regulation_work_handler(struct work_struct *work)
 	if (!bq2419x->is_otg_connected &&
 	    !mutex_is_locked(&bq2419x->mutex)) {
 		mutex_lock(&bq2419x->mutex);
-		battery_soc =
-			battery_gauge_get_battery_soc(bq2419x->bc_dev);
-		if (!bq2419x->soc_reg_limit || (battery_soc > 0 &&
-		    battery_soc < (bq2419x->soc_reg_limit - 5))) {
-			charge_val = BQ2419X_ENABLE_CHARGE;
-			res = 0;
-		}
-		else if (battery_soc > 0 &&
-			 battery_soc > (bq2419x->soc_reg_limit + 5)) {
-			charge_val = BQ2419X_DISABLE_CHARGE;
-			res = 0;
-		}
-		if (!res) {
-			res = regmap_read(bq2419x->regmap, BQ2419X_PWR_ON_REG, &val);
-			if (res >= 0) {
-				val &= BQ2419X_ENABLE_CHARGE_MASK;
-				if (val != charge_val) {
-					res = regmap_update_bits(bq2419x->regmap,
-						BQ2419X_PWR_ON_REG,
-						BQ2419X_ENABLE_CHARGE_MASK,
-						charge_val);
-				}
-				if (res < 0)
-					dev_err(bq2419x->dev,
-						"PWR_ON_REG update failed %d", res);
-			}
-		} else
-			res = 0;
+		res = bq2419x_soc_regulation_control(bq2419x);
+		if (res < 0)
+			dev_err(bq2419x->dev,
+				"PWR_ON_REG update failed %d", res);
 		mutex_unlock(&bq2419x->mutex);
 	} else if (bq2419x->is_otg_connected)
 		res = 0;
 	mutex_unlock(&bq2419x->otg_mutex);
 
 out:
-	/* If failed to set or active reschedule */
+	/* If failed to set or active regulation */
 	if (res < 0 || bq2419x->soc_reg_limit)
 		schedule_delayed_work(&bq2419x->soc_regulation_work,
 				msecs_to_jiffies(60 * 1000));
@@ -1851,7 +1880,7 @@ static int bq2419x_set_property(struct power_supply *psy,
 		}
 		bq2419x->soc_reg_limit = data;
 
-		cancel_delayed_work(&bq2419x->soc_regulation_work);
+		cancel_delayed_work_sync(&bq2419x->soc_regulation_work);
 		schedule_delayed_work(&bq2419x->soc_regulation_work,
 				      msecs_to_jiffies(60 * 1000));
 		break;
