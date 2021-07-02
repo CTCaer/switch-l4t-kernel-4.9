@@ -525,6 +525,7 @@ static int joycon_hid_send_sync(struct joycon_ctlr *ctlr, u8 *data, size_t len,
 {
 	int ret;
 	int tries = 2;
+	unsigned long flags;
 
 	/*
 	 * The controller occasionally seems to drop subcommands. In testing,
@@ -556,6 +557,13 @@ static int joycon_hid_send_sync(struct joycon_ctlr *ctlr, u8 *data, size_t len,
 			memset(ctlr->input_buf, 0, JC_MAX_RESP_SIZE);
 			return ret;
 		}
+
+		spin_lock_irqsave(&ctlr->lock, flags);
+		if (ctlr->ctlr_state == JOYCON_CTLR_STATE_REMOVED) {
+			spin_unlock_irqrestore(&ctlr->lock, flags);
+			return -ENODEV;
+		}
+		spin_unlock_irqrestore(&ctlr->lock, flags);
 
 		ret = wait_event_timeout(ctlr->wait, ctlr->received_resp,
 					 timeout);
@@ -2125,6 +2133,8 @@ static int nintendo_hid_event(struct hid_device *hdev,
 			      struct hid_report *report, u8 *raw_data, int size)
 {
 	struct joycon_ctlr *ctlr = hid_get_drvdata(hdev);
+	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_REMOVED)
+		return -ENODEV;
 
 	if (size < 1)
 		return -EINVAL;
@@ -2318,6 +2328,10 @@ static void nintendo_hid_remove(struct hid_device *hdev)
 
 	/* Prevent further attempts at sending subcommands. */
 	spin_lock_irqsave(&ctlr->lock, flags);
+	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_REMOVED) {
+		spin_unlock_irqrestore(&ctlr->lock, flags);
+		return;
+	}
 	ctlr->ctlr_state = JOYCON_CTLR_STATE_REMOVED;
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
