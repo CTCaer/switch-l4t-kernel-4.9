@@ -428,6 +428,7 @@ struct joycon_ctlr {
 	u16 rumble_lh_freq;
 	u16 rumble_rl_freq;
 	u16 rumble_rh_freq;
+	bool rumble_zero_amp;
 };
 
 static int joycon_serdev_send(struct joycon_ctlr *ctlr, u8 *data,
@@ -908,11 +909,12 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 	dev_dbg(&ctlr->sdev->dev, "parse_report()\n");
 
 	spin_lock_irqsave(&ctlr->lock, flags);
-	if (!ctlr->is_hori) {
-		if (IS_ENABLED(CONFIG_JOYCON_SERDEV_FF) && rep->vibrator_report &&
-			(msecs - ctlr->rumble_msecs) >= JC_RUMBLE_PERIOD_MS)
-			queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
-	}
+	if (!ctlr->is_hori && IS_ENABLED(CONFIG_JOYCON_SERDEV_FF) &&
+		rep->vibrator_report &&
+		(msecs - ctlr->rumble_msecs) >= JC_RUMBLE_PERIOD_MS &&
+		(ctlr->rumble_queue_head != ctlr->rumble_queue_tail ||
+		 !ctlr->rumble_zero_amp))
+		queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
 
 	ctlr->last_input_report_msecs = jiffies_to_msecs(jiffies);
 
@@ -1196,6 +1198,38 @@ static void joycon_input_poller(struct work_struct *work)
 			   msecs_to_jiffies(15));
 }
 
+static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
+{
+	int ret;
+	unsigned long flags;
+	__be16 subcmd_size;
+	struct device *dev = &ctlr->sdev->dev;
+	struct joycon_subcmd_request *subcmd;
+	u8 buffer[sizeof(*subcmd) - 1] = { 0 };
+
+	subcmd = (struct joycon_subcmd_request *)buffer;
+
+	spin_lock_irqsave(&ctlr->lock, flags);
+	memcpy(subcmd->rumble_data, ctlr->rumble_data[ctlr->rumble_queue_tail],
+	       JC_RUMBLE_DATA_SIZE);
+	spin_unlock_irqrestore(&ctlr->lock, flags);
+
+	subcmd->output_id = JC_OUTPUT_RUMBLE_ONLY;
+	subcmd->packet_num = ctlr->subcmd_num;
+	if (++ctlr->subcmd_num > 0xF)
+		ctlr->subcmd_num = 0;
+
+	subcmd_size = cpu_to_be16(sizeof(*subcmd) - 1);
+
+	ret = joycon_send_packet(ctlr, JC_CMD_EXTRET,
+				 (u8 *)&subcmd_size, sizeof(subcmd_size),
+				 (u8 *)subcmd, sizeof(*subcmd) - 1,
+				 HZ/4, false);
+	if (ret < 0)
+		dev_dbg(dev, "send subcommand failed; ret=%d\n", ret);
+	return ret;
+}
+
 static void joycon_rumble_worker(struct work_struct *work)
 {
 	struct joycon_ctlr *ctlr = container_of(work, struct joycon_ctlr,
@@ -1206,7 +1240,7 @@ static void joycon_rumble_worker(struct work_struct *work)
 
 	while (again) {
 		mutex_lock(&ctlr->output_mutex);
-		ret = joycon_enable_rumble(ctlr, true);
+		ret = joycon_send_rumble_data(ctlr);
 		mutex_unlock(&ctlr->output_mutex);
 
 		/* -ENODEV means the controller was just unplugged */
@@ -1316,6 +1350,8 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_r, u16 amp_l,
 	freq_r_high = ctlr->rumble_rh_freq;
 	freq_l_low = ctlr->rumble_ll_freq;
 	freq_l_high = ctlr->rumble_lh_freq;
+	/* this flag is used to reduce subcommand traffic */
+	ctlr->rumble_zero_amp = (amp_strong == 0) && (amp_weak == 0);
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	/* right joy-con */
