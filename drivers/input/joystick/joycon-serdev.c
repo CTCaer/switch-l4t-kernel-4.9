@@ -47,7 +47,7 @@ static const u8 JC_CMD_EXTSEND			= 0x91;
 static const u8 JC_CMD_EXTRET			= 0x92;
 static const u8 JC_CMD_INITRET			= 0x94;
 static const u8 JC_CMD_HANDSHAKE		= 0xA5;
-static const u8 JC_CMD_HORIINPUTREPORT  = 0x9A;
+static const u8 JC_CMD_HORIINPUTREPORT		= 0x9A;
 
 /* Used in handshake */
 static const u8 JC_INIT_MAC			= 0x01;
@@ -2268,14 +2268,14 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 	mutex_init(&ctlr->output_mutex);
 	init_waitqueue_head(&ctlr->wait);
 	spin_lock_init(&ctlr->lock);
-	ctlr->rumble_queue = alloc_workqueue("joycon-serdev-rumble_wq",
-					     WQ_MEM_RECLAIM, 0);
+	ctlr->rumble_queue = alloc_ordered_workqueue("joycon-serdev-rumble_wq",
+					     WQ_FREEZABLE | WQ_MEM_RECLAIM);
 	INIT_WORK(&ctlr->rumble_worker, joycon_rumble_worker);
-	ctlr->detection_queue = alloc_workqueue("joycon-serdev-detection_wq",
-						 WQ_MEM_RECLAIM, 0);
+	ctlr->detection_queue = alloc_ordered_workqueue("joycon-serdev-detection_wq",
+						 WQ_MEM_RECLAIM);
 	INIT_DELAYED_WORK(&ctlr->detection_worker, joycon_detection_poller);
-	ctlr->input_queue = alloc_workqueue("joycon-serdev-input_wq",
-					    WQ_MEM_RECLAIM, 0);
+	ctlr->input_queue = alloc_ordered_workqueue("joycon-serdev-input_wq",
+					    WQ_MEM_RECLAIM);
 	INIT_DELAYED_WORK(&ctlr->input_worker, joycon_input_poller);
 	INIT_WORK(&ctlr->led_worker, joycon_led_worker);
 
