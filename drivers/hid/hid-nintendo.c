@@ -253,7 +253,11 @@ static const struct joycon_rumble_freq_data joycon_rumble_frequencies[] = {
 	{ 0xf401, 0x00, 1199 }, { 0xf801, 0x00, 1226 }, { 0xfc01, 0x00, 1253 }
 };
 
-#define joycon_max_rumble_amp	(1003)
+#define JOYCON_RUMBLE_AMP_COEFF0	50
+#define JOYCON_RUMBLE_AMP_COEFF1	15
+#define JOYCON_RUMBLE_AMP_COEFF2	30
+#define JOYCON_RUMBLE_AMP_COEFF3	10
+#define JOYCON_RUMBLE_MAX_AMP	(1003) /* 100.3% */
 static const struct joycon_rumble_amp_data joycon_rumble_amplitudes[] = {
 	/* high, low, amp */
 	{ 0x00, 0x0040,    0 },
@@ -290,7 +294,7 @@ static const struct joycon_rumble_amp_data joycon_rumble_amplitudes[] = {
 	{ 0xb6, 0x806d,  825 }, { 0xb8, 0x006e,  843 }, { 0xba, 0x806e,  862 },
 	{ 0xbc, 0x006f,  881 }, { 0xbe, 0x806f,  900 }, { 0xc0, 0x0070,  920 },
 	{ 0xc2, 0x8070,  940 }, { 0xc4, 0x0071,  960 }, { 0xc6, 0x8071,  981 },
-	{ 0xc8, 0x0072, joycon_max_rumble_amp }
+	{ 0xc8, 0x0072, JOYCON_RUMBLE_MAX_AMP }
 };
 
 /* States for controller state machine */
@@ -1447,20 +1451,36 @@ static struct joycon_rumble_amp_data joycon_find_rumble_amp(u16 amp)
 	return data[i];
 }
 
-static void joycon_encode_rumble(u8 *data, u16 freq_low, u16 freq_high, u16 amp)
+static void joycon_encode_rumble(u8 *data,
+				 u16 freq_low, u16 freq_high,
+				 u16 amp, bool left)
 {
 	struct joycon_rumble_freq_data freq_data_low;
 	struct joycon_rumble_freq_data freq_data_high;
-	struct joycon_rumble_amp_data amp_data;
+	struct joycon_rumble_amp_data amp_data_h;
+	struct joycon_rumble_amp_data amp_data_l;
+	u16 amp_mod;
 
 	freq_data_low = joycon_find_rumble_freq(freq_low);
 	freq_data_high = joycon_find_rumble_freq(freq_high);
-	amp_data = joycon_find_rumble_amp(amp);
+
+	if (left) {
+		amp_mod = (u32)amp * JOYCON_RUMBLE_AMP_COEFF1 / 100;
+		amp_data_h = joycon_find_rumble_amp(amp_mod);
+		amp_mod = (u32)amp * JOYCON_RUMBLE_AMP_COEFF0 / 100;
+		amp_data_l = joycon_find_rumble_amp(amp_mod);
+	} else {
+		amp_mod = (u32)amp * JOYCON_RUMBLE_AMP_COEFF2 / 100;
+		amp_data_h = joycon_find_rumble_amp(amp_mod);
+		amp_mod = (u32)amp * JOYCON_RUMBLE_AMP_COEFF3 / 100;
+		amp_data_l = joycon_find_rumble_amp(amp_mod);
+	}
 
 	data[0] = (freq_data_high.high >> 8) & 0xFF;
-	data[1] = (freq_data_high.high & 0xFF) + amp_data.high;
-	data[2] = freq_data_low.low + ((amp_data.low >> 8) & 0xFF);
-	data[3] = amp_data.low & 0xFF;
+	data[1] = (freq_data_high.high & 0xFF) | amp_data_h.high;
+
+	data[2] = freq_data_low.low | ((amp_data_l.low >> 8) & 0xFF);
+	data[3] = amp_data_l.low & 0xFF;
 }
 
 static const u16 JOYCON_MAX_RUMBLE_HIGH_FREQ	= 1253;
@@ -1488,7 +1508,7 @@ static void joycon_clamp_rumble_freqs(struct joycon_ctlr *ctlr)
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 }
 
-static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_r, u16 amp_l,
+static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_weak, u16 amp_strong,
 			     bool schedule_now)
 {
 	u8 data[JC_RUMBLE_DATA_SIZE];
@@ -1505,16 +1525,16 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_r, u16 amp_l,
 	freq_l_low = ctlr->rumble_ll_freq;
 	freq_l_high = ctlr->rumble_lh_freq;
 	/* this flag is used to reduce subcommand traffic */
-	ctlr->rumble_zero_amp = (amp_l == 0) && (amp_r == 0);
+	ctlr->rumble_zero_amp = (amp_strong == 0) && (amp_weak == 0);
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	/* right joy-con */
-	amp = amp_r * (u32)joycon_max_rumble_amp / 65535;
-	joycon_encode_rumble(data + 4, freq_r_low, freq_r_high, amp);
+	amp = amp_weak * (u32)JOYCON_RUMBLE_MAX_AMP / 65535;
+	joycon_encode_rumble(data + 4, freq_r_low, freq_r_high, amp, false);
 
 	/* left joy-con */
-	amp = amp_l * (u32)joycon_max_rumble_amp / 65535;
-	joycon_encode_rumble(data, freq_l_low, freq_l_high, amp);
+	amp = amp_strong * (u32)JOYCON_RUMBLE_MAX_AMP / 65535;
+	joycon_encode_rumble(data, freq_l_low, freq_l_high, amp, true);
 
 	spin_lock_irqsave(&ctlr->lock, flags);
 	if (++ctlr->rumble_queue_head >= JC_RUMBLE_QUEUE_SIZE)
@@ -2164,8 +2184,8 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 	mutex_init(&ctlr->output_mutex);
 	init_waitqueue_head(&ctlr->wait);
 	spin_lock_init(&ctlr->lock);
-	ctlr->rumble_queue = alloc_workqueue("hid-nintendo-rumble_wq",
-					     WQ_FREEZABLE | WQ_MEM_RECLAIM, 0);
+	ctlr->rumble_queue = alloc_ordered_workqueue("hid-nintendo-rumble_wq",
+					     WQ_FREEZABLE | WQ_MEM_RECLAIM);
 	INIT_WORK(&ctlr->rumble_worker, joycon_rumble_worker);
 	ctlr->led_queue = alloc_ordered_workqueue("hid-nintendo-led_wq",
 						 WQ_MEM_RECLAIM);
