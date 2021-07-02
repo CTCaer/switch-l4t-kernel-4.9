@@ -390,10 +390,16 @@ struct joycon_input_report {
 	};
 } __packed;
 
+struct joycon_led_queue_item {
+	struct led_classdev *led;
+	enum led_brightness brightness;
+};
+
 #define JC_MAX_RESP_SIZE	(sizeof(struct joycon_input_report) + 35)
 #define JC_NUM_LEDS		4
 #define JC_RUMBLE_DATA_SIZE	8
 #define JC_RUMBLE_QUEUE_SIZE	8
+#define JC_LED_QUEUE_SIZE	20
 
 static const u16 JC_RUMBLE_DFLT_LOW_FREQ = 160;
 static const u16 JC_RUMBLE_DFLT_HIGH_FREQ = 320;
@@ -410,6 +416,13 @@ struct joycon_ctlr {
 	u8 mac_addr[6];
 	char *mac_addr_str;
 	enum joycon_ctlr_type ctlr_type;
+
+	/* Used for processing led brightness sets */
+	struct joycon_led_queue_item led_queue_list[JC_LED_QUEUE_SIZE];
+	int led_queue_head;
+	int led_queue_tail;
+	struct workqueue_struct *led_queue;
+	struct work_struct led_worker;
 
 	/* The following members are used for synchronous sends/receives */
 	enum joycon_msg_type msg_type;
@@ -1674,6 +1687,36 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
 	return 0;
 }
 
+static void joycon_led_brightness_set_noblock(struct led_classdev *led,
+					      enum led_brightness brightness)
+{
+	struct device *dev = led->dev->parent;
+	struct hid_device *hdev = to_hid_device(dev);
+	struct joycon_ctlr *ctlr;
+	unsigned long flags;
+	struct joycon_led_queue_item *queue_item;
+
+
+	ctlr = hid_get_drvdata(hdev);
+	if (!ctlr) {
+		hid_err(hdev, "No controller data\n");
+		return;
+	}
+
+	spin_lock_irqsave(&ctlr->lock, flags);
+	if (ctlr->ctlr_state != JOYCON_CTLR_STATE_READ) {
+		spin_unlock_irqrestore(&ctlr->lock, flags);
+		return;
+	}
+	queue_item = &ctlr->led_queue_list[ctlr->led_queue_head];
+	queue_item->led = led;
+	queue_item->brightness = brightness;
+	if (++ctlr->led_queue_head >= JC_LED_QUEUE_SIZE)
+		ctlr->led_queue_head = 0;
+	queue_work(ctlr->led_queue, &ctlr->led_worker);
+	spin_unlock_irqrestore(&ctlr->lock, flags);
+}
+
 static int joycon_player_led_brightness_set(struct led_classdev *led,
 					    enum led_brightness brightness)
 {
@@ -1753,6 +1796,35 @@ static const char * const joycon_player_led_names[] = {
 	"player4"
 };
 
+static void joycon_led_worker(struct work_struct *work)
+{
+	struct joycon_ctlr *ctlr = container_of(work, struct joycon_ctlr,
+							led_worker);
+	unsigned long flags;
+
+	spin_lock_irqsave(&ctlr->lock, flags);
+	while (ctlr->led_queue_tail != ctlr->led_queue_head) {
+		struct joycon_led_queue_item *item;
+
+		if (ctlr->ctlr_state == JOYCON_CTLR_STATE_REMOVED) {
+			break;
+		}
+
+		spin_unlock_irqrestore(&ctlr->lock, flags);
+		item = ctlr->led_queue_list + ctlr->led_queue_tail;
+		if (item->led == &ctlr->home_led)
+			joycon_home_led_brightness_set(item->led,
+						       item->brightness);
+		else
+			joycon_player_led_brightness_set(item->led,
+							 item->brightness);
+		spin_lock_irqsave(&ctlr->lock, flags);
+		if (++ctlr->led_queue_tail >= JC_LED_QUEUE_SIZE)
+			ctlr->led_queue_tail = 0;
+	}
+	spin_unlock_irqrestore(&ctlr->lock, flags);
+}
+
 static DEFINE_MUTEX(joycon_input_num_mutex);
 static int joycon_leds_create(struct joycon_ctlr *ctlr)
 {
@@ -1784,8 +1856,7 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
 		led->name = name;
 		led->brightness = ((i + 1) <= input_num) ? LED_ON : LED_OFF;
 		led->max_brightness = LED_ON;
-		led->brightness_set_blocking =
-					joycon_player_led_brightness_set;
+		led->brightness_set = joycon_led_brightness_set_noblock;
 		led->flags = LED_CORE_SUSPENDRESUME | LED_HW_PLUGGABLE;
 
 		ret = devm_led_classdev_register(&hdev->dev, led);
@@ -1809,7 +1880,7 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
 		led->name = name;
 		led->brightness = 0;
 		led->max_brightness = 0xF;
-		led->brightness_set_blocking = joycon_home_led_brightness_set;
+		led->brightness_set = joycon_led_brightness_set_noblock;
 		led->flags = LED_CORE_SUSPENDRESUME | LED_HW_PLUGGABLE;
 		ret = devm_led_classdev_register(&hdev->dev, led);
 		if (ret) {
@@ -2050,6 +2121,9 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 	ctlr->rumble_queue = alloc_workqueue("hid-nintendo-rumble_wq",
 					     WQ_FREEZABLE | WQ_MEM_RECLAIM, 0);
 	INIT_WORK(&ctlr->rumble_worker, joycon_rumble_worker);
+	ctlr->led_queue = alloc_ordered_workqueue("hid-nintendo-led_wq",
+						 WQ_MEM_RECLAIM);
+	INIT_WORK(&ctlr->led_worker, joycon_led_worker);
 
 	ret = hid_parse(hdev);
 	if (ret) {
@@ -2192,6 +2266,8 @@ err_stop:
 	hid_hw_stop(hdev);
 err_wq:
 	destroy_workqueue(ctlr->rumble_queue);
+	destroy_workqueue(ctlr->led_queue);
+
 err:
 	hid_err(hdev, "probe - fail = %d\n", ret);
 	return ret;
@@ -2210,6 +2286,7 @@ static void nintendo_hid_remove(struct hid_device *hdev)
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	destroy_workqueue(ctlr->rumble_queue);
+	destroy_workqueue(ctlr->led_queue);
 
 	hid_hw_close(hdev);
 	hid_hw_stop(hdev);
