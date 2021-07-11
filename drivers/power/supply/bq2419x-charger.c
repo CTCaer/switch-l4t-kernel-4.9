@@ -6,6 +6,8 @@
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  * Author: Syed Rafiuddin <srafiuddin@nvidia.com>
  *
+ * Copyright (c) 2020-2021, CTCaer <ctcaer@gmail.com>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation version 2.
@@ -34,6 +36,7 @@
 #include <linux/of_gpio.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/power_supply.h>
 #include <linux/power/bq2419x-charger.h>
 #include <linux/regmap.h>
 #include <linux/regmap.h>
@@ -62,9 +65,17 @@
 #define BQ2419x_TEMP_H_CHG_DISABLE	50
 #define BQ2419x_TEMP_L_CHG_DISABLE	0
 
+#define BQ2419x_SOC_REG_LIMIT_MIN	45
+#define BQ2419x_SOC_REG_LIMIT_MAX	85
+
 /* input current limit */
 static const unsigned int iinlim[] = {
 	100, 150, 500, 900, 1200, 1500, 2000, 3000,
+};
+
+static enum power_supply_property bq2419x_charger_props[] = {
+	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
 };
 
 static const struct regmap_config bq2419x_regmap_config = {
@@ -86,6 +97,7 @@ static const unsigned int bq2419x_extcon_cable[] = {
 struct bq2419x_chip {
 	struct device			*dev;
 	struct regmap			*regmap;
+	struct power_supply		*charger;
 	int				irq;
 	int				gpio_otg_iusb;
 	int				auto_rechg_power_on_time;
@@ -108,6 +120,7 @@ struct bq2419x_chip {
 	struct battery_charger_dev	*bc_dev;
 	int				chg_status;
 
+	struct delayed_work		soc_regulation_work;
 	struct delayed_work		otg_reset_work;
 	struct delayed_work		wdt_restart_wq;
 	int				is_otg_connected;
@@ -138,6 +151,8 @@ struct bq2419x_chip {
 	int				wdt_refresh_timeout;
 	int				wdt_time_sec;
 	bool				no_otg_wdt;
+	int				soc_reg_limit;
+	bool				soc_reg_reached_max;
 };
 
 static int current_to_reg(const unsigned int *tbl,
@@ -522,6 +537,88 @@ static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 	return ret;
 }
 
+static int bq2419x_soc_regulation_control(struct bq2419x_chip *bq2419x)
+{
+	int limit_min = bq2419x->soc_reg_limit - 5;
+	int limit_max = bq2419x->soc_reg_limit - 5;
+	int res, val, battery_soc;
+	unsigned int charge_val;
+	bool set_value = false;
+
+	/*
+	 * SOC regulation management:
+	 * Case            | Charging
+	 * ---------------------------
+	 * Disabled        | Enabled
+	 * SOC <= min      | Enabled
+	 * SOC >= max      | Disabled
+	 * min < SOC < max |---------
+	 *  Reached max    | Disabled
+	 *  Reached min    | Enabled
+	 */
+	battery_soc = battery_gauge_get_battery_soc(bq2419x->bc_dev);
+
+	if (!bq2419x->soc_reg_limit ||
+	    (battery_soc > 0 && battery_soc <= limit_min)) {
+	    	bq2419x->soc_reg_reached_max = false;
+		charge_val = BQ2419X_ENABLE_CHARGE;
+		set_value = true;
+	} else if (battery_soc > 0 && battery_soc >= limit_max) {
+		bq2419x->soc_reg_reached_max = true;
+		charge_val = BQ2419X_DISABLE_CHARGE;
+		set_value = true;
+	} else if (bq2419x->soc_reg_reached_max && battery_soc > 0 &&
+		   battery_soc > limit_min && battery_soc < limit_max) {
+		charge_val = BQ2419X_DISABLE_CHARGE;
+		set_value = true;
+	}
+
+	if (!set_value)
+		return 0;
+
+	res = regmap_read(bq2419x->regmap, BQ2419X_PWR_ON_REG, &val);
+	if (res < 0)
+		return res;
+
+	val &= BQ2419X_ENABLE_CHARGE_MASK;
+	if (val != charge_val) {
+		res = regmap_update_bits(bq2419x->regmap,
+			BQ2419X_PWR_ON_REG,
+			BQ2419X_ENABLE_CHARGE_MASK,
+			charge_val);
+	}
+	return res;
+}
+
+static void bq2419x_soc_regulation_work_handler(struct work_struct *work)
+{
+	struct bq2419x_chip *bq2419x = container_of(to_delayed_work(work),
+			struct bq2419x_chip, soc_regulation_work);
+	int res = -1;
+
+	if (mutex_is_locked(&bq2419x->otg_mutex))
+		goto out;
+
+	mutex_lock(&bq2419x->otg_mutex);
+	if (!bq2419x->is_otg_connected &&
+	    !mutex_is_locked(&bq2419x->mutex)) {
+		mutex_lock(&bq2419x->mutex);
+		res = bq2419x_soc_regulation_control(bq2419x);
+		if (res < 0)
+			dev_err(bq2419x->dev,
+				"PWR_ON_REG update failed %d", res);
+		mutex_unlock(&bq2419x->mutex);
+	} else if (bq2419x->is_otg_connected)
+		res = 0;
+	mutex_unlock(&bq2419x->otg_mutex);
+
+out:
+	/* If failed to set or active regulation */
+	if (res < 0 || bq2419x->soc_reg_limit)
+		schedule_delayed_work(&bq2419x->soc_regulation_work,
+				msecs_to_jiffies(60 * 1000));
+}
+
 static void bq2419x_otg_reset_work_handler(struct work_struct *work)
 {
 	int ret;
@@ -617,8 +714,8 @@ static int bq2419x_charger_input_voltage_configure(
 	return 0;
 }
 
-static int bq2419x_configure_charging_current(struct bq2419x_chip *bq2419x,
-	int in_current_limit)
+static int bq2419x_configure_input_charging_current(
+		struct bq2419x_chip *bq2419x, int in_current_limit)
 {
 	int val = 0;
 	int ret = 0;
@@ -653,7 +750,7 @@ static int bq2419x_configure_charging_current(struct bq2419x_chip *bq2419x,
 
 	for (; floor <= val; floor++) {
 		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_INPUT_SRC_REG,
-				BQ2419x_CONFIG_MASK, floor);
+				BQ2419x_INPUT_CURRENT_MASK, floor);
 		if (ret < 0)
 			dev_err(bq2419x->dev,
 				"INPUT_SRC_REG update failed: %d\n", ret);
@@ -671,7 +768,7 @@ static int bq2419x_configure_charging_current(struct bq2419x_chip *bq2419x,
 	return ret;
 }
 
-static int bq2419x_set_charging_current(struct regulator_dev *rdev,
+static int bq2419x_reg_set_input_charging_current(struct regulator_dev *rdev,
 			int min_uA, int max_uA)
 {
 	struct bq2419x_chip *bq2419x = rdev_get_drvdata(rdev);
@@ -740,7 +837,7 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 	}
 	if (bq2419x->wake_lock_released)
 		in_current_limit = 500;
-	ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
+	ret = bq2419x_configure_input_charging_current(bq2419x, in_current_limit);
 	if (ret < 0)
 		goto error;
 
@@ -758,11 +855,11 @@ error:
 	return ret;
 }
 
-static struct regulator_ops bq2419x_tegra_regulator_ops = {
-	.set_current_limit = bq2419x_set_charging_current,
+static struct regulator_ops bq2419x_regulator_ops = {
+	.set_current_limit	= bq2419x_reg_set_input_charging_current,
 };
 
-static int bq2419x_set_charging_current_suspend(struct bq2419x_chip *bq2419x,
+static int bq2419x_set_input_charging_current_suspend(struct bq2419x_chip *bq2419x,
 			int in_current_limit)
 {
 	int ret;
@@ -784,7 +881,7 @@ static int bq2419x_set_charging_current_suspend(struct bq2419x_chip *bq2419x,
 		dev_err(bq2419x->dev, "SYS_STAT_REG read failed: %d\n", ret);
 
 	if (!bq2419x->cable_connected) {
-		ret = bq2419x_configure_charging_current(bq2419x,
+		ret = bq2419x_configure_input_charging_current(bq2419x,
 				in_current_limit);
 		if (ret < 0)
 			return ret;
@@ -805,7 +902,7 @@ static int bq2419x_reconfigure_charger_param(struct bq2419x_chip *bq2419x,
 		return ret;
 	}
 
-	ret = bq2419x_configure_charging_current(bq2419x,
+	ret = bq2419x_configure_input_charging_current(bq2419x,
 			bq2419x->in_current_limit);
 	if (ret < 0) {
 		dev_err(bq2419x->dev, "Current config failed: %d\n", ret);
@@ -1082,7 +1179,7 @@ out:
 
 static struct regulator_desc bq2419x_chg_reg_desc = {
 	.name		= "bq2419x-charger",
-	.ops		= &bq2419x_tegra_regulator_ops,
+	.ops		= &bq2419x_regulator_ops,
 	.type		= REGULATOR_CURRENT,
 	.owner		= THIS_MODULE,
 };
@@ -1246,7 +1343,7 @@ static ssize_t bq2419x_enable_suspend_on_charging(struct file *file,
 	if (enabled && !bq2419x->wake_lock_released) {
 		if (bq2419x->in_current_limit == 500)
 			return -EINVAL;
-		ret = bq2419x_configure_charging_current(bq2419x, 500);
+		ret = bq2419x_configure_input_charging_current(bq2419x, 500);
 		if (ret  < 0) {
 			dev_err(bq2419x->dev,
 				"Charging Current config faild: %d\n", ret);
@@ -1256,7 +1353,7 @@ static ssize_t bq2419x_enable_suspend_on_charging(struct file *file,
 		bq2419x->wake_lock_released = true;
 	} else if (!enabled && bq2419x->wake_lock_released) {
 		bq2419x->wake_lock_released = false;
-		ret = bq2419x_configure_charging_current(bq2419x,
+		ret = bq2419x_configure_input_charging_current(bq2419x,
 				bq2419x->last_charging_current/1000);
 		if (ret  < 0) {
 			dev_err(bq2419x->dev,
@@ -1331,7 +1428,7 @@ static ssize_t bq2419x_show_input_charging_current(struct device *dev,
 		dev_err(bq2419x->dev, "INPUT_SRC read failed: %d\n", ret);
 		return ret;
 	}
-	ret = iinlim[BQ2419x_CONFIG_MASK & reg_val];
+	ret = iinlim[BQ2419x_INPUT_CURRENT_MASK & reg_val];
 	return snprintf(buf, MAX_STR_PRINT, "%d mA\n", ret);
 }
 
@@ -1350,7 +1447,7 @@ static ssize_t bq2419x_set_input_charging_current(struct device *dev,
 		return -EIO;
 	}
 	in_current_limit = memparse(p, &p);
-	ret = bq2419x_configure_charging_current(bq2419x, in_current_limit);
+	ret = bq2419x_configure_input_charging_current(bq2419x, in_current_limit);
 	mutex_unlock(&bq2419x->mutex);
 	if (ret  < 0) {
 		dev_err(dev, "Current %d mA configuration failed: %d\n",
@@ -1743,6 +1840,81 @@ static struct battery_charger_info bq2419x_charger_bci = {
 	.bc_ops = &bq2419x_charger_bci_ops,
 };
 
+static int bq2419x_get_property(struct power_supply *psy,
+			    enum power_supply_property psp,
+			    union power_supply_propval *val)
+{
+	struct bq2419x_chip *bq2419x = power_supply_get_drvdata(psy);
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		val->intval = extcon_get_state(&bq2419x->edev, EXTCON_USB);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		val->intval = bq2419x->soc_reg_limit;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int bq2419x_set_property(struct power_supply *psy,
+			    enum power_supply_property psp,
+			    const union power_supply_propval *val)
+{
+	struct bq2419x_chip *bq2419x = power_supply_get_drvdata(psy);
+	int data = val->intval;
+	bool out_of_bounts = false;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		if (data && data < BQ2419x_SOC_REG_LIMIT_MIN) {
+			data = 0;
+			out_of_bounts = true;
+		} else if (data > BQ2419x_SOC_REG_LIMIT_MAX) {
+			data = 0;
+			out_of_bounts = true;
+		}
+		bq2419x->soc_reg_limit = data;
+
+		cancel_delayed_work_sync(&bq2419x->soc_regulation_work);
+		schedule_delayed_work(&bq2419x->soc_regulation_work,
+				      msecs_to_jiffies(60 * 1000));
+		break;
+	default:
+		return -EINVAL;
+	}
+	if (out_of_bounts)
+		dev_err(bq2419x->dev,
+			"Charge level limit set failed. Min %d, Max %d.\n",
+			BQ2419x_SOC_REG_LIMIT_MIN, BQ2419x_SOC_REG_LIMIT_MAX);
+
+	return 0;
+}
+
+static int bq2419x_property_is_writeable(struct power_supply *psy,
+		enum power_supply_property psp)
+{
+	switch (psp) {
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+static const struct power_supply_desc bq2419x_psy_desc = {
+	.name		= "usb",
+	.type		= POWER_SUPPLY_TYPE_USB,
+	.get_property	= bq2419x_get_property,
+	.set_property	= bq2419x_set_property,
+	.property_is_writeable	= bq2419x_property_is_writeable,
+	.properties	= bq2419x_charger_props,
+	.num_properties	= ARRAY_SIZE(bq2419x_charger_props),
+};
+
 static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client,
 		struct device_node **chg_np, struct device_node **vbus_np)
 {
@@ -2026,6 +2198,7 @@ static int bq2419x_probe(struct i2c_client *client,
 				const struct i2c_device_id *id)
 {
 	struct bq2419x_chip *bq2419x;
+	struct power_supply_config psy_cfg = {};
 	struct bq2419x_platform_data *pdata = NULL;
 	struct device_node *chg_np = NULL;
 	struct device_node *vbus_np = NULL;
@@ -2089,6 +2262,14 @@ static int bq2419x_probe(struct i2c_client *client,
 	if (ret < 0) {
 		dev_err(&client->dev, "sysfs create failed %d\n", ret);
 		return ret;
+	}
+
+	psy_cfg.drv_data = bq2419x;
+	bq2419x->charger = devm_power_supply_register(&client->dev,
+						&bq2419x_psy_desc, &psy_cfg);
+	if (IS_ERR(bq2419x->charger)) {
+		dev_err(&client->dev, "failed: power supply register\n");
+		return PTR_ERR(bq2419x->charger);
 	}
 
 	bq2419x_debugfs_init(client);
@@ -2225,6 +2406,9 @@ skip_bcharger_init:
 	INIT_DELAYED_WORK(&bq2419x->otg_reset_work,
 				bq2419x_otg_reset_work_handler);
 
+	INIT_DELAYED_WORK(&bq2419x->soc_regulation_work,
+				bq2419x_soc_regulation_work_handler);
+
 	return 0;
 scrub_wq:
 	if (pdata->bcharger_pdata)
@@ -2242,6 +2426,9 @@ static int bq2419x_remove(struct i2c_client *client)
 
 	if (bq2419x->battery_presense)
 		battery_charger_unregister(bq2419x->bc_dev);
+
+	if (bq2419x->soc_reg_limit)
+		cancel_delayed_work_sync(&bq2419x->soc_regulation_work);
 
 	if (bq2419x->is_otg_connected) {
 		cancel_delayed_work_sync(&bq2419x->otg_reset_work);
@@ -2264,6 +2451,9 @@ static void bq2419x_shutdown(struct i2c_client *client)
 	mutex_lock(&bq2419x->mutex);
 	bq2419x->shutdown_complete = 1;
 	mutex_unlock(&bq2419x->mutex);
+
+	if (bq2419x->soc_reg_limit)
+		cancel_delayed_work_sync(&bq2419x->soc_regulation_work);
 
 	if (bq2419x->is_otg_connected) {
 		cancel_delayed_work_sync(&bq2419x->otg_reset_work);
@@ -2336,6 +2526,19 @@ static int bq2419x_suspend(struct device *dev)
 	}
 	mutex_unlock(&bq2419x->mutex);
 
+	if (bq2419x->soc_reg_limit && !bq2419x->is_otg_connected) {
+		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
+				BQ2419X_ENABLE_CHARGE_MASK,
+				BQ2419X_DISABLE_CHARGE);
+		if (ret < 0)
+			dev_err(bq2419x->dev,
+				"REG update failed: err %d\n", ret);
+		else {
+			bq2419x->charging_disabled_on_suspend = true;
+			goto end;
+		}
+	}
+
 	battery_soc = battery_gauge_get_battery_soc(bq2419x->bc_dev);
 	if (battery_soc > BQ2419X_PC_USB_LP0_THRESHOLD &&
 			(bq2419x->in_current_limit <= 500) &&
@@ -2360,7 +2563,7 @@ static int bq2419x_suspend(struct device *dev)
 
 	if (bq2419x->in_current_limit <= 500) {
 		dev_info(bq2419x->dev, "Battery charging with 500mA\n");
-		ret = bq2419x_set_charging_current_suspend(bq2419x, 500);
+		ret = bq2419x_set_input_charging_current_suspend(bq2419x, 500);
 		if (ret < 0)
 			dev_err(bq2419x->dev,
 			"Config of charging failed: %d\n", ret);
