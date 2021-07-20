@@ -540,7 +540,7 @@ static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 static int bq2419x_soc_regulation_control(struct bq2419x_chip *bq2419x)
 {
 	int limit_min = bq2419x->soc_reg_limit - 5;
-	int limit_max = bq2419x->soc_reg_limit - 5;
+	int limit_max = bq2419x->soc_reg_limit + 5;
 	int res, val, battery_soc;
 	unsigned int charge_val;
 	bool set_value = false;
