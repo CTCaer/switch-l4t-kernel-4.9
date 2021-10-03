@@ -1,0 +1,34 @@
+[
+ {
+   "repository": "android_kernel_nvidia_nvgpu",
+   "target_path": "kernel/nvidia/nvgpu"
+ },
+ {
+   "repository": "android_kernel_nvidia_nvidia",
+   "target_path": "kernel/nvidia/nvidia"
+ },
+ {
+   "repository": "android_hardware_nvidia_platform_tegra_common",
+   "target_path": "hardware/nvidia/platform/tegra/common"
+ },
+ {
+   "repository": "android_hardware_nvidia_soc_tegra",
+   "target_path": "hardware/nvidia/soc/tegra"
+ },
+ {
+   "repository": "android_hardware_nvidia_platform_t210_common",
+   "target_path": "hardware/nvidia/platform/t210/common"
+ },
+ {
+   "repository": "android_hardware_nvidia_platform_t210_icosa",
+   "target_path": "hardware/nvidia/platform/t210/foster"
+ },
+ {
+   "repository": "android_hardware_nvidia_soc_t210",
+   "target_path": "hardware/nvidia/soc/t210"
+ },
+ {
+   "repository": "android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-gnu-6.4.1",
+   "target_path": "prebuilts/gcc/linux-x86/aarch64/aarch64-linux-gnu-6.4.1"
+ }
+]
