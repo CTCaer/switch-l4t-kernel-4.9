@@ -4,6 +4,7 @@
  * Copyright 2011 Realtek Semiconductor Corp.
  * Author: Johnny Hsu <johnnyhsu@realtek.com>
  * Copyright (c) 2013-2017, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2021, CTCaer <ctcaer@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -61,11 +62,29 @@ static const struct reg_sequence init_list[] = {
 	{RT5640_PR_BASE + 0x23,	0x1804},
 };
 
-static const struct reg_sequence eq_init_list[] = {
+/* Nintendo Switch (2017) EQ presets */
+static const struct reg_sequence eq_speakers_list[] = {
 	/* EQ LPF Bandwidth  (LPF:a1)  from 0.88 to -0.58 */
 	{RT5640_PR_BASE + RT5640_EQ_BW_LOP,  0xed87},
 	/* EQ LPF Gain       (LPF:H0)  from 0.06 to  0.00 */
 	{RT5640_PR_BASE + RT5640_EQ_GN_LOP,  0x0000},
+
+	/* Reset Bands 1 to 4 */
+	{RT5640_PR_BASE + RT5640_EQ_FC_BP1, 0xc5e9},
+	{RT5640_PR_BASE + RT5640_EQ_BW_BP1, 0x1a98},
+	{RT5640_PR_BASE + RT5640_EQ_GN_BP1, 0x1d2c},
+	{RT5640_PR_BASE + RT5640_EQ_FC_BP2, 0xc882},
+	{RT5640_PR_BASE + RT5640_EQ_BW_BP2, 0x1c10},
+	{RT5640_PR_BASE + RT5640_EQ_GN_BP2, 0x01f4},
+	{RT5640_PR_BASE + RT5640_EQ_FC_BP3, 0xe904},
+	{RT5640_PR_BASE + RT5640_EQ_BW_BP3, 0x1c10},
+	{RT5640_PR_BASE + RT5640_EQ_GN_BP3, 0x01f4},
+	{RT5640_PR_BASE + RT5640_EQ_FC_BP4, 0xe904},
+	{RT5640_PR_BASE + RT5640_EQ_BW_BP4, 0x1c10},
+	{RT5640_PR_BASE + RT5640_EQ_GN_BP4, 0x01f4},
+	{RT5640_PR_BASE + RT5640_EQ_FC_HIP1, 0x1c10},
+	{RT5640_PR_BASE + RT5640_EQ_GN_HIP1, 0x01f4},
+
 	/* EQ HPF2 Cutoff    (HPF2:a1) from 1.00 to  0.99 */
 	{RT5640_PR_BASE + RT5640_EQ_FC_HIP2, 0x1fb4},
 	/* EQ HPF2 Bandwidth (HPF2:a2) from 0.00 to  0.01 */
@@ -89,7 +108,26 @@ static const struct reg_sequence eq_init_list[] = {
 	{RT5640_DRC_AGC_1,                   0x6b30},
 };
 
-static const struct reg_sequence eq_deinit_list[] = {
+static const struct reg_sequence eq_microphone_list[] = {
+	/* Disable 2nd Wind Filter */
+	{RT5640_ADJ_HPF, 0x2A20},
+	/* EQ HPF2 Cutoff    (HPF2:a1) from 1.00 to 0.98 */
+	{RT5640_PR_BASE + RT5640_EQ_FC_HIP2, 0x1f68},
+	/* EQ HPF2 Bandwidth (HPF2:a2) from 0.00 to 0.02 */
+	{RT5640_PR_BASE + RT5640_EQ_BW_HIP2, 0x0094},
+	/* EQ HPF2 Gain      (HPF2:H0) from 1.00 to 0.98 */
+	{RT5640_PR_BASE + RT5640_EQ_GN_HIP2, 0x1f69},
+	/* Reset val. */
+	{RT5640_PR_BASE + RT5640_EQ_PRE_VOL, 0x0800},
+	/* Reset val. */
+	{RT5640_PR_BASE + RT5640_EQ_PST_VOL, 0x0800},
+	/* Enable HPF2 (2nd order Butterworth). */
+	{RT5640_EQ_CTRL2, 0x0040},
+	/* Enable for ADC and update EQ parameters. */
+	{RT5640_EQ_CTRL1, 0xe040},
+};
+
+static const struct reg_sequence eq_normal_list[] = {
 	/* Disable hardware EQ */
 	{RT5640_EQ_CTRL2,                    0x0000},
 	{RT5640_EQ_CTRL1,                    0x6000},
@@ -1029,28 +1067,40 @@ static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 	int ret;
 
+	/*! TODO: EQ should be dt controlled */
+
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
-		ret = regmap_register_patch(rt5640->regmap, eq_init_list,
-						ARRAY_SIZE(eq_init_list));
+		dev_dbg(codec->dev, "EQ Speakers enabled\n");
+		/* Set Speakers EQ */
+		ret = regmap_register_patch(rt5640->regmap, eq_speakers_list,
+						ARRAY_SIZE(eq_speakers_list));
 		if (ret != 0)
 			dev_warn(codec->dev, "Failed to apply regmap patch: %d\n", ret);
-
 		break;
+
 	case SND_SOC_DAPM_PRE_PMD:
-		ret = regmap_register_patch(rt5640->regmap, eq_deinit_list,
-						ARRAY_SIZE(eq_deinit_list));
+		/* Disable Speakers EQ. */
+		dev_dbg(codec->dev, "EQ Speakers disabled\n");
+		ret = regmap_register_patch(rt5640->regmap, eq_normal_list,
+						ARRAY_SIZE(eq_normal_list));
 		if (ret != 0)
 			dev_warn(codec->dev, "Failed to apply regmap patch: %d\n", ret);
 
+		/* Set Microphone EQ. */
+		dev_dbg(codec->dev, "EQ Mic enabled\n");
+		ret = regmap_register_patch(rt5640->regmap, eq_microphone_list,
+						ARRAY_SIZE(eq_microphone_list));
+		if (ret != 0)
+			dev_warn(codec->dev, "Failed to apply regmap patch: %d\n", ret);
 		break;
+
 	default:
 		return 0;
 	}
 
 	return 0;
 }
-
 
 static int rt5640_hp_event(struct snd_soc_dapm_widget *w,
 			   struct snd_kcontrol *kcontrol, int event)
