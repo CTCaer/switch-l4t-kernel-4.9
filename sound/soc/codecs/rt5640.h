@@ -1610,10 +1610,10 @@
 #define RT5640_MB2_OC_P_SFT			6
 #define RT5640_MB2_OC_P_NOR			(0x0 << 6)
 #define RT5640_MB2_OC_P_INV			(0x1 << 6)
-#define RT5640_MB1_OC_CLR			(0x1 << 3)
-#define RT5640_MB1_OC_CLR_SFT			3
-#define RT5640_MB2_OC_CLR			(0x1 << 2)
-#define RT5640_MB2_OC_CLR_SFT			2
+#define RT5640_MB1_OC_STATUS			(0x1 << 3)
+#define RT5640_MB1_OC_STATUS_SFT		3
+#define RT5640_MB2_OC_STATUS			(0x1 << 2)
+#define RT5640_MB2_OC_STATUS_SFT		2
 
 /* GPIO and Internal Status (0xbf) */
 #define RT5640_GPIO1_STATUS			(0x1 << 8)
@@ -2160,11 +2160,16 @@ struct rt5640_priv {
 	bool hp_mute;
 	bool asrc_en;
 
-	unsigned int jack_gpio;
-	unsigned int jd_src;
+	bool ext_mic;
+
+	/* Jack data */
+	int jack_gpio;
+	bool jack_init_state;
 	struct work_struct jack_work;
 	struct snd_soc_jack *jack;
+	unsigned int sel_jd_source;
 	bool jd_inverted;
+	bool jd1_only;
 	unsigned int ovcd_th;
 	unsigned int ovcd_sf;
 };
