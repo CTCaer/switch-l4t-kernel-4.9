@@ -54,12 +54,13 @@ static const struct regmap_range_cfg rt5640_ranges[] = {
 };
 
 static const struct reg_sequence init_list[] = {
-	{RT5640_PR_BASE + 0x3d,	0x3600},
-	{RT5640_PR_BASE + 0x12,	0x0aa8},
-	{RT5640_PR_BASE + 0x14,	0x0aaa},
-	{RT5640_PR_BASE + 0x20,	0x6110},
-	{RT5640_PR_BASE + 0x21,	0xe0e0},
-	{RT5640_PR_BASE + 0x23,	0x1804},
+	{RT5640_PR_BASE + 0x1d, 0x0347}, /* Set bit8 (0x100). Should this be actually get set? */
+	{RT5640_PR_BASE + 0x3d,	0x3600}, /* RT5640_CHOP_DAC_ADC: Enable ADC/DAC clock gen */
+	{RT5640_PR_BASE + 0x12,	0x0aa8}, /* RT5640_BIAS_CUR1: Set reset value */
+	{RT5640_PR_BASE + 0x14,	0x0aaa}, /* RT5640_BIAS_CUR3: Unset bit13,15. Should bit15 get unset? */
+	{RT5640_PR_BASE + 0x20,	0x6110}, /* Class-D Amp tuning */
+	{RT5640_PR_BASE + 0x21,	0xe0e0}, /* Set reset value */
+	{RT5640_PR_BASE + 0x23,	0x1804}, /* Set bit12 (0x1000). Unset produces speakers pop on power off */
 };
 
 /* Nintendo Switch (2017) EQ presets */
@@ -281,6 +282,7 @@ static bool rt5640_volatile_register(struct device *dev, unsigned int reg)
 	case RT5640_VENDOR_ID:
 	case RT5640_VENDOR_ID1:
 	case RT5640_VENDOR_ID2:
+	case RT5640_GEN_CTRL2:
 		return true;
 	default:
 		return false;
@@ -409,9 +411,9 @@ static bool rt5640_readable_register(struct device *dev, unsigned int reg)
 	case RT5640_HP_CALIB2:
 	case RT5640_SV_ZCD1:
 	case RT5640_SV_ZCD2:
-	case RT5640_DUMMY1:
-	case RT5640_DUMMY2:
-	case RT5640_DUMMY3:
+	case RT5640_GEN_CTRL1:
+	case RT5640_GEN_CTRL2:
+	case RT5640_GEN_CTRL3:
 	case RT5640_VENDOR_ID:
 	case RT5640_VENDOR_ID1:
 	case RT5640_VENDOR_ID2:
@@ -2150,7 +2152,7 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 			snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
 				RT5640_PWR_FV1 | RT5640_PWR_FV2,
 				RT5640_PWR_FV1 | RT5640_PWR_FV2);
-			snd_soc_update_bits(codec, RT5640_DUMMY1,
+			snd_soc_update_bits(codec, RT5640_GEN_CTRL1,
 						0x0301, 0x0301);
 			snd_soc_update_bits(codec, RT5640_MICBIAS,
 						0x0030, 0x0030);
@@ -2160,7 +2162,7 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 	case SND_SOC_BIAS_OFF:
 		snd_soc_write(codec, RT5640_DEPOP_M1, 0x0004);
 		snd_soc_write(codec, RT5640_DEPOP_M2, 0x1100);
-		snd_soc_update_bits(codec, RT5640_DUMMY1, 0x1, 0);
+		snd_soc_update_bits(codec, RT5640_GEN_CTRL1, 0x1, 0);
 		snd_soc_write(codec, RT5640_PWR_DIG1, 0x0000);
 		snd_soc_write(codec, RT5640_PWR_DIG2, 0x0000);
 		snd_soc_write(codec, RT5640_PWR_VOL, 0x0000);
@@ -2286,7 +2288,7 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 
 	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 
-	snd_soc_update_bits(codec, RT5640_DUMMY1, 0x0301, 0x0301);
+	snd_soc_update_bits(codec, RT5640_GEN_CTRL1, 0x0301, 0x0301);
 	snd_soc_update_bits(codec, RT5640_MICBIAS, 0x0030, 0x0030);
 	snd_soc_update_bits(codec, RT5640_DSP_PATH2, 0xfc00, 0x0c00);
 
@@ -2305,8 +2307,8 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 		break;
 	case RT5640_ID_5639:
 		/* Enable JD2 Function for Extra JD Status */
-		snd_soc_update_bits(codec, RT5640_DUMMY1, 0x3b01, 0x3b01);
-		snd_soc_write(codec, RT5640_DUMMY2, 0x4140);
+		snd_soc_update_bits(codec, RT5640_GEN_CTRL1, 0x3b01, 0x3b01);
+		snd_soc_write(codec, RT5640_GEN_CTRL2, 0x4140);
 		if (rt5640->jd_src >= 0)
 			snd_soc_update_bits(codec, RT5640_JD_CTRL,
 				RT5640_JD_MASK,
@@ -2547,10 +2549,10 @@ static void rt5640_enable_jack_detect(struct snd_soc_codec *codec,
 		RT5640_GP1_PF_MASK, RT5640_GP1_PF_OUT);
 
 	/* Enabling jd2 in general control 1 */
-	snd_soc_write(codec, RT5640_DUMMY1, 0x3f41);
+	snd_soc_write(codec, RT5640_GEN_CTRL1, 0x3f41);
 
 	/* Enabling jd2 in general control 2 */
-	snd_soc_write(codec, RT5640_DUMMY2, 0x4001);
+	snd_soc_write(codec, RT5640_GEN_CTRL2, 0x4001);
 
 	snd_soc_write(codec, RT5640_PR_BASE + RT5640_BIAS_CUR4,
 		0xa800 | rt5640->ovcd_sf);
@@ -2836,24 +2838,6 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 		rt5640->irq = gpio_to_irq(rt5640->jack_gpio);
 	}
 
-	INIT_WORK(&rt5640->jack_work, rt5640_jack_work);
-
-	ret = devm_add_action_or_reset(&i2c->dev, rt5640_cancel_work, rt5640);
-	if (ret)
-		return ret;
-
-	ret = devm_request_irq(&i2c->dev, rt5640->irq, rt5640_irq,
-			       IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
-			       | IRQF_ONESHOT, "rt5640", rt5640);
-	if (ret == 0) {
-		/* Gets re-enabled by rt5640_set_jack() */
-		disable_irq(rt5640->irq);
-	} else {
-		dev_warn(&i2c->dev, "Failed to reguest IRQ %d: %d\n",
-			 rt5640->irq, ret);
-		rt5640->irq = -ENXIO;
-	}
-
 	regmap_read(rt5640->regmap, RT5640_VENDOR_ID2, &val);
 	if (val != RT5640_DEVICE_ID) {
 		dev_err(&i2c->dev,
@@ -2862,6 +2846,11 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 	}
 
 	regmap_write(rt5640->regmap, RT5640_RESET, 0);
+
+	/* Enable MCLK detect and I2S clock for speaker safety */
+	regmap_update_bits(rt5640->regmap, RT5640_GEN_CTRL1,
+				RT5640_MCLK_DET | RT5640_I2S_CLK_EN,
+				RT5640_MCLK_DET | RT5640_I2S_CLK_EN);
 
 	ret = regmap_register_patch(rt5640->regmap, init_list,
 				    ARRAY_SIZE(init_list));
@@ -2881,6 +2870,24 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 					RT5640_IN_DF2, RT5640_IN_DF2);
 
 	rt5640->hp_mute = 1;
+
+	INIT_WORK(&rt5640->jack_work, rt5640_jack_work);
+
+	ret = devm_add_action_or_reset(&i2c->dev, rt5640_cancel_work, rt5640);
+	if (ret)
+		return ret;
+
+	ret = devm_request_irq(&i2c->dev, rt5640->irq, rt5640_irq,
+			       IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+			       | IRQF_ONESHOT, "rt5640", rt5640);
+	if (ret == 0) {
+		/* Gets re-enabled by rt5640_set_jack() */
+		disable_irq(rt5640->irq);
+	} else {
+		dev_warn(&i2c->dev, "Failed to reguest IRQ %d: %d\n",
+			 rt5640->irq, ret);
+		rt5640->irq = -ENXIO;
+	}
 
 	return snd_soc_register_codec(&i2c->dev, &soc_codec_dev_rt5640,
 				      rt5640_dai, ARRAY_SIZE(rt5640_dai));
