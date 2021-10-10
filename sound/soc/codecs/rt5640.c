@@ -136,12 +136,6 @@ static const struct reg_sequence eq_normal_list[] = {
 	{RT5640_DRC_AGC_1,                   0x2206},
 };
 
-static const struct reg_sequence irq_jd_init_list[] = {
-	{RT5640_GPIO_CTRL1,	0x8400},/* set GPIO1 to IRQ */
-	{RT5640_GPIO_CTRL3,	0x0004},/* set GPIO1 output */
-	{RT5640_IRQ_CTRL1,	0x8000},/* enable JD IRQ and set active low */
-};
-
 static const struct reg_default rt5640_reg[] = {
 	{ 0x00, 0x000e },
 	{ 0x01, 0xc8c8 },
@@ -1087,7 +1081,7 @@ static void rt5640_pmu_depop(struct snd_soc_codec *codec)
 		(RT5640_CP_FQ_192_KHZ << RT5640_CP_FQ3_SFT));
 
 	regmap_write(rt5640->regmap, RT5640_PR_BASE +
-		RT5640_MAMP_INT_REG2, 0x1c00);
+		RT5640_MAMP_INT_REG2, 0xfc00);
 	regmap_update_bits(rt5640->regmap, RT5640_DEPOP_M1,
 		RT5640_HP_CP_MASK | RT5640_HP_SG_MASK,
 		RT5640_HP_CP_PD | RT5640_HP_SG_EN);
@@ -1107,6 +1101,11 @@ static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		dev_dbg(codec->dev, "EQ Speakers enabled\n");
+		/* Set Class D to stereo and enable auto over-current protection. */
+		regmap_update_bits(rt5640->regmap, RT5640_CLS_D_OUT,
+			RT5640_CLSD_OM_MASK, RT5640_CLSD_OM_STO);
+		regmap_update_bits(rt5640->regmap, RT5640_CLS_D_OVCD,
+			RT5640_AUTO_PD_MASK, RT5640_AUTO_PD_EN);
 		/* Set Speakers EQ */
 		ret = regmap_register_patch(rt5640->regmap, eq_speakers_list,
 						ARRAY_SIZE(eq_speakers_list));
@@ -1145,6 +1144,11 @@ static int rt5640_hp_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
+		/* Set Middle/Low bounds for Headphone Amp Detection */
+		regmap_write(rt5640->regmap,
+			RT5640_PR_BASE + RT5640_HP_ATH_CTRL1, 0x2000);
+		regmap_write(rt5640->regmap,
+			RT5640_PR_BASE + RT5640_HP_ATH_CTRL2, 0x1000);
 		rt5640_pmu_depop(codec);
 		rt5640->hp_mute = 0;
 		break;
@@ -2409,21 +2413,6 @@ static int rt5640_resume(struct snd_soc_codec *codec)
 #define rt5640_suspend NULL
 #define rt5640_resume NULL
 #endif
-
-int rt5640_irq_jd_reg_init(struct snd_soc_codec *codec)
-{
-	int ret;
-
-	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
-
-	ret = regmap_register_patch(rt5640->regmap, irq_jd_init_list,
-				    ARRAY_SIZE(irq_jd_init_list));
-	if (ret != 0)
-		dev_warn(codec->dev, "Failed to apply regmap patch: %d\n", ret);
-
-	return 0;
-}
-EXPORT_SYMBOL(rt5640_irq_jd_reg_init);
 
 static void rt5640_enable_micbias1_for_ovcd(struct snd_soc_codec *codec)
 {
