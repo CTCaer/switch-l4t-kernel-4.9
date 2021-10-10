@@ -423,10 +423,28 @@ static bool rt5640_readable_register(struct device *dev, unsigned int reg)
 	}
 }
 
+/* Custom limits defines */
+#define CUSTOM_DAC_HP_MAX_VAL	170
+#define CUSTOM_DAC_HP_DB_MIN	-6562
+#define CUSTOM_DAC_HP_DB_MAX	-187
+#define CUSTOM_DAC_SPK_MAX_VAL	148
+#define CUSTOM_DAC_SPK_DB_MIN	-6562
+#define CUSTOM_DAC_SPK_DB_MAX	-1012
+
+#define CUSTOM_ADC_MIC_MAX_VAL	47
+#define CUSTOM_ADC_MIC_DB_MIN	-1762
+#define CUSTOM_ADC_MIC_DB_MAX	0
+
 static const DECLARE_TLV_DB_SCALE(out_vol_tlv, -4650, 150, 0);
-static const DECLARE_TLV_DB_SCALE(dac_vol_tlv, -65625, 375, 0);
+static const DECLARE_TLV_DB_MINMAX(dac_vol_tlv, -6562, 0);
+static const DECLARE_TLV_DB_MINMAX(dac_vol_hp_tlv,
+		CUSTOM_DAC_HP_DB_MIN, CUSTOM_DAC_HP_DB_MAX);
+static const DECLARE_TLV_DB_MINMAX(dac_vol_spk_tlv,
+		CUSTOM_DAC_SPK_DB_MIN, CUSTOM_DAC_SPK_DB_MAX);
 static const DECLARE_TLV_DB_SCALE(in_vol_tlv, -3450, 150, 0);
-static const DECLARE_TLV_DB_SCALE(adc_vol_tlv, -17625, 375, 0);
+static const DECLARE_TLV_DB_MINMAX(adc_vol_tlv, -1762, 3000);
+static const DECLARE_TLV_DB_MINMAX(adc_vol_mic_tlv,
+		CUSTOM_ADC_MIC_DB_MIN, CUSTOM_ADC_MIC_DB_MAX);
 static const DECLARE_TLV_DB_SCALE(adc_bst_tlv, 0, 1200, 0);
 
 /* {0, +20, +24, +30, +35, +40, +44, +50, +52} dB */
@@ -488,6 +506,15 @@ static const struct snd_kcontrol_new rt5640_snd_controls[] = {
 	SOC_DOUBLE_TLV("DAC1 Playback Volume", RT5640_DAC1_DIG_VOL,
 			RT5640_L_VOL_SFT, RT5640_R_VOL_SFT,
 			175, 0, dac_vol_tlv),
+
+	/* DAC Digital Volume with custom limits */
+	SOC_DOUBLE_TLV("DAC1 HP Playback Volume", RT5640_DAC1_DIG_VOL,
+			RT5640_L_VOL_SFT, RT5640_R_VOL_SFT,
+			CUSTOM_DAC_HP_MAX_VAL, 0, dac_vol_hp_tlv),
+	SOC_DOUBLE_TLV("DAC1 Speaker Playback Volume", RT5640_DAC1_DIG_VOL,
+			RT5640_L_VOL_SFT, RT5640_R_VOL_SFT,
+			CUSTOM_DAC_SPK_MAX_VAL, 0, dac_vol_spk_tlv),
+
 	/* IN1/IN2/IN3 Control */
 	SOC_SINGLE_TLV("IN1 Boost", RT5640_IN1_IN2,
 		RT5640_BST_SFT1, 8, 0, bst_tlv),
@@ -509,6 +536,12 @@ static const struct snd_kcontrol_new rt5640_snd_controls[] = {
 	SOC_DOUBLE_TLV("Mono ADC Capture Volume", RT5640_ADC_DATA,
 			RT5640_L_VOL_SFT, RT5640_R_VOL_SFT,
 			127, 0, adc_vol_tlv),
+
+	/* ADC Digital Volume Control custom limit */
+	SOC_DOUBLE_TLV("ADC MIC Capture Volume", RT5640_ADC_DIG_VOL,
+			RT5640_L_VOL_SFT, RT5640_R_VOL_SFT,
+			CUSTOM_ADC_MIC_MAX_VAL, 0, adc_vol_mic_tlv),
+
 	/* ADC Boost Volume Control */
 	SOC_DOUBLE_TLV("ADC Boost Gain", RT5640_ADC_BST_VOL,
 			RT5640_ADC_L_BST_SFT, RT5640_ADC_R_BST_SFT,
