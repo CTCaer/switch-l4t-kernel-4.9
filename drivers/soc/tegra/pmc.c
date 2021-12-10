@@ -980,7 +980,7 @@ enum tegra_system_reset_level tegra_pmc_get_system_reset_level(void)
 	return tegra_rst_lvl_sts;
 }
 
-extern bool ams_prepare_for_r2p(const char *cmd);
+extern void r2p_setup(const char *cmd);
 
 static void tegra_pmc_program_reboot_reason(const char *cmd)
 {
@@ -992,17 +992,13 @@ static void tegra_pmc_program_reboot_reason(const char *cmd)
 	if (cmd) {
 		if (strcmp(cmd, "recovery") == 0)
 			value |= PMC_SCRATCH0_MODE_RECOVERY;
-
-		if (strcmp(cmd, "bootloader") == 0)
+		else if (strcmp(cmd, "bootloader") == 0)
 			value |= PMC_SCRATCH0_MODE_BOOTLOADER;
-
-		if (strcmp(cmd, "forced-recovery") == 0)
+		else if (strcmp(cmd, "forced-recovery") == 0)
 			value |= PMC_SCRATCH0_MODE_RCM;
 	}
 
-	if (ams_prepare_for_r2p(cmd)) {
-		value |= PMC_SCRATCH0_MODE_PAYLOAD;
-	}
+	r2p_setup(cmd);
 
 	tegra_pmc_reg_writel(value, TEGRA_PMC_SCRATCH0);
 }
