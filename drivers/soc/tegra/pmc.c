@@ -121,7 +121,7 @@
 
 #define PMC_PWR_DET_VAL			0xe4
 
-#define KERNEL_PANIC_FLAG		(1 << 24)
+#define KERNEL_PANIC_MAGIC		0x4E415054
 
 #define PMC_SCRATCH41			0x140
 
@@ -1074,10 +1074,7 @@ static struct notifier_block tegra_pmc_restart_handler = {
 static int tegra_pmc_panic_handler(struct notifier_block *this,
 				    unsigned long action, void *data)
 {
-	u32 pmc_reg_val;
-
-	pmc_reg_val = tegra_pmc_reg_readl(TEGRA_PMC_SCRATCH37);
-	tegra_pmc_reg_writel((pmc_reg_val | KERNEL_PANIC_FLAG), TEGRA_PMC_SCRATCH37);
+	tegra_pmc_reg_writel(KERNEL_PANIC_MAGIC, TEGRA_PMC_SCRATCH37);
 
 	return NOTIFY_DONE;
 }
