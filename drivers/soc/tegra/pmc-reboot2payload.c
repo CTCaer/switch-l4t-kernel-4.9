@@ -29,7 +29,7 @@
 #define  R2P_READ_IRAM             (1U << 0)
 #define TEGRA_SIP_R2P_DO_REBOOT    0xC2FFFE03
 
-#define IRAM_PAYLOAD_BASE    0x40010000u;
+#define IRAM_PAYLOAD_BASE    0x40010000u
 #define IRAM_CHUNK_SIZE      0x4000
 
 /* hekate/Nyx */
