@@ -135,7 +135,6 @@ void __iomem *emc0_base;
 void __iomem *emc1_base;
 void __iomem *mc_base;
 void __iomem *clk_base;
-static unsigned long emc_max_rate;
 static unsigned long emc_resume_safe_rate;
 #ifdef CONFIG_PM_SLEEP
 static unsigned long emc_override_rate;
@@ -2448,9 +2447,6 @@ static int tegra210_init_emc_data(struct platform_device *pdev)
 		table_rate = tegra_emc_table[i].rate;
 		if (!table_rate)
 			continue;
-
-		if (emc_max_rate && table_rate > emc_max_rate)
-			break;
 
 		if (i && ((table_rate <= tegra_emc_table[i-1].rate) ||
 		   (tegra_emc_table[i].min_volt <
