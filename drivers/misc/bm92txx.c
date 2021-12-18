@@ -992,8 +992,7 @@ static void
 	bm92t_set_source_mode(info, SPDSRC12_ON);
 
 	/* Enable DisplayPort Alerts */
-	if (info->pdata->dp_alerts_enable)
-		bm92t_set_dp_alerts(info, true);
+	bm92t_set_dp_alerts(info, info->pdata->dp_alerts_enable);
 
 	bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
 	bm92t_extcon_cable_update(info, EXTCON_USB, true);
@@ -1016,8 +1015,10 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 	memset(&info->cable, 0, sizeof(struct bm92t_device));
 
 	err = bm92t_read_reg(info, READ_PDOS_SRC_REG, pdos, sizeof(pdos));
-	pdos_no = pdos[0] / 4;
-	if (err || pdos_no < 2)
+	pdos_no = pdos[0] / sizeof(struct pd_object);
+
+	/* Check if errors or no pdo received */
+	if (err || !pdos_no)
 		return 0;
 
 	dev_info(dev, "Supported PDOs:\n");
@@ -1591,7 +1592,6 @@ init_contract_out:
 						(vdm[7 + i * 4] << 16) | (vdm[8 + i * 4] << 24));
 
 				/* Enter automatic DisplayPort handling */
-				msleep(100);
 				cmd = DP_ENTER_MODE_CMD;
 				err = bm92t_send_cmd(info, &cmd);
 				msleep(100); /* WAR: may not need to wait */
@@ -1623,7 +1623,6 @@ init_contract_out:
 			}
 
 			/* Enter automatic DisplayPort handling */
-			msleep(100);
 			cmd = DP_ENTER_MODE_CMD;
 			err = bm92t_send_cmd(info, &cmd);
 			msleep(100); /* WAR: may not need to wait */
