@@ -285,7 +285,7 @@
 #define VDO_ID_TYPE_ACTI_CBL    4
 #define VDO_ID_TYPE_ALTERNATE   5
 
-/* VDM Discover Mode Caps [From device UFP_U to host DFP_U)] */
+/* VDM Discover Mode Caps [From device (UFP_U) to host (DFP_U)] */
 #define VDO_DP_UFP_D       BIT(0) /* DisplayPort Sink */
 #define VDO_DP_DFP_D       BIT(1) /* DisplayPort Source */
 #define VDO_DP_SUPPORT     BIT(2)
@@ -691,12 +691,13 @@ static int bm92t_handle_dp_config_and_hpd(struct bm92t_info *info)
 	unsigned char cfg[6] = {OUTGOING_VDM_REG, 0x04,
 		VDO_DP_SUPPORT | VDO_DP_U_UFP_D, 0x00, 0x00, 0x00};
 
+	/* Read DisplayPort Capabilities */
 	err = bm92t_read_reg(info, INCOMING_VDM_REG,
 			     msg, sizeof(msg));
 
 	/* Prepare UFP_U as UFP_D configuration */
 	if (info->cable.is_nintendo_dock) {
-		/* Dock reports Plug but uses Receptactle */
+		/* Dock reports Plug but uses Receptacle */
 		/* Both plug & receptacle pin assignment work, */
 		/* because dock ignores them. Use the latter though. */
 		if (msg[3] & VDO_DP_PIN_D) {
@@ -704,26 +705,33 @@ static int bm92t_handle_dp_config_and_hpd(struct bm92t_info *info)
 			cfg[4] = VDO_DP_PIN_D;
 			pin_valid = true;
 		}
-	} else if (!(msg[1] & VDO_DP_RECEPTACLE) && /* Plug */
-				 msg[2] & VDO_DP_PIN_D)
-	{
+	} else if (!(msg[1] & VDO_DP_RECEPTACLE)) { /* Plug */
 		/* Set Plug pin assignment */
-		cfg[3] = VDO_DP_PIN_D;
-		cfg[4] = 0x00;
-		pin_valid = true;
-	} else if (msg[1] & VDO_DP_RECEPTACLE && /* Receptactle */
-			   msg[3] & VDO_DP_PIN_D)
-	{
-		/* Using receptacle pin assignment gets rejected, */
-		/* so use same pin assignment as Plug */
-		cfg[3] = VDO_DP_PIN_D;
-		cfg[4] = 0x00;
-		pin_valid = true;
+		if (msg[2] & VDO_DP_PIN_D) { /* 2 DP Lanes */
+			cfg[3] = VDO_DP_PIN_D;
+			cfg[4] = 0x00;
+			pin_valid = true;
+		} else if (msg[2] & VDO_DP_PIN_C) { /* 4 DP Lanes - 2 Unused */
+			cfg[3] = VDO_DP_PIN_C;
+			cfg[4] = 0x00;
+			pin_valid = true;
+		}
+	} else if (msg[1] & VDO_DP_RECEPTACLE) { /* Receptacle */
+		/* Set Receptacle pin assignment */
+		if (msg[3] & VDO_DP_PIN_D) { /* 2 DP Lanes */
+			cfg[3] = VDO_DP_PIN_D;
+			cfg[4] = 0x00;
+			pin_valid = true;
+		} else if (msg[3] & VDO_DP_PIN_C) { /* 4 DP Lanes - 2 Unused */
+			cfg[3] = VDO_DP_PIN_C;
+			cfg[4] = 0x00;
+			pin_valid = true;
+		}
 	}
 
 	/* Check that UFP_U/UFP_D Pin D assignment is supported */
 	if (!err && msg[0] == 4 && pin_valid) {
-		/* Set DP configuration */
+		/* Send DisplayPort Configuration */
 		err = bm92t_write_reg(info, (unsigned char *) cfg, sizeof(cfg));
 		if (err) {
 			dev_err(&info->i2c_client->dev, "Writing DP cfg failed!\n");
