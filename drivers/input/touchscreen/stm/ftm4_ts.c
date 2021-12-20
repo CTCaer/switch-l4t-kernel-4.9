@@ -41,7 +41,7 @@
 *           | - Name properly all stm/vendor fts commands and values
 *           | - Fix all boot/suspend/resume routines
 *           | - Proper checks on power management
-*           | - Allow more dts based customization instead of ifdefs
+*           | - Allow more device tree based customization instead of ifdefs
 *           | - Speed up boot and resume by 1-2s
 *           | - Fix palm handling and raise pressure detection to 500 from 254
 *           | - Fix issues with delayed resume
@@ -50,6 +50,7 @@
 *           | - Ensure power off on suspend for saving power
 *           | - Correct logging to debug level instead of info/error
 * 02/26/2021| Better palm removal detection
+* 12/20/2021| Allow calibration on init disable via device tree or sysfs
 *******************************************************************************/
 
 #include <linux/init.h>
@@ -353,6 +354,21 @@ int fts_cmd_completion_check(struct fts_ts_info *info, uint8_t event1, uint8_t e
 	return rc;
 }
 
+static void fts_auto_calibration(struct fts_ts_info *info)
+{
+	/* Trim low power oscillator */
+	fts_command(info, FTS_CMD_TRIM_LOW_POWER_OSCILLATOR);
+	msleep(200);
+
+	/* Execute MS CX auto calibration */
+	fts_command(info, FTS_CMD_MS_CX_TUNING);
+	fts_cmd_completion_check(info, EVENTID_STATUS_EVENT, STATUS_EVENT_MS_CX_TUNING_DONE, 0);
+
+	/* Execute SS CX auto calibration */
+	fts_command(info, FTS_CMD_SS_CX_TUNING);
+	fts_cmd_completion_check(info, EVENTID_STATUS_EVENT, STATUS_EVENT_SS_CX_TUNING_DONE, 0);
+}
+
 static int fts_init(struct fts_ts_info *info)
 {
 	unsigned char val[16];
@@ -370,13 +386,9 @@ static int fts_init(struct fts_ts_info *info)
 	if (rc < 0)
 		tsp_debug_err(&info->client->dev, "%s: Failed to fts_read_chip_id\n", __func__);
 
-	/* Execute MS CX auto calibration */
-	fts_command(info, FTS_CMD_MS_CX_TUNING);
-	fts_cmd_completion_check(info, EVENTID_STATUS_EVENT, STATUS_EVENT_MS_CX_TUNING_DONE, 0);
-
-	/* Execute SS CX auto calibration */
-	fts_command(info, FTS_CMD_SS_CX_TUNING);
-	fts_cmd_completion_check(info, EVENTID_STATUS_EVENT, STATUS_EVENT_SS_CX_TUNING_DONE, 0);
+	/* Calibrate touch panel */
+	if (!info->board->disable_tuning)
+		fts_auto_calibration(info);
 
 	/* Enable finger sense mode */
 	fts_switch_sense_mode(info, FTS_FINGER_MODE);
@@ -939,6 +951,8 @@ static int fts_parse_dt(struct i2c_client *client)
 		pdata->delayed_open_time = FTS_INPUT_OPEN_DWORK_TIME;
 	}
 
+	pdata->disable_tuning = of_property_read_bool(np, "stm,disable-tuning");
+
 	pdata->power = fts_power_ctrl;
 
 	return retval;
@@ -1242,13 +1256,9 @@ static int fts_start_device(struct fts_ts_info *info)
 	info->touch_count = 0;
 	info->palm_pressed = false;
 
-	/* Execute MS CX auto calibration. */
-	fts_command(info, FTS_CMD_MS_CX_TUNING);
-	fts_cmd_completion_check(info, EVENTID_STATUS_EVENT, STATUS_EVENT_MS_CX_TUNING_DONE, 0);
-
-	/* Execute SS CX auto calibration. */
-	fts_command(info, FTS_CMD_SS_CX_TUNING);
-	fts_cmd_completion_check(info, EVENTID_STATUS_EVENT, STATUS_EVENT_SS_CX_TUNING_DONE, 0);
+	/* Calibrate touch panel */
+	if (!info->board->disable_tuning)
+		fts_auto_calibration(info);
 
 	/* Enable finger sense mode. */
 	fts_switch_sense_mode(info, FTS_FINGER_MODE);
