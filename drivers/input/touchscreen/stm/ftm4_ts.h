@@ -282,7 +282,7 @@ struct fts_flash_corruption_info {
 };
 
 struct fts_i2c_platform_data {
-	bool force_retune;
+	bool disable_tuning;
 	bool delayed_open;
 	unsigned int delayed_open_time;
 	int max_x;
