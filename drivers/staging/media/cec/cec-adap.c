@@ -283,7 +283,8 @@ static void cec_data_cancel(struct cec_data *data)
 	} else {
 		list_del_init(&data->list);
 		if (!(data->msg.tx_status & CEC_TX_STATUS_OK))
-			data->adap->transmit_queue_sz--;
+			if (!WARN_ON(!data->adap->transmit_queue_sz))
+				data->adap->transmit_queue_sz--;
 	}
 
 	/* Mark it as an error */
@@ -316,7 +317,7 @@ int cec_thread_func(void *_adap)
 
 	for (;;) {
 		unsigned int signal_free_time;
-		struct cec_data *data;
+		struct cec_data *data, *n;
 		bool timeout = false;
 		u8 attempts;
 
@@ -361,25 +362,19 @@ int cec_thread_func(void *_adap)
 			if (adap->transmitting)
 				cec_data_cancel(adap->transmitting);
 
-			/*
-			 * Cancel the pending timeout work. We have to unlock
-			 * the mutex when flushing the work since
-			 * cec_wait_timeout() will take it. This is OK since
-			 * no new entries can be added to wait_queue as long
-			 * as adap->transmitting is NULL, which it is due to
-			 * the cec_data_cancel() above.
-			 */
-			while (!list_empty(&adap->wait_queue)) {
-				data = list_first_entry(&adap->wait_queue,
-							struct cec_data, list);
-
-				if (!cancel_delayed_work(&data->work)) {
-					mutex_unlock(&adap->lock);
-					flush_scheduled_work();
-					mutex_lock(&adap->lock);
-				}
-				cec_data_cancel(data);
+			/* Cancel the pending timeout work. */
+			list_for_each_entry_safe(data, n, &adap->wait_queue, list) {
+				if (cancel_delayed_work(&data->work))
+					cec_data_cancel(data);
+				/*
+				 * If cancel_delayed_work returned false, then
+				 * the cec_wait_timeout function is running,
+				 * which will call cec_data_completed. So no
+				 * need to do anything special in that case.
+				 */
 			}
+			if (WARN_ON(adap->transmit_queue_sz))
+				adap->transmit_queue_sz = 0;
 			goto unlock;
 		}
 
@@ -408,7 +403,8 @@ int cec_thread_func(void *_adap)
 		data = list_first_entry(&adap->transmit_queue,
 					struct cec_data, list);
 		list_del_init(&data->list);
-		adap->transmit_queue_sz--;
+		if (!WARN_ON(!data->adap->transmit_queue_sz))
+			adap->transmit_queue_sz--;
 		/* Make this the current transmitting message */
 		adap->transmitting = data;
 
@@ -579,6 +575,9 @@ int cec_transmit_msg_fh(struct cec_adapter *adap, struct cec_msg *msg,
 	unsigned int timeout;
 	int res = 0;
 
+	if (adap->devnode.unregistered)
+		return -ENODEV;
+
 	msg->rx_ts = 0;
 	msg->tx_ts = 0;
 	msg->rx_status = 0;
@@ -588,9 +587,7 @@ int cec_transmit_msg_fh(struct cec_adapter *adap, struct cec_msg *msg,
 	msg->tx_low_drive_cnt = 0;
 	msg->tx_error_cnt = 0;
 	msg->flags = 0;
-	msg->sequence = ++adap->sequence;
-	if (!msg->sequence)
-		msg->sequence = ++adap->sequence;
+	msg->sequence = 0;
 
 	if (msg->reply && msg->timeout == 0) {
 		/* Make sure the timeout isn't 0. */
@@ -625,6 +622,9 @@ int cec_transmit_msg_fh(struct cec_adapter *adap, struct cec_msg *msg,
 			msg->tx_status = CEC_TX_STATUS_NACK |
 					 CEC_TX_STATUS_MAX_RETRIES;
 			msg->tx_nack_cnt = 1;
+			msg->sequence = ++adap->sequence;
+			if (!msg->sequence)
+				msg->sequence = ++adap->sequence;
 			return 0;
 		}
 	}
@@ -648,6 +648,10 @@ int cec_transmit_msg_fh(struct cec_adapter *adap, struct cec_msg *msg,
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
+
+	msg->sequence = ++adap->sequence;
+	if (!msg->sequence)
+		msg->sequence = ++adap->sequence;
 
 	if (msg->len > 1 && msg->msg[1] == CEC_MSG_CDC_MESSAGE) {
 		msg->msg[2] = adap->phys_addr >> 8;
@@ -774,6 +778,9 @@ void cec_received_msg(struct cec_adapter *adap, struct cec_msg *msg)
 	if (WARN_ON(!msg->len || msg->len > CEC_MAX_MSG_SIZE))
 		return;
 
+	if (adap->devnode.unregistered)
+		return;
+
 	msg->rx_ts = ktime_get_ns();
 	msg->rx_status = CEC_RX_STATUS_OK;
 	msg->sequence = msg->reply = msg->timeout = 0;
@@ -822,13 +829,14 @@ void cec_received_msg(struct cec_adapter *adap, struct cec_msg *msg)
 			dst->rx_status = msg->rx_status;
 			if (abort)
 				dst->rx_status |= CEC_RX_STATUS_FEATURE_ABORT;
+			msg->sequence = dst->sequence;
 			/* Remove it from the wait_queue */
 			list_del_init(&data->list);
 
 			/* Cancel the pending timeout work */
 			if (!cancel_delayed_work(&data->work)) {
 				mutex_unlock(&adap->lock);
-				flush_scheduled_work();
+				cancel_delayed_work_sync(&data->work);
 				mutex_lock(&adap->lock);
 			}
 			/*
@@ -1069,6 +1077,8 @@ configured:
 	mutex_unlock(&adap->lock);
 
 	for (i = 0; i < las->num_log_addrs; i++) {
+		struct cec_msg msg = {};
+
 		if (las->log_addr[i] == CEC_LOG_ADDR_INVALID)
 			continue;
 
@@ -1079,6 +1089,13 @@ configured:
 		if (las->log_addr[i] != CEC_LOG_ADDR_UNREGISTERED)
 			cec_report_features(adap, i);
 		cec_report_phys_addr(adap, i);
+
+		/* Report Vendor ID */
+		if (adap->log_addrs.vendor_id != CEC_VENDOR_ID_NONE) {
+			cec_msg_device_vendor_id(&msg,
+						 adap->log_addrs.vendor_id);
+			cec_transmit_msg_fh(adap, &msg, NULL, false);
+		}
 	}
 	mutex_lock(&adap->lock);
 	adap->kthread_config = NULL;
@@ -1372,6 +1389,9 @@ static int cec_feature_abort_reason(struct cec_adapter *adap,
 	 */
 	if (msg->msg[1] == CEC_MSG_FEATURE_ABORT)
 		return 0;
+	/* Don't Feature Abort messages from 'Unregistered' */
+	if (cec_msg_initiator(msg) == CEC_LOG_ADDR_UNREGISTERED)
+		return 0;
 	cec_msg_set_reply_to(&tx_msg, msg);
 	cec_msg_feature_abort(&tx_msg, msg->msg[1], reason);
 	return cec_transmit_msg(adap, &tx_msg, false);
@@ -1423,12 +1443,19 @@ static int cec_receive_notify(struct cec_adapter *adap, struct cec_msg *msg,
 	 */
 	switch (msg->msg[1]) {
 	case CEC_MSG_GET_CEC_VERSION:
-	case CEC_MSG_GIVE_DEVICE_VENDOR_ID:
 	case CEC_MSG_ABORT:
 	case CEC_MSG_GIVE_DEVICE_POWER_STATUS:
-	case CEC_MSG_GIVE_PHYSICAL_ADDR:
 	case CEC_MSG_GIVE_OSD_NAME:
+	/*
+		 * These messages reply with a directed message, so ignore if
+		 * the initiator is Unregistered.
+		 */
+		if (!adap->passthrough && from_unregistered)
+			return 0;
+		/* Fall through */
+	case CEC_MSG_GIVE_DEVICE_VENDOR_ID:
 	case CEC_MSG_GIVE_FEATURES:
+	case CEC_MSG_GIVE_PHYSICAL_ADDR:
 		/*
 		 * Skip processing these messages if the passthrough mode
 		 * is on.
@@ -1436,7 +1463,7 @@ static int cec_receive_notify(struct cec_adapter *adap, struct cec_msg *msg,
 		if (adap->passthrough)
 			goto skip_processing;
 		/* Ignore if addressing is wrong */
-		if (is_broadcast || from_unregistered)
+		if (is_broadcast)
 			return 0;
 		break;
 
