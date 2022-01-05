@@ -32,7 +32,6 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/kthread.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/module.h>
@@ -45,6 +44,7 @@
 #define ST_LSM6DSX_REG_ACC_DEC_MASK		GENMASK(2, 0)
 #define ST_LSM6DSX_REG_GYRO_DEC_MASK		GENMASK(5, 3)
 #define ST_LSM6DSX_REG_INT1_ADDR		0x0d
+#define ST_LSM6DSX_REG_INT2_ADDR		0x0e
 #define ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK	BIT(3)
 #define ST_LSM6DSX_REG_WHOAMI_ADDR		0x0f
 #define ST_LSM6DSX_REG_RESET_ADDR		0x12
@@ -593,14 +593,8 @@ static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 		return err;
 
 	/* enable FIFO watermak interrupt */
-	err = st_lsm6dsx_write_with_mask(hw, ST_LSM6DSX_REG_INT1_ADDR,
+	return st_lsm6dsx_write_with_mask(hw, ST_LSM6DSX_REG_INT2_ADDR,
 					 ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK, 1);
-	if (err < 0)
-		return err;
-
-	/* redirect INT2 on INT1 */
-	return st_lsm6dsx_write_with_mask(hw, ST_LSM6DSX_REG_INT2_ON_INT1_ADDR,
-					  ST_LSM6DSX_REG_INT2_ON_INT1_MASK, 1);
 }
 
 static struct iio_dev *st_lsm6dsx_alloc_iiodev(struct st_lsm6dsx_hw *hw,
@@ -661,7 +655,6 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 
 	dev_set_drvdata(dev, (void *)hw);
 
-	mutex_init(&hw->poll_lock);
 	mutex_init(&hw->lock);
 	mutex_init(&hw->fifo_lock);
 
@@ -706,9 +699,11 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 			return err;
 	}
 
-	err = st_lsm6dsx_fifo_setup(hw);
-	if (err < 0)
-		return err;
+	if (hw->irq > 0) {
+		err = st_lsm6dsx_fifo_setup(hw);
+		if (err < 0)
+			return err;
+	}
 
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
 		err = devm_iio_device_register(hw->dev, hw->iio_devs[i]);
