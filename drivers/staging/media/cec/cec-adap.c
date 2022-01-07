@@ -31,7 +31,6 @@
 #include "cec-priv.h"
 
 static int cec_report_features(struct cec_adapter *adap, unsigned int la_idx);
-static int cec_report_phys_addr(struct cec_adapter *adap, unsigned int la_idx);
 
 /*
  * 400 ms is the time it takes for one 16 byte message to be
@@ -1082,13 +1081,23 @@ configured:
 		if (las->log_addr[i] == CEC_LOG_ADDR_INVALID)
 			continue;
 
+		msg.msg[0] = (las->log_addr[i] << 4) | 0x0f;
+
 		/*
 		 * Report Features must come first according
 		 * to CEC 2.0
 		 */
 		if (las->log_addr[i] != CEC_LOG_ADDR_UNREGISTERED)
 			cec_report_features(adap, i);
-		cec_report_phys_addr(adap, i);
+
+		/* Report Physical Address */
+		cec_msg_report_physical_addr(&msg, adap->phys_addr,
+					     las->primary_device_type[i]);
+		dprintk(2, "config: la %d pa %x.%x.%x.%x\n",
+			las->log_addr[i],
+			cec_phys_addr_exp(adap->phys_addr));
+		cec_transmit_msg(adap, &msg, false);
+
 
 		/* Report Vendor ID */
 		if (adap->log_addrs.vendor_id != CEC_VENDOR_ID_NONE) {
@@ -1361,22 +1370,6 @@ static int cec_report_features(struct cec_adapter *adap, unsigned int la_idx)
 	return cec_transmit_msg(adap, &msg, false);
 }
 
-/* Transmit the Report Physical Address message */
-static int cec_report_phys_addr(struct cec_adapter *adap, unsigned int la_idx)
-{
-	const struct cec_log_addrs *las = &adap->log_addrs;
-	struct cec_msg msg = { };
-
-	/* Report Physical Address */
-	msg.msg[0] = (las->log_addr[la_idx] << 4) | 0x0f;
-	cec_msg_report_physical_addr(&msg, adap->phys_addr,
-				     las->primary_device_type[la_idx]);
-	dprintk(2, "config: la %d pa %x.%x.%x.%x\n",
-		las->log_addr[la_idx],
-			cec_phys_addr_exp(adap->phys_addr));
-	return cec_transmit_msg(adap, &msg, false);
-}
-
 /* Transmit the Feature Abort message */
 static int cec_feature_abort_reason(struct cec_adapter *adap,
 				    struct cec_msg *msg, u8 reason)
@@ -1513,7 +1506,7 @@ static int cec_receive_notify(struct cec_adapter *adap, struct cec_msg *msg,
 		 * Play function, this message can have variable length
 		 * depending on the specific play function that is used.
 		 */
-		case 0x60:
+		case CEC_OP_UI_CMD_PLAY_FUNCTION:
 			if (msg->len == 2)
 				rc_keydown(adap->rc, RC_TYPE_CEC,
 					   msg->msg[2], 0);
@@ -1530,8 +1523,12 @@ static int cec_receive_notify(struct cec_adapter *adap, struct cec_msg *msg,
 		 * For the time being these messages are not processed by the
 		 * framework and are simply forwarded to the user space.
 		 */
-		case 0x56: case 0x57:
-		case 0x67: case 0x68: case 0x69: case 0x6a:
+		case CEC_OP_UI_CMD_SELECT_BROADCAST_TYPE:
+		case CEC_OP_UI_CMD_SELECT_SOUND_PRESENTATION:
+		case CEC_OP_UI_CMD_TUNE_FUNCTION:
+		case CEC_OP_UI_CMD_SELECT_MEDIA_FUNCTION:
+		case CEC_OP_UI_CMD_SELECT_AV_INPUT_FUNCTION:
+		case CEC_OP_UI_CMD_SELECT_AUDIO_INPUT_FUNCTION:
 			break;
 		default:
 			rc_keydown(adap->rc, RC_TYPE_CEC, msg->msg[2], 0);
