@@ -105,8 +105,7 @@
 #define PMC_SCRATCH0			0x50
 #define  PMC_SCRATCH0_MODE_RECOVERY	(1 << 31)
 #define  PMC_SCRATCH0_MODE_BOOTLOADER	(1 << 30)
-// switch: reboot-to-payload scratch0 bit. "unofficial"
-#define  PMC_SCRATCH0_MODE_PAYLOAD	(1 << 29)
+#define  PMC_SCRATCH0_MODE_PAYLOAD	(1 << 29) /* R2P custom mode. Deprecated */
 #define  PMC_SCRATCH0_MODE_RCM		(1 << 1)
 #define  PMC_SCRATCH0_MODE_MASK		(PMC_SCRATCH0_MODE_RECOVERY | \
 					 PMC_SCRATCH0_MODE_BOOTLOADER | \
@@ -1045,6 +1044,9 @@ static void tegra_pmc_program_reboot_reason(const char *cmd)
 	}
 
 	r2p_setup(cmd);
+
+	/* Deprecated: Support old TZ. */
+	value |= PMC_SCRATCH0_MODE_PAYLOAD;
 
 	tegra_pmc_reg_writel(value, TEGRA_PMC_SCRATCH0);
 }
