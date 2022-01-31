@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2018 Billy Laws
- * Copyright (C) 2020 CTCaer
+ * Copyright (C) 2020-2022 CTCaer
  *
  * Author: 
  *  Billy Laws <blaws05@gmail.com>
@@ -70,7 +70,7 @@ static irqreturn_t max77620_onoff_handler(int irq, void *data)
 	if (onoff->suspended && !pressed)
 		return IRQ_HANDLED;
 
-	input_report_key(onoff->input, onoff->code, pressed ? 1 : 0);
+	input_report_key(onoff->input, onoff->code, pressed);
 	input_sync(onoff->input);
 
 	return IRQ_HANDLED;
@@ -128,18 +128,18 @@ static int max77620_onoff_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	onoff->irq_f = regmap_irq_get_virq(chip->onoff_irq_data,
-					   MAX77620_IRQ_ONOFF_EN0_F);
 	onoff->irq_r = regmap_irq_get_virq(chip->onoff_irq_data,
 					   MAX77620_IRQ_ONOFF_EN0_R);
+	onoff->irq_f = regmap_irq_get_virq(chip->onoff_irq_data,
+					   MAX77620_IRQ_ONOFF_EN0_F);
 
-	ret = devm_request_any_context_irq(dev, onoff->irq_f,
+	ret = devm_request_any_context_irq(dev, onoff->irq_r,
 					   max77620_onoff_handler,
 					   IRQF_ONESHOT, "en0-down", onoff);
 	if (ret < 0)
 		goto fail;
 
-	ret = devm_request_any_context_irq(dev, onoff->irq_r,
+	ret = devm_request_any_context_irq(dev, onoff->irq_f,
 					   max77620_onoff_handler,
 					   IRQF_ONESHOT, "en0-up", onoff);
 	if (ret < 0)
