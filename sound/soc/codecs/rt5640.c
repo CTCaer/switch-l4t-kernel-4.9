@@ -2199,15 +2199,15 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 	case SND_SOC_BIAS_OFF:
 		snd_soc_write(codec, RT5640_DEPOP_M1, 0x0004);
 		snd_soc_write(codec, RT5640_DEPOP_M2, 0x1100);
+		snd_soc_write(codec, RT5640_PWR_DIG1, 0x0000);
+		snd_soc_write(codec, RT5640_PWR_DIG2, 0x0000);
+		snd_soc_write(codec, RT5640_PWR_ANLG1, 0x0000);
+		snd_soc_write(codec, RT5640_PWR_ANLG2, 0x0000);
+		snd_soc_write(codec, RT5640_PWR_MIXER, 0x0000);
+		snd_soc_write(codec, RT5640_PWR_VOL, 0x0000);
 		/* I2S clock is mandatory for working jack detect if external plug */
 		snd_soc_update_bits(codec, RT5640_GEN_CTRL1,
 			RT5640_I2S_CLK_EN, rt5640->ext_mic ? RT5640_I2S_CLK_EN : 0);
-		snd_soc_write(codec, RT5640_PWR_DIG1, 0x0000);
-		snd_soc_write(codec, RT5640_PWR_DIG2, 0x0000);
-		snd_soc_write(codec, RT5640_PWR_VOL, 0x0000);
-		snd_soc_write(codec, RT5640_PWR_MIXER, 0x0000);
-		snd_soc_write(codec, RT5640_PWR_ANLG1, 0x0000);
-		snd_soc_write(codec, RT5640_PWR_ANLG2, 0x0000);
 		break;
 
 	default:
