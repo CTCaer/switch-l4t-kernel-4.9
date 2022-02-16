@@ -44,3 +44,4 @@ obj-$(CONFIG_MEDIA_TUNER_M88RS6000T) += m88rs6000t.o
 
 ccflags-y += -I$(srctree)/drivers/media/dvb-core
 ccflags-y += -I$(srctree)/drivers/media/dvb-frontends
+ccflags-y += -Wno-error=maybe-uninitialized

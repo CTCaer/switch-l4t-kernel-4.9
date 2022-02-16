@@ -4,6 +4,7 @@
 
 ccflags-y += -I$(srctree)/drivers/media/dvb-core/
 ccflags-y += -I$(srctree)/drivers/media/tuners/
+ccflags-y += -Wno-error=maybe-uninitialized
 
 # FIXME: RTL2832 SDR driver uses power management directly from USB IF driver
 ifdef CONFIG_DVB_RTL2832_SDR
