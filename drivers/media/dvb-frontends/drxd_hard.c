@@ -1313,7 +1313,7 @@ static int SC_WaitForReady(struct drxd_state *state)
 static int SC_SendCommand(struct drxd_state *state, u16 cmd)
 {
 	int status = 0, ret;
-	u16 errCode;
+	u16 errCode = 0;
 
 	Write16(state, SC_RA_RAM_CMD__A, cmd, 0);
 	SC_WaitForReady(state);
@@ -1332,7 +1332,7 @@ static int SC_ProcStartCommand(struct drxd_state *state,
 			       u16 subCmd, u16 param0, u16 param1)
 {
 	int ret, status = 0;
-	u16 scExec;
+	u16 scExec = 0;
 
 	mutex_lock(&state->mutex);
 	do {
