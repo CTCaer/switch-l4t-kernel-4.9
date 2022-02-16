@@ -981,17 +981,17 @@ sysfs_show_available_clocksources(struct device *dev,
 }
 
 /**
- * sysfs_show_offset_ns - sysfs interface for reading start count
+ * sysfs_show_offset_ns - sysfs intereface for reading ns offset
  * @dev:	unused
  * @attr:	unused
- * @buf:	char buffer to be filled with start count
+ * @buf:	char buffer to be filled with nanosecond offset
  *
- * Provides the start count of clock source
+ * Provides the ns offset between MONOTONIC_RAW and TSC start point
  */
 static ssize_t
 sysfs_show_offset_ns(struct device *dev,
-		       struct device_attribute *attr,
-		       char *buf)
+			struct device_attribute *attr,
+			char *buf)
 {
 	ssize_t count = 0;
 

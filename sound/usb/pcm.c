@@ -1308,7 +1308,8 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 	stride = runtime->frame_bits >> 3;
 
 	for (i = 0; i < urb->number_of_packets; i++) {
-		cp = (unsigned char *)urb->transfer_buffer + urb->iso_frame_desc[i].offset + subs->pkt_offset_adj;
+		cp = (unsigned char *)urb->transfer_buffer +
+		urb->iso_frame_desc[i].offset + subs->pkt_offset_adj;
 		if (urb->iso_frame_desc[i].status && printk_ratelimit()) {
 			dev_dbg(&subs->dev->dev, "frame %d active: %d\n",
 				i, urb->iso_frame_desc[i].status);
@@ -1518,8 +1519,10 @@ static void prepare_playback_urb(struct snd_usb_substream *subs,
 				break;
 			}
 		}
+		 /* finish at the period boundary */
 		if (period_elapsed &&
-		    !snd_usb_endpoint_implicit_feedback_sink(subs->data_endpoint)) /* finish at the period boundary */
+		!snd_usb_endpoint_implicit_feedback_sink(
+		subs->data_endpoint))
 			break;
 	}
 	bytes = frames * ep->stride;

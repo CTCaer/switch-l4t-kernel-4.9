@@ -39,6 +39,11 @@ enum hwmon_chip_attributes {
 	hwmon_chip_register_tz,
 	hwmon_chip_update_interval,
 	hwmon_chip_alarms,
+	hwmon_chip_samples,
+	hwmon_chip_curr_samples,
+	hwmon_chip_in_samples,
+	hwmon_chip_power_samples,
+	hwmon_chip_temp_samples,
 };
 
 #define HWMON_C_TEMP_RESET_HISTORY	BIT(hwmon_chip_temp_reset_history)
@@ -48,6 +53,11 @@ enum hwmon_chip_attributes {
 #define HWMON_C_REGISTER_TZ		BIT(hwmon_chip_register_tz)
 #define HWMON_C_UPDATE_INTERVAL		BIT(hwmon_chip_update_interval)
 #define HWMON_C_ALARMS			BIT(hwmon_chip_alarms)
+#define HWMON_C_SAMPLES			BIT(hwmon_chip_samples)
+#define HWMON_C_CURR_SAMPLES		BIT(hwmon_chip_curr_samples)
+#define HWMON_C_IN_SAMPLES		BIT(hwmon_chip_in_samples)
+#define HWMON_C_POWER_SAMPLES		BIT(hwmon_chip_power_samples)
+#define HWMON_C_TEMP_SAMPLES		BIT(hwmon_chip_temp_samples)
 
 enum hwmon_temp_attributes {
 	hwmon_temp_input = 0,
@@ -115,6 +125,7 @@ enum hwmon_in_attributes {
 	hwmon_in_max_alarm,
 	hwmon_in_lcrit_alarm,
 	hwmon_in_crit_alarm,
+	hwmon_in_enable,
 };
 
 #define HWMON_I_INPUT		BIT(hwmon_in_input)
@@ -132,6 +143,7 @@ enum hwmon_in_attributes {
 #define HWMON_I_MAX_ALARM	BIT(hwmon_in_max_alarm)
 #define HWMON_I_LCRIT_ALARM	BIT(hwmon_in_lcrit_alarm)
 #define HWMON_I_CRIT_ALARM	BIT(hwmon_in_crit_alarm)
+#define HWMON_I_ENABLE		BIT(hwmon_in_enable)
 
 enum hwmon_curr_attributes {
 	hwmon_curr_input,
@@ -298,8 +310,8 @@ enum hwmon_pwm_attributes {
  *			Channel number
  *		The function returns the file permissions.
  *		If the return value is 0, no attribute will be created.
- * @read:       Read callback. Optional. If not provided, attributes
- *		will not be readable.
+ * @read:	Read callback for data attributes. Mandatory if readable
+ *		data attributes are present.
  *		Parameters are:
  *		@dev:	Pointer to hardware monitoring device
  *		@type:	Sensor type
@@ -308,8 +320,19 @@ enum hwmon_pwm_attributes {
  *			Channel number
  *		@val:	Pointer to returned value
  *		The function returns 0 on success or a negative error number.
- * @write:	Write callback. Optional. If not provided, attributes
- *		will not be writable.
+ * @read_string:
+ *		Read callback for string attributes. Mandatory if string
+ *		attributes are present.
+ *		Parameters are:
+ *		@dev:	Pointer to hardware monitoring device
+ *		@type:	Sensor type
+ *		@attr:	Sensor attribute
+ *		@channel:
+ *			Channel number
+ *		@str:	Pointer to returned string
+ *		The function returns 0 on success or a negative error number.
+ * @write:	Write callback for data attributes. Mandatory if writeable
+ *		data attributes are present.
  *		Parameters are:
  *		@dev:	Pointer to hardware monitoring device
  *		@type:	Sensor type
@@ -324,6 +347,8 @@ struct hwmon_ops {
 			      u32 attr, int channel);
 	int (*read)(struct device *dev, enum hwmon_sensor_types type,
 		    u32 attr, int channel, long *val);
+	int (*read_string)(struct device *dev, enum hwmon_sensor_types type,
+		    u32 attr, int channel, const char **str);
 	int (*write)(struct device *dev, enum hwmon_sensor_types type,
 		     u32 attr, int channel, long val);
 };
@@ -338,6 +363,14 @@ struct hwmon_channel_info {
 	enum hwmon_sensor_types type;
 	const u32 *config;
 };
+
+#define HWMON_CHANNEL_INFO(stype, ...)	\
+	(&(struct hwmon_channel_info) {	\
+		.type = hwmon_##stype,	\
+		.config = (u32 []) {	\
+			__VA_ARGS__, 0	\
+		}			\
+	})
 
 /**
  * Chip configuration

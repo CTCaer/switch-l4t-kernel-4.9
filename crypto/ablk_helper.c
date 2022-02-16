@@ -34,6 +34,18 @@
 #include <crypto/ablk_helper.h>
 #include <asm/simd.h>
 
+/* XTS is not implemeted in VSE yet.
+   Arm CE XTS driver is used for FBE until it is implemented in VSE.
+   We set msb bit to store key in memory and use it in se driver.
+   But it doen't need in arm XTS driver. Hence clear the bit again.
+   Once XTS is implemeted in VSE, this change can be reverted.
+*/
+#define SE_STORE_KEY_IN_MEM    0x0001
+#define SE_MAGIC_PATTERN_OFFSET 16
+#define CLEAR_PATTERN(x) ((x) & 0xFFFF)
+#define DISABLE_KEY_IN_MEM(x) \
+	(CLEAR_PATTERN(x) & ~(SE_STORE_KEY_IN_MEM << SE_MAGIC_PATTERN_OFFSET))
+
 int ablk_set_key(struct crypto_ablkcipher *tfm, const u8 *key,
 		 unsigned int key_len)
 {
@@ -44,7 +56,7 @@ int ablk_set_key(struct crypto_ablkcipher *tfm, const u8 *key,
 	crypto_ablkcipher_clear_flags(child, CRYPTO_TFM_REQ_MASK);
 	crypto_ablkcipher_set_flags(child, crypto_ablkcipher_get_flags(tfm)
 				    & CRYPTO_TFM_REQ_MASK);
-	err = crypto_ablkcipher_setkey(child, key, key_len);
+	err = crypto_ablkcipher_setkey(child, key, DISABLE_KEY_IN_MEM(key_len));
 	crypto_ablkcipher_set_flags(tfm, crypto_ablkcipher_get_flags(child)
 				    & CRYPTO_TFM_RES_MASK);
 	return err;

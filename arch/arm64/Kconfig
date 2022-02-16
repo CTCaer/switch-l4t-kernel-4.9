@@ -616,6 +616,24 @@ config ARCH_ENABLE_MEMORY_HOTPLUG
 config ARCH_ENABLE_MEMORY_HOTREMOVE
 	def_bool y
 
+config ARCH_DEFER_MEMORY_INITIALIZE
+	bool "Defer Memory initialization"
+	depends on ARCH_ENABLE_MEMORY_HOTPLUG
+	default n
+	help
+	  Initializing all the DRAM memory during booting can increase
+	  the boot complete time. This config allows reducing the amount
+	  of memory initialized during boot and speed up boot completion.
+	  The memory that is deferred initialaztion would be added later
+	  using hot plug code after the boot is complete.
+
+config DEFER_MEMORY_INITIALIZE_SIZE_IN_GB
+	depends on ARCH_DEFER_MEMORY_INITIALIZE
+	int "size of memory in GB to defer initialization"
+	default 32
+	help
+	  The value MUST be NON ZERO and positive.
+
 # Common NUMA Features
 config NUMA
 	bool "Numa Memory Allocation and Scheduler Support"
@@ -744,8 +762,8 @@ config XEN
 	help
 	  Say Y if you want to run Linux in a Virtual Machine on Xen on ARM64.
 
-config FORCE_MAX_ZONEORDER
-	int
+menuconfig FORCE_MAX_ZONEORDER
+	int "Max memory zone size (power of 2 plus 1 order)"
 	default "14" if (ARM64_64K_PAGES && TRANSPARENT_HUGEPAGE)
 	default "12" if (ARM64_16K_PAGES && TRANSPARENT_HUGEPAGE)
 	default "11"

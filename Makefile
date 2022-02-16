@@ -1,9 +1,18 @@
 ifeq ($(KERNEL_OVERLAYS),)
-KERNEL_OVERLAYS :=
-KERNEL_OVERLAYS += $(CURDIR)/../nvidia
-KERNEL_OVERLAYS += $(CURDIR)/../nvgpu
-KERNEL_OVERLAYS += $(CURDIR)/../nvgpu-next
-KERNEL_OVERLAYS += $(CURDIR)/../nvidia-t23x
+ifeq ($(_nv_build_configuration_is_external),0)
+# internal build kernel overlays txt
+CHOSEN_KERNEL_OVERLAYS_TXT := kernel-int-overlays.txt
+else
+ifeq ($(_nv_build_configuration_is_external),)
+# menuconfig make selects internal profile
+# NOTE: external profile menuconfig support may be needed later
+CHOSEN_KERNEL_OVERLAYS_TXT := kernel-int-overlays.txt
+else
+# default is external kernel overlays txt
+CHOSEN_KERNEL_OVERLAYS_TXT := kernel-overlays.txt
+endif
+endif
+KERNEL_OVERLAYS := $(addprefix $(CURDIR)/../,$(shell cat $(CHOSEN_KERNEL_OVERLAYS_TXT)))
 else
 override KERNEL_OVERLAYS := $(subst :, ,$(KERNEL_OVERLAYS))
 endif
@@ -928,6 +937,14 @@ KBUILD_CPPFLAGS += $(ARCH_CPPFLAGS) $(KCPPFLAGS)
 KBUILD_AFLAGS   += $(ARCH_AFLAGS)   $(KAFLAGS)
 KBUILD_CFLAGS   += $(ARCH_CFLAGS)   $(KCFLAGS)
 
+#set flags to pass kernel, driver build if using clang for kernel, driver
+#currently build pass with those flasgs, but can't boot
+ifeq ($(cc-name),clang)
+KBUILD_CFLAGS += -fno-builtin-bcmp -Wno-parentheses-equality -Wno-varargs -Wno-typedef-redefinition -Wno-self-assign -Wno-enum-conversion \
+               -Wno-pointer-bool-conversion -Wno-constant-conversion -Wno-non-literal-null-conversion -Wno-tentative-definition-incomplete-type \
+               -Wframe-larger-than=4096 -Wno-deprecated-declarations -Wno-shift-count-negative
+endif
+
 # Use --build-id when available.
 LDFLAGS_BUILD_ID = $(patsubst -Wl$(comma)%,%,\
 			      $(call cc-ldoption, -Wl$(comma)--build-id,))
@@ -1262,8 +1279,8 @@ firmware_install:
 #Default location for installed headers
 export INSTALL_HDR_PATH ?= $(objtree)/usr
 
-# If we do an all arch process set dst to asm-$(hdr-arch)
-hdr-dst = $(if $(KBUILD_HEADERS), dst=include/asm-$(hdr-arch), dst=include/asm)
+# If we do an all arch process set dst to include/arch-$(hdr-arch)
+hdr-dst = $(if $(KBUILD_HEADERS), dst=include/arch-$(hdr-arch), dst=include)
 
 PHONY += archheaders
 archheaders:
@@ -1283,8 +1300,8 @@ PHONY += headers_install
 headers_install: __headers
 	$(if $(wildcard $(srctree)/arch/$(hdr-arch)/include/uapi/asm/Kbuild),, \
 	  $(error Headers not exportable for the $(SRCARCH) architecture))
-	$(Q)$(MAKE) $(hdr-inst)=include/uapi
-	$(Q)$(MAKE) $(hdr-inst)=arch/$(hdr-arch)/include/uapi/asm $(hdr-dst)
+	$(Q)$(MAKE) $(hdr-inst)=include/uapi dst=include
+	$(Q)$(MAKE) $(hdr-inst)=arch/$(hdr-arch)/include/uapi $(hdr-dst)
 
 PHONY += headers_check_all
 headers_check_all: headers_install_all
@@ -1292,8 +1309,8 @@ headers_check_all: headers_install_all
 
 PHONY += headers_check
 headers_check: headers_install
-	$(Q)$(MAKE) $(hdr-inst)=include/uapi HDRCHECK=1
-	$(Q)$(MAKE) $(hdr-inst)=arch/$(hdr-arch)/include/uapi/asm $(hdr-dst) HDRCHECK=1
+	$(Q)$(MAKE) $(hdr-inst)=include/uapi dst=include HDRCHECK=1
+	$(Q)$(MAKE) $(hdr-inst)=arch/$(hdr-arch)/include/uapi $(hdr-dst) HDRCHECK=1
 
 # ---------------------------------------------------------------------------
 # Kernel selftest

@@ -1,7 +1,7 @@
 /*
  * sysfs header for cifs
  *
- * Copyright (c) 2018, NVIDIA Corporation. All Rights Reserved.
+ * Copyright (c) 2018-2021, NVIDIA Corporation. All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -18,16 +18,16 @@
 #ifndef _CIFS_SYSFS_H
 #define _CIFS_SYSFS_H
 
-typedef enum {
+enum cifs_event_type {
 	CONNECTED = 1,
 	DISCONNECTED,
 	RECONNECTING,
 	RECONNECTED,
 	SMB_ERROR,
 	RECONNECT_ERROR
-} cifs_event_type;
+};
 
-void cifs_sysfs_notify_change(const char* source, cifs_event_type type);
+void cifs_sysfs_notify_change(const char *source, enum cifs_event_type type);
 int cifs_sysfs_init(void);
 void cifs_sysfs_exit(void);
 #endif

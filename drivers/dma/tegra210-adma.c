@@ -1,7 +1,7 @@
 /*
  * ADMA driver for Nvidia's Tegra210 ADMA controller.
  *
- * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2016-2020, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -66,8 +66,6 @@
 #define T210_ADMA_CH_FIFO_CTRL_FIFO_SIZE_MASK			0x1f
 #define T186_ADMA_CH_FIFO_CTRL_FIFO_SIZE_MASK			0x3f
 #define ADMA_CH_FIFO_CTRL_RX_FIFO_SIZE_SHIFT			0
-#define ADMA_CH_FIFO_CTRL_OVRFW_THRES(val)             (((val) & 0xf) << 24)
-#define ADMA_CH_FIFO_CTRL_STARV_THRES(val)             (((val) & 0xf) << 16)
 
 #define ADMA_CH_CTRL_XFER_PAUSE_SHIFT				0
 #define ADMA_CH_CTRL_XFER_PAUSE_MASK	\
@@ -91,9 +89,6 @@
 #define T186_ADMA_GLOBAL_INT_CLEAR				0x402c
 #define T210_ADMA_GLOBAL_CTRL					0x24
 #define T186_ADMA_GLOBAL_CTRL					0x20
-
-#define ADMA_CH_FIFO_CTRL_DEFAULT	(ADMA_CH_FIFO_CTRL_OVRFW_THRES(1) | \
-					 ADMA_CH_FIFO_CTRL_STARV_THRES(1))
 
 #define ADMA_CH_REG_FIELD_VAL(val, mask, shift)	(((val) & mask) << shift)
 
@@ -122,7 +117,7 @@
 #define ADMA_SHRD_SEM_WAIT_COUNT		50
 
 struct tegra_adma;
-struct device *dma_device;
+static struct device *dma_device;
 
 /*
  * struct tegra_adma_war - Tegra chip specific sw war data
@@ -245,12 +240,6 @@ static inline u32 tdma_global_read(struct tegra_adma *tdma, u32 reg)
 	return readl(tdma->base_addr + global_reg_offset + reg);
 }
 
-static inline void tdma_global_ch_write(struct tegra_adma *tdma, u32 reg,
-					u32 val)
-{
-	writel(val, tdma->base_addr + tdma->ch_base_offset + reg);
-}
-
 static inline void tdma_ch_write(struct tegra_adma_chan *tdc, u32 reg, u32 val)
 {
 	writel(val, tdc->chan_addr + reg);
@@ -300,9 +289,20 @@ static int tegra_adma_init(struct tegra_adma *tdma)
 	unsigned int global_reg_offset = tdma->chip_data->global_reg_offset;
 	unsigned int reg_soft_reset;
 
-
-	/* Clear any interrupts */
-	tdma_global_ch_write(tdma, chip_data->global_int_clear, 0x1);
+	/*
+	 * Clear any interrupts:
+	 *
+	 * On Tegra186 and later, ADMA channels are virtualized and aliased
+	 * into 4 64K pages. A separate page carries global and configuration
+	 * registers for ADMA. Few registers are reshuffled as part of it and
+	 * moved to page specific space. Thus offset of these registers are
+	 * relative to the channel base offset and it needs to be taken into
+	 * account while updating. It works for Tegra210 as well as channel
+	 * base offset is 0.
+	 */
+	tdma_global_write(tdma,
+		chip_data->ch_base_offset + chip_data->global_int_clear,
+		0x1);
 
 	if (tdma->is_virt == false) {
 		/* Assert soft reset */
@@ -465,6 +465,8 @@ static void tegra_adma_stop(struct tegra_adma_chan *tdc)
 		return;
 	}
 
+	tegra_adma_irq_clear(tdc);
+
 	kfree(tdc->desc);
 	tdc->desc = NULL;
 	tdc->vc.cyclic = NULL;
@@ -601,7 +603,8 @@ static unsigned int tegra_adma_get_residue(struct tegra_adma_chan *tdc)
 	/* get transferred data count */
 	tc_transferred = ch_regs->tc - tc_remain;
 
-	tot_xfer = (uint64_t)(tdc->tx_buf_count * ch_regs->tc) + tc_transferred;
+	tot_xfer = (uint64_t)((uint64_t)tdc->tx_buf_count *
+			(uint64_t)ch_regs->tc) + tc_transferred;
 	tot_xfer %= desc->buf_len;
 
 	return desc->buf_len - tot_xfer;
@@ -764,7 +767,6 @@ static int tegra_adma_set_xfer_params(struct tegra_adma_chan *tdc,
 {
 	struct tegra_adma_chan_regs *ch_regs = &desc->ch_regs;
 	const struct tegra_adma_chip_data *chip_data = tdc->tdma->chip_data;
-	unsigned int fifo_ctrl = ADMA_CH_FIFO_CTRL_DEFAULT;
 	unsigned int burst_size, adma_dir, fifo_size_shift, sid;
 
 	if (desc->num_periods > ADMA_CH_CONFIG_MAX_BUFS)
@@ -801,15 +803,15 @@ static int tegra_adma_set_xfer_params(struct tegra_adma_chan *tdc,
 	}
 
 	sid = tdc->sconfig.slave_id > chip_data->slave_id ? 2 : 3;
-	fifo_ctrl |= ADMA_CH_REG_FIELD_VAL(sid, chip_data->ch_fifo_size_mask,
-					   fifo_size_shift);
+	ch_regs->fifo_ctrl = ADMA_CH_REG_FIELD_VAL(sid,
+						   chip_data->ch_fifo_size_mask,
+						   fifo_size_shift);
 	ch_regs->ctrl |= ADMA_CH_CTRL_DIR(adma_dir) |
 			 ADMA_CH_CTRL_MODE_CONTINUOUS |
 			 ADMA_CH_CTRL_FLOWCTRL_EN;
 	ch_regs->config |= chip_data->adma_get_burst_config(burst_size);
 	ch_regs->config |= ADMA_CH_CONFIG_WEIGHT_FOR_WRR(1);
 	ch_regs->config |= chip_data->outstanding_request;
-	ch_regs->fifo_ctrl = fifo_ctrl;
 	ch_regs->tc = desc->period_len & ADMA_CH_TC_COUNT_MASK;
 
 	return tegra_adma_request_alloc(tdc, direction);
@@ -948,8 +950,8 @@ static int tegra_adma_runtime_suspend(struct device *dev)
 			ch_reg->config = tdma_ch_read(tdc, ADMA_CH_CONFIG);
 		}
 	}
-	if (tdma->is_virt == false)
-		clk_disable_unprepare(tdma->ahub_clk);
+
+	clk_disable_unprepare(tdma->ahub_clk);
 
 	return 0;
 }
@@ -959,12 +961,10 @@ static int tegra_adma_runtime_resume(struct device *dev)
 	struct tegra_adma *tdma = dev_get_drvdata(dev);
 	int ret, i;
 
-	if (tdma->is_virt == false) {
-		ret = clk_prepare_enable(tdma->ahub_clk);
-		if (ret) {
-			dev_err(dev, "ahub clk_enable failed: %d\n", ret);
-			return ret;
-		}
+	ret = clk_prepare_enable(tdma->ahub_clk);
+	if (ret) {
+		dev_err(dev, "ahub clk_enable failed: %d\n", ret);
+		return ret;
 	}
 
 	if (tdma->is_virt == false)
@@ -1093,8 +1093,13 @@ static int tegra_adma_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	if (of_property_read_u32(node, "dma-channels",
-						&tdma->nr_channels))
+						&tdma->nr_channels)) {
+#if IS_ENABLED(CONFIG_SND_SOC_TEGRA210_ADSP_ALT)
+		tdma->nr_channels = cdata->nr_channels >> 1;
+#else
 		tdma->nr_channels = cdata->nr_channels;
+#endif
+	}
 
 	if (tdma->nr_channels > cdata->nr_channels)
 		tdma->nr_channels = cdata->nr_channels;
@@ -1119,7 +1124,6 @@ static int tegra_adma_probe(struct platform_device *pdev)
 	else
 		tdma->is_virt = false;
 
-
 	tdma->dev = &pdev->dev;
 	dma_device = &pdev->dev;
 	tdma->chip_data = cdata;
@@ -1142,13 +1146,11 @@ static int tegra_adma_probe(struct platform_device *pdev)
 		if (IS_ERR(tdma->shrd_sem_addr))
 			return PTR_ERR(tdma->shrd_sem_addr);
 	}
-	if (tdma->is_virt == false) {
-		tdma->ahub_clk = devm_clk_get(&pdev->dev, "d_audio");
-		if (IS_ERR(tdma->ahub_clk)) {
-			dev_err(&pdev->dev,
-				"Error: Missing ahub controller clock\n");
-			return PTR_ERR(tdma->ahub_clk);
-		}
+
+	tdma->ahub_clk = devm_clk_get(&pdev->dev, "d_audio");
+	if (IS_ERR(tdma->ahub_clk)) {
+		dev_err(&pdev->dev, "Error: Missing ahub controller clock\n");
+		return PTR_ERR(tdma->ahub_clk);
 	}
 
 	spin_lock_init(&tdma->global_lock);

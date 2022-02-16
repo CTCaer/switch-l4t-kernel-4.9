@@ -362,11 +362,13 @@ static void sas_destruct_devices(struct work_struct *work)
 	clear_bit(DISCE_DESTRUCT, &port->disc.pending);
 
 	list_for_each_entry_safe(dev, n, &port->destroy_list, disco_list_node) {
+		struct sas_port *sas_port = dev_to_sas_port(dev->rphy->dev.parent);
 		list_del_init(&dev->disco_list_node);
 
 		sas_remove_children(&dev->rphy->dev);
 		sas_rphy_delete(dev->rphy);
 		sas_unregister_common_dev(port, dev);
+		sas_port_delete(sas_port);
 	}
 }
 
@@ -400,9 +402,6 @@ void sas_unregister_domain_devices(struct asd_sas_port *port, int gone)
 
 	list_for_each_entry_safe(dev, n, &port->disco_list, disco_list_node)
 		sas_unregister_dev(port, dev);
-
-	port->port->rphy = NULL;
-
 }
 
 void sas_device_set_phy(struct domain_device *dev, struct sas_port *port)

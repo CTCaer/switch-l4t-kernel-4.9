@@ -12,7 +12,7 @@
  * Copyright (C) 2008 Google, Inc.
  * Author: Mike Lockwood <lockwood@android.com>
  *
- * Copyright (C) 2018 NVIDIA Corporation. All rights reserved.
+ * Copyright (C) 2018-2019 NVIDIA Corporation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -78,6 +78,10 @@
 #define EXTCON_DISP_AUDIO_AUX1	47	/* Audio for SOR 1 */
 #define EXTCON_DISP_AUDIO_AUX2	48	/* Audio for SOR 2 */
 #define EXTCON_DISP_AUDIO_AUX3	49	/* Audio for SOR 3 */
+#define EXTCON_DISP_DSIHPD	50	/* DSI with hotplug support */
+#define EXTCON_DISP_HDMI2	51	/* 2nd HDMI port */
+#define EXTCON_DISP_HDMI3	52	/* 3rd HDMI port */
+#define EXTCON_DISP_HDMI4	53	/* 4th HDMI port */
 
 /* Miscellaneous external connector */
 #define EXTCON_DOCK		60

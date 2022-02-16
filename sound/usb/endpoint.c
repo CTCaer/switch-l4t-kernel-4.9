@@ -687,7 +687,7 @@ static int data_ep_set_params(struct snd_usb_endpoint *ep,
 
 	if (is_playback && !snd_usb_endpoint_implicit_feedback_sink(ep)) {
 		urb_packs = max(ep->chip->nrpacks, 1);
-		urb_packs = min(urb_packs, (unsigned int) MAX_PACKS);
+		urb_packs = min(urb_packs, MAX_PACKS);
 	} else {
 		urb_packs = 1;
 	}

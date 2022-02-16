@@ -2,6 +2,8 @@
  *   fs/cifs/connect.c
  *
  *   Copyright (C) International Business Machines  Corp., 2002,2011
+ *   Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+ *
  *   Author(s): Steve French (sfrench@us.ibm.com)
  *
  *   This library is free software; you can redistribute it and/or modify
@@ -403,7 +405,9 @@ cifs_reconnect(struct TCP_Server_Info *server)
 	list_for_each_safe(tmp, tmp2, &retry_list) {
 		mid_entry = list_entry(tmp, struct mid_q_entry, qhead);
 		list_del_init(&mid_entry->qhead);
-		mid_entry->callback(mid_entry);
+		if (mid_entry->callback) {
+			mid_entry->callback(mid_entry);
+		}
 	}
 
 	do {
@@ -416,7 +420,9 @@ cifs_reconnect(struct TCP_Server_Info *server)
 #ifdef CONFIG_CIFS_SYSFS
 			if (notify_reconnect_error) {
 				if (reconnect_error_count == 2) {
-					cifs_sysfs_notify_change(server->hostname, RECONNECT_ERROR);
+					cifs_sysfs_notify_change(
+						server->hostname,
+						RECONNECT_ERROR);
 					notify_reconnect_error = false;
 				}
 				reconnect_error_count++;
@@ -529,7 +535,8 @@ server_unresponsive(struct TCP_Server_Info *server)
 	 * 65s kernel_recvmsg times out, and we see that we haven't gotten
 	 *     a response in >60s.
 	 */
-	if (server->tcpStatus == CifsGood &&
+	if ((server->tcpStatus == CifsGood ||
+	    server->tcpStatus == CifsNeedNegotiate) &&
 	    time_after(jiffies, server->lstrp + 2 * server->echo_interval)) {
 		cifs_dbg(VFS, "Server %s has not responded in %lu seconds. Reconnecting...\n",
 			 server->hostname, (2 * server->echo_interval) / HZ);
@@ -743,7 +750,9 @@ static void clean_demultiplex_info(struct TCP_Server_Info *server)
 			mid_entry = list_entry(tmp, struct mid_q_entry, qhead);
 			cifs_dbg(FYI, "Callback mid 0x%llx\n", mid_entry->mid);
 			list_del_init(&mid_entry->qhead);
-			mid_entry->callback(mid_entry);
+			if (mid_entry->callback) {
+				mid_entry->callback(mid_entry);
+			}
 		}
 		/* 1/8th of sec is more than enough time for them to exit */
 		msleep(125);
@@ -919,8 +928,14 @@ cifs_demultiplex_thread(void *p)
 							mid_entry->resp_buf,
 							server);
 
-			if (!mid_entry->multiRsp || mid_entry->multiEnd)
-				mid_entry->callback(mid_entry);
+			if (!mid_entry->multiRsp || mid_entry->multiEnd) {
+				if (mid_entry->callback) {
+					mid_entry->callback(mid_entry);
+				} else {
+					cifs_dbg(VFS, "SMB null callback\n");
+					break;
+				}
+			}
 		} else if (server->ops->is_oplock_break &&
 			   server->ops->is_oplock_break(buf, server)) {
 			cifs_dbg(FYI, "Received oplock break\n");
@@ -1742,7 +1757,8 @@ cifs_parse_mount_options(const char *mountdata, const char *devname,
 			for (i = 0, j = 0; i < temp_len; i++, j++) {
 				if (value[i] == comma) {
 				/* Replace the special comma char
-				* with an actual comma, then skip.*/
+				 * with an actual comma, then skip.
+				 */
 					vol->password[j] = ',';
 				} else {
 				vol->password[j] = value[i];
@@ -3569,7 +3585,7 @@ cifs_setup_volume_info(struct smb_vol *volume_info, char *mount_data,
 	} else if (volume_info->username) {
 		/* BB fixme parse for domain name here */
 		cifs_dbg(FYI, "Username: %s\n", volume_info->username);
-    } else {
+	} else {
 		cifs_dbg(VFS, "No username specified\n");
 	/* In userspace mount helper we can get user name from alternate
 	   locations such as env variables and files on disk */

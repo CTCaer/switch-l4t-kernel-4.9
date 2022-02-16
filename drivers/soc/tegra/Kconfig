@@ -80,24 +80,12 @@ config ARCH_TEGRA_210_SOC
 endif
 endif
 
-config TEGRA_DVFS
-	bool
-	depends on ARCH_TEGRA
-	select PM_OPP
-	help
-	  This adds Tegra DVFS support. There could be several power
-	  rails involved and there might be rails dependency based
-	  on different SoCs, this config enable the generic DVFS
-	  library needed by each SoCs DVFS files.
-
-	  If in doubt, say N.
-
-config TEGRA_210_DVFS
-	bool "Tegra210 DVFS support"
+config TEGRA_USE_NA_GPCPLL
+	bool "Enable noise aware mode of GM20B GPCPLL on Tegra"
+	depends on COMMON_CLK
 	depends on ARCH_TEGRA_210_SOC
-	select TEGRA_DVFS
+	default y
 	help
-	  This enable Tegra210 DVFS functionality, it implements SoC
-	  specific initialization code to be invoked by probe function
-	  defined in generic Tegra DVFS driver, so while enabled it
-	  needs the config TEGRA_DVFS to be enabled as well.
+	  Enable noise aware (NA) mode of GM20b GPCPLL. In this mode PLL output
+	  frequency is automatically adjusted when GM20b voltage is fluctuating
+	  because of transient PMIC or power distribution tree noise.

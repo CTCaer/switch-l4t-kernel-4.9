@@ -8,6 +8,8 @@
  * Initial work by:
  *   (c) 2000 Adam J. Richter (adam@yggdrasil.com), Yggdrasil Computing, Inc.
  *
+ * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+ *
  * Please see http://www.one-eyed-alien.net/~mdharm/linux-usb for more
  * information about this driver.
  *
@@ -1276,6 +1278,12 @@ UNUSUAL_DEV( 0x090a, 0x1200, 0x0000, 0x9999,
 		"MP3 player",
 		USB_SC_RBC, USB_PR_BULK, NULL,
 		0 ),
+
+UNUSUAL_DEV(0x090c, 0x1000, 0x1100, 0x1100,
+		"Samsung",
+		"Flash Drive FIT",
+		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
+		US_FL_MAX_SECTORS_64),
 
 /* aeb */
 UNUSUAL_DEV( 0x090c, 0x1132, 0x0000, 0xffff,

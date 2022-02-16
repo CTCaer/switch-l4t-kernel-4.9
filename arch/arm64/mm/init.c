@@ -34,9 +34,12 @@
 #include <linux/dma-mapping.h>
 #include <linux/dma-contiguous.h>
 #include <linux/efi.h>
+#include <linux/freezer.h>
+#include <linux/kthread.h>
 #include <linux/swiotlb.h>
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
+#include <linux/sysfs.h>
 
 #include <asm/boot.h>
 #include <asm/fixmap.h>
@@ -192,6 +195,41 @@ static int __init early_mem(char *p)
 }
 early_param("mem", early_mem);
 
+#ifdef CONFIG_ARCH_DEFER_MEMORY_INITIALIZE
+static phys_addr_t hotplug_memory[CONFIG_DEFER_MEMORY_INITIALIZE_SIZE_IN_GB];
+static u32 defer_mem_sz; /* defer memory size in GBs */
+
+static int get_defer_memory_size(char *options)
+{
+	char *p = options;
+
+	defer_mem_sz = memparse(p, &p);
+
+	pr_debug("deferred mem size: %u GB\n", defer_mem_sz);
+
+	return 0;
+}
+early_param("defer_mem_size_gb", get_defer_memory_size);
+
+static void defer_memory_init(void)
+{
+	phys_addr_t alloc_size = (1 << PA_SECTION_SHIFT);
+	u32 i;
+
+	if (!defer_mem_sz) {
+		pr_debug("No memory to defer\n");
+		return;
+	}
+
+	for (i = 0 ; i < defer_mem_sz; i++) {
+		hotplug_memory[i] = memblock_alloc(alloc_size, alloc_size);
+		pr_debug("hotplug block phys_addr=%pa\n", &hotplug_memory[i]);
+		memblock_free(hotplug_memory[i], alloc_size);
+		memblock_remove(hotplug_memory[i], alloc_size);
+	}
+}
+#endif /* CONFIG_ARCH_DEFER_MEMORY_INITIALIZE */
+
 void __init arm64_memblock_init(void)
 {
 	const s64 linear_region_size = -(s64)PAGE_OFFSET;
@@ -304,6 +342,9 @@ void __init arm64_memblock_init(void)
 	high_memory = __va(memblock_end_of_DRAM() - 1) + 1;
 	dma_contiguous_reserve(arm64_dma_phys_limit);
 
+#ifdef CONFIG_ARCH_DEFER_MEMORY_INITIALIZE
+	defer_memory_init();
+#endif
 	memblock_allow_resize();
 }
 
@@ -661,4 +702,108 @@ int arch_remove_memory(u64 start, u64 size)
 }
 
 #endif /* CONFIG_MEMORY_HOTREMOVE */
+
+#ifdef CONFIG_ARCH_DEFER_MEMORY_INITIALIZE
+static struct task_struct *hotplug_kthread;
+static struct kobject *memhp_kobj;
+static int dfrd_mem_addbck;
+
+static int hotplug_memory_thread(void *data)
+{
+	struct kobj_attribute *dfr_attr = data;
+	int ret;
+	u32 i;
+
+	set_freezable();
+
+	for (i = 0; i < defer_mem_sz; i++) {
+		if (!hotplug_memory[i])
+			continue;
+		ret = add_memory(0, hotplug_memory[i],
+			1 << PA_SECTION_SHIFT);
+		pr_debug("hotplug of 1 GB starting at %pa %s\n",
+			&hotplug_memory[i], ret ? "failed" :
+			"successful");
+	}
+
+	sysfs_remove_file(memhp_kobj,
+			  &dfr_attr->attr);
+	do_exit(0);
+
+	return 0;
+}
+
+static ssize_t show_dfrd_mem_addbck(struct kobject *kobj,
+				 struct kobj_attribute *attr, char *buf)
+{
+	return  snprintf(buf, sizeof(dfrd_mem_addbck), "%d\n", dfrd_mem_addbck);
+}
+
+static ssize_t store_dfrd_mem_addbck(struct kobject *kobj,
+			 struct kobj_attribute *attr, const char *buf,
+				 size_t count)
+{
+	int ret;
+
+	ret = kstrtoint(buf, 0, &dfrd_mem_addbck);
+	if (ret || dfrd_mem_addbck < 0 || dfrd_mem_addbck > 1)
+		return -EINVAL;
+
+	if (dfrd_mem_addbck == 1 && hotplug_kthread)
+		wake_up_process(hotplug_kthread);
+
+	return count;
+}
+
+static struct kobj_attribute dfrd_mem_addbck_attr =
+	__ATTR(dfrd_mem_addbck, 0644, show_dfrd_mem_addbck,
+		store_dfrd_mem_addbck);
+
+static int create_hp_mem_sysfs(void)
+{
+	int ret;
+
+	memhp_kobj = kobject_create_and_add("dfrd_mem",
+					kernel_kobj);
+	if (!memhp_kobj)
+		return -ENOENT;
+
+	ret = sysfs_create_file(memhp_kobj, &dfrd_mem_addbck_attr.attr);
+	if (ret)
+		pr_err("%s: cannot register deffered memory add back sysfs file\n",
+		       __func__);
+
+	return ret;
+}
+
+static int hotplug_add_memory(void)
+{
+	int ret;
+
+	if (!defer_mem_sz) {
+		return 0;
+	}
+
+	hotplug_kthread = kthread_create(hotplug_memory_thread,
+				      &dfrd_mem_addbck_attr, "memory_hotplug");
+	if (IS_ERR_OR_NULL(hotplug_kthread)) {
+		pr_err("failed to start memory_hotplug thread\n");
+		ret = -ESRCH;
+		goto exit_hpmem;
+	}
+
+	ret = create_hp_mem_sysfs();
+	if (ret) {
+		kthread_stop(hotplug_kthread);
+		pr_err("Couldn't create deffered memory add back kobj\n");
+		goto exit_hpmem;
+	}
+
+	return 0;
+exit_hpmem:
+	return ret;
+}
+late_initcall(hotplug_add_memory);
+#endif /* CONFIG_ARCH_DEFER_MEMORY_INITIALIZE */
+
 #endif /* CONFIG_MEMORY_HOTPLUG */

@@ -305,6 +305,28 @@ int tegra_hv_ivc_channel_notified(struct tegra_hv_ivc_cookie *ivck);
  */
 void tegra_hv_ivc_channel_reset(struct tegra_hv_ivc_cookie *ivck);
 
+/**
+ * tegra_hv_ivc_get_info - Get info of Guest shared area
+ * @ivck	IVC cookie of the queue
+ * @pa		IPA of shared area
+ * @size	Size of the shared area
+ *
+ * Get info (IPA and size) of Guest shared area
+ *
+ * Returns size on success and an error code otherwise
+ */
+int tegra_hv_ivc_get_info(struct tegra_hv_ivc_cookie *ivck, uint64_t *pa,
+			  uint64_t *size);
+
+/**
+ * tegra_hv_ivc_notify - Notify remote guest
+ * @ivck	IVC cookie of the queue
+ *
+ * Notify remote guest
+ *
+ */
+void tegra_hv_ivc_notify(struct tegra_hv_ivc_cookie *ivck);
+
 struct ivc *tegra_hv_ivc_convert_cookie(struct tegra_hv_ivc_cookie *ivck);
 #else
 static inline struct tegra_hv_ivc_cookie *tegra_hv_ivc_reserve(
@@ -414,6 +436,16 @@ static inline int tegra_hv_ivc_channel_notified(
 }
 
 static inline void tegra_hv_ivc_channel_reset(struct tegra_hv_ivc_cookie *ivck)
+{
+}
+
+static inline int tegra_hv_ivc_get_info(struct tegra_hv_ivc_cookie *ivck,
+					uint64_t *pa, uint64_t *size)
+{
+	return -ENODEV;
+}
+
+static inline void tegra_hv_ivc_notify(struct tegra_hv_ivc_cookie *ivck)
 {
 }
 

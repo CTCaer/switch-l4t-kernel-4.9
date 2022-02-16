@@ -884,19 +884,17 @@ config LOG_CPU_MAX_BUF_SHIFT
 		     13 =>   8 KB for each CPU
 		     12 =>   4 KB for each CPU
 
-config PRINTK_SAFE_LOG_BUF_SHIFT
-	int "Temporary per-CPU printk log buffer size (12 => 4KB, 13 => 8KB)"
+config NMI_LOG_BUF_SHIFT
+	int "Temporary per-CPU NMI log buffer size (12 => 4KB, 13 => 8KB)"
 	range 10 21
 	default 13
-	depends on PRINTK
+	depends on PRINTK_NMI
 	help
-	  Select the size of an alternate printk per-CPU buffer where messages
-	  printed from usafe contexts are temporary stored. One example would
-	  be NMI messages, another one - printk recursion. The messages are
-	  copied to the main log buffer in a safe context to avoid a deadlock.
-	  The value defines the size as a power of 2.
+	  Select the size of a per-CPU buffer where NMI messages are temporary
+	  stored. They are copied to the main log buffer in a safe context
+	  to avoid a deadlock. The value defines the size as a power of 2.
 
-	  Those messages are rare and limited. The largest one is when
+	  NMI messages are rare and limited. The largest one is when
 	  a backtrace is printed. It usually fits into 4KB. Select
 	  8KB if you want to be on the safe side.
 
@@ -2281,6 +2279,14 @@ config ASN1
 	  that can be interpreted by the ASN.1 stream decoder and used to
 	  inform it as to what tags are to be expected in a stream and what
 	  functions to call on what tags.
+
+config MEMORY_HOTPLUG_COMPLETE
+	bool "deferred memory hotplug is completed"
+	default n
+	help
+	  Notify deferred memory hotplug is completed and safer to
+	  start init process. Deferred memory hotplug was initiated with the config
+	  ARCH_DEFER_MEMORY_INITIALIZE.
 
 config DIAG_KERNEL
 	bool "Diag kernel"

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014-2021, NVIDIA CORPORATION.  All rights reserved.
  * Copyright (C) 2015 Google, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -274,6 +274,17 @@
 #define   AUX_RX_IDLE_MODE(x)                 (((x) & 0x3) << 20)
 #define   AUX_RX_IDLE_EN                      BIT(22)
 #define   AUX_RX_IDLE_TH(x)                   (((x) & 0x3) << 24)
+#define   AUX_TX_TERM_EN			BIT(2)
+#define   AUX_TX_RDET_EN			BIT(4)
+#define   AUX_TX_RDET_BYP			BIT(5)
+#define   AUX_TX_RDET_CLK_EN			BIT(6)
+#define   AUX_TX_MODE_OVRD			BIT(12)
+
+#define XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_2(x)	(0x464 + (x) * 0x40)
+#define   RX_IDDQ_OVRD				BIT(9)
+#define   RX_IDDQ				BIT(8)
+#define   TX_IDDQ_OVRD				BIT(1)
+#define   TX_IDDQ				BIT(0)
 
 #define XUSB_PADCTL_UPHY_MISC_PAD_S0_CTL_4    0x96c
 #define   RX_TERM_EN                          BIT(21)
@@ -418,26 +429,37 @@ static void tegra210_xusb_padctl_disable_pad_protection(
 }
 
 /* This API must be used to init unused SS ports */
-static void tegra210_xusb_padctl_init_usb3_port(int port,
+static void tegra210b01_xusb_padctl_init_ss_port_3(
 					struct tegra_xusb_padctl *padctl)
 {
 	u32 reg;
 
 	reg = padctl_readl(padctl, XUSB_PADCTL_SS_PORT_MAP);
-	reg &= ~SS_PORT_MAP(port, SS_PORT_MAP_PORT_DISABLED);
-	reg |= SS_PORT_MAP(port, port);
+	reg &= ~SS_PORT_MAP(3, SS_PORT_MAP_PORT_DISABLED);
+	reg |= SS_PORT_MAP(3, 3);
 	padctl_writel(padctl, reg, XUSB_PADCTL_SS_PORT_MAP);
 
+	/*
+	 * As SS port logic generates signals on both DISABLED and DEVICE mode,
+	 * the disabled ports falsely trigger the HS/FS device port logic.
+	 * We set the port capability to HOST instead of DISABLED as WAR for
+	 * the possible issue.
+	 */
+	reg = padctl_readl(padctl, XUSB_PADCTL_USB2_PORT_CAP);
+	reg &= ~XUSB_PADCTL_USB2_PORT_CAP_PORTX_CAP_MASK(3);
+	reg |= XUSB_PADCTL_USB2_PORT_CAP_PORTX_CAP_HOST(3);
+	padctl_writel(padctl, reg, XUSB_PADCTL_USB2_PORT_CAP);
+
 	reg = padctl_readl(padctl, XUSB_PADCTL_ELPG_PROGRAM_1);
-	reg &= ~SSPX_ELPG_VCORE_DOWN(port);
+	reg &= ~SSPX_ELPG_VCORE_DOWN(3);
 	padctl_writel(padctl, reg, XUSB_PADCTL_ELPG_PROGRAM_1);
 
 	reg = padctl_readl(padctl, XUSB_PADCTL_ELPG_PROGRAM_1);
-	reg &= ~SSPX_ELPG_CLAMP_EN_EARLY(port);
+	reg &= ~SSPX_ELPG_CLAMP_EN_EARLY(3);
 	padctl_writel(padctl, reg, XUSB_PADCTL_ELPG_PROGRAM_1);
 
 	reg = padctl_readl(padctl, XUSB_PADCTL_ELPG_PROGRAM_1);
-	reg &= ~SSPX_ELPG_CLAMP_EN(port);
+	reg &= ~SSPX_ELPG_CLAMP_EN(3);
 	padctl_writel(padctl, reg, XUSB_PADCTL_ELPG_PROGRAM_1);
 }
 
@@ -992,7 +1014,7 @@ static int tegra210_uphy_init(struct tegra_xusb_padctl *padctl)
 
 	/* Initialize Unused USB3 port on T210b01 for power saving */
 	if (t210b01_compatible(padctl) == 1)
-		tegra210_xusb_padctl_init_usb3_port(3, padctl);
+		tegra210b01_xusb_padctl_init_ss_port_3(padctl);
 
 	/* bring all PCIE PADs out of IDDQ */
 	for (i = 0; i < padctl->pcie->soc->num_lanes; i++) {
@@ -2369,6 +2391,8 @@ static int tegra210_pcie_phy_power_on(struct phy *phy)
 		struct tegra_xusb_usb3_port *port =
 				tegra_xusb_find_usb3_port(padctl,
 					tegra210_usb3_lane_map(lane));
+		struct tegra_xusb_usb2_port *companion_usb2_port =
+				tegra_xusb_find_usb2_port(padctl, port->port);
 		int port_index;
 		int err;
 
@@ -2398,6 +2422,23 @@ static int tegra210_pcie_phy_power_on(struct phy *phy)
 					SS_PORT_MAP_PORT_DISABLED);
 		value |= SS_PORT_MAP(port_index, port->port);
 		padctl_writel(padctl, value, XUSB_PADCTL_SS_PORT_MAP);
+
+		/*
+		 * As SS port logic generates signals on both DISABLED
+		 * and DEVICE mode, the disabled ports falsely trigger
+		 * the HS/FS device port logic.
+		 * We set the port capability to HOST instead of DISABLED
+		 * as WAR for the possible issue.
+		 */
+		if (companion_usb2_port->port_cap == USB_PORT_DISABLED) {
+			companion_usb2_port->port_cap = USB_HOST_CAP;
+			value = padctl_readl(padctl, XUSB_PADCTL_USB2_PORT_CAP);
+			value &=
+			  ~XUSB_PADCTL_USB2_PORT_CAP_PORTX_CAP_MASK(port->port);
+			value |=
+			  XUSB_PADCTL_USB2_PORT_CAP_PORTX_CAP_HOST(port->port);
+			padctl_writel(padctl, value, XUSB_PADCTL_USB2_PORT_CAP);
+		}
 
 		value = padctl_readl(padctl,
 				XUSB_PADCTL_UPHY_USB3_PADX_ECTL_1(port_index));
@@ -2865,6 +2906,8 @@ static int tegra210_sata_phy_power_on(struct phy *phy)
 		struct tegra_xusb_usb3_port *port =
 				tegra_xusb_find_usb3_port(padctl,
 					tegra210_usb3_lane_map(lane));
+		struct tegra_xusb_usb2_port *companion_usb2_port =
+				tegra_xusb_find_usb2_port(padctl, port->port);
 		int port_index;
 		int err;
 
@@ -2894,6 +2937,23 @@ static int tegra210_sata_phy_power_on(struct phy *phy)
 					SS_PORT_MAP_PORT_DISABLED);
 		value |= SS_PORT_MAP(port_index, port->port);
 		padctl_writel(padctl, value, XUSB_PADCTL_SS_PORT_MAP);
+
+		/*
+		 * As SS port logic generates signals on both DISABLED
+		 * and DEVICE mode, the disabled ports falsely trigger
+		 * the HS/FS device port logic.
+		 * We set the port capability to HOST instead of DISABLED
+		 * as WAR for the possible issue.
+		 */
+		if (companion_usb2_port->port_cap == USB_PORT_DISABLED) {
+			companion_usb2_port->port_cap = USB_HOST_CAP;
+			value = padctl_readl(padctl, XUSB_PADCTL_USB2_PORT_CAP);
+			value &=
+			  ~XUSB_PADCTL_USB2_PORT_CAP_PORTX_CAP_MASK(port->port);
+			value |=
+			  XUSB_PADCTL_USB2_PORT_CAP_PORTX_CAP_HOST(port->port);
+			padctl_writel(padctl, value, XUSB_PADCTL_USB2_PORT_CAP);
+		}
 
 		value = padctl_readl(padctl,
 				XUSB_PADCTL_UPHY_USB3_PADX_ECTL_1(port_index));
@@ -3519,7 +3579,7 @@ static int tegra210_xusb_padctl_resume_noirq(struct tegra_xusb_padctl *padctl)
 
 	/* Initialize Unused USB3 port on T210b01 for power saving */
 	if (t210b01_compatible(padctl) == 1)
-		tegra210_xusb_padctl_init_usb3_port(3, padctl);
+		tegra210b01_xusb_padctl_init_ss_port_3(padctl);
 
 	tegra210_xusb_padctl_restore(padctl);
 
@@ -4249,6 +4309,180 @@ static int tegra210_xusb_padctl_utmi_pad_charger_detect_off(
 	return 0;
 }
 
+static int tegra210_usb2_set_host_cdp(struct tegra_xusb_padctl *padctl,
+					struct phy *phy, bool enable)
+{
+	struct tegra_xusb_lane *lane;
+	u32 reg;
+	unsigned int index;
+
+	if (!phy)
+		return -EINVAL;
+
+	lane = phy_get_drvdata(phy);
+	index = lane->index;
+
+	dev_dbg(padctl->dev, "%sable USB2 port %d Tegra CDP\n",
+		 enable ? "en" : "dis", index);
+	if (enable) {
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_USB2_BATTERY_CHRG_OTGPADX_CTL_0(index));
+		reg &= ~PD_CHG;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_USB2_BATTERY_CHRG_OTGPADX_CTL_0(index));
+
+		reg = padctl_readl(padctl,
+				XUSB_PADCTL_USB2_OTG_PADX_CTL_0(index));
+		reg |= (USB2_OTG_PD2 | USB2_OTG_PD2_OVRD_EN);
+		padctl_writel(padctl, reg,
+				XUSB_PADCTL_USB2_OTG_PADX_CTL_0(index));
+
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_USB2_BATTERY_CHRG_OTGPADX_CTL_0(index));
+		reg |= ON_SRC_EN;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_USB2_BATTERY_CHRG_OTGPADX_CTL_0(index));
+
+		/* Dont let BIAS pad power down */
+		padctl->cdp_used = true;
+	} else {
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_USB2_BATTERY_CHRG_OTGPADX_CTL_0(index));
+		reg |= PD_CHG;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_USB2_BATTERY_CHRG_OTGPADX_CTL_0(index));
+
+		reg = padctl_readl(padctl,
+				XUSB_PADCTL_USB2_OTG_PADX_CTL_0(index));
+		reg &= ~USB2_OTG_PD2_OVRD_EN;
+		padctl_writel(padctl, reg,
+				XUSB_PADCTL_USB2_OTG_PADX_CTL_0(index));
+
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_USB2_BATTERY_CHRG_OTGPADX_CTL_0(index));
+		reg &= ~ON_SRC_EN;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_USB2_BATTERY_CHRG_OTGPADX_CTL_0(index));
+
+		padctl->cdp_used = false;
+	}
+
+	return 0;
+}
+
+void tegra210_clamp_en_early(struct phy *phy, bool on)
+{
+	struct tegra_xusb_lane *lane;
+	struct tegra_xusb_padctl *padctl;
+	struct tegra_xusb_usb3_port *port;
+	unsigned int index;
+	u32 value;
+
+	if (!phy)
+		return;
+
+	lane = phy_get_drvdata(phy);
+	padctl = lane->pad->padctl;
+	index = tegra210_usb3_lane_map(lane);
+
+	port = tegra_xusb_find_usb3_port(padctl, index);
+
+	if (!port) {
+		dev_err(&phy->dev, "no port found for USB3 lane %u\n", index);
+		return;
+	}
+
+	if ((on && port->clamp_en_early_enabled) ||
+		(!on && !port->clamp_en_early_enabled))
+		return;
+
+	port->clamp_en_early_enabled = on;
+
+	if (on) {
+		value = padctl_readl(padctl, XUSB_PADCTL_ELPG_PROGRAM_1);
+		value |= SSPX_ELPG_CLAMP_EN_EARLY(index);
+		padctl_writel(padctl, value, XUSB_PADCTL_ELPG_PROGRAM_1);
+	} else {
+		value = padctl_readl(padctl, XUSB_PADCTL_ELPG_PROGRAM_1);
+		value &= ~SSPX_ELPG_CLAMP_EN_EARLY(index);
+		padctl_writel(padctl, value, XUSB_PADCTL_ELPG_PROGRAM_1);
+	}
+}
+
+void tegra210_receiver_detector(struct phy *phy, bool on)
+{
+	struct tegra_xusb_lane *lane;
+	struct tegra_xusb_padctl *padctl;
+	struct tegra_xusb_usb3_port *port;
+	u32 mask, reg;
+
+	if (!phy)
+		return;
+
+	lane = phy_get_drvdata(phy);
+	padctl = lane->pad->padctl;
+
+	port = tegra_xusb_find_usb3_port(padctl,
+				tegra210_usb3_lane_map(lane));
+
+	if (!port) {
+		dev_err(&phy->dev, "no port found for USB3 lane %u\n",
+			lane->index);
+		return;
+	}
+
+	if ((on && !port->receiver_detector_disabled) ||
+		(!on && port->receiver_detector_disabled))
+		return;
+
+	port->receiver_detector_disabled = !on;
+
+	if (!on) {
+		mask = TX_IDDQ | RX_IDDQ;
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_2(lane->index));
+		reg &= ~mask;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_2(lane->index));
+
+		mask = TX_IDDQ_OVRD | RX_IDDQ_OVRD;
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_2(lane->index));
+		reg |= mask;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_2(lane->index));
+
+		mask = (AUX_TX_RDET_CLK_EN | AUX_TX_RDET_BYP |
+				AUX_TX_RDET_EN | AUX_TX_TERM_EN);
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_1(lane->index));
+		reg &= ~mask;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_1(lane->index));
+
+		mask = AUX_TX_MODE_OVRD;
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_1(lane->index));
+		reg |= mask;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_1(lane->index));
+	} else {
+		mask = AUX_TX_MODE_OVRD;
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_1(lane->index));
+		reg &= ~mask;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_1(lane->index));
+
+		mask = TX_IDDQ_OVRD | RX_IDDQ_OVRD;
+		reg = padctl_readl(padctl,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_2(lane->index));
+		reg &= ~mask;
+		padctl_writel(padctl, reg,
+			XUSB_PADCTL_UPHY_MISC_PAD_PX_CTL_2(lane->index));
+	}
+}
+
 static const struct tegra_xusb_padctl_ops tegra210_xusb_padctl_ops = {
 	.probe = tegra210_xusb_padctl_probe,
 	.remove = tegra210_xusb_padctl_remove,
@@ -4282,6 +4516,9 @@ static const struct tegra_xusb_padctl_ops tegra210_xusb_padctl_ops = {
 		tegra210_xusb_padctl_utmi_pad_charger_detect_on,
 	.utmi_pad_charger_detect_off =
 		tegra210_xusb_padctl_utmi_pad_charger_detect_off,
+	.receiver_detector = tegra210_receiver_detector,
+	.clamp_en_early = tegra210_clamp_en_early,
+	.set_host_cdp = tegra210_usb2_set_host_cdp,
 };
 
 static const char * const tegra210_supply_names[] = {

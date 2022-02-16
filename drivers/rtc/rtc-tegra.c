@@ -469,6 +469,36 @@ static int alarm_msec_set(void *data, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(alarm_msec_fops, NULL, alarm_msec_set, "%llu\n");
 
+
+static int rtc_msec_time_show(void* data, u64 *val)
+{
+	int ret;
+
+	if (tegra_rtc_dev == NULL) {
+		*val = 0U;
+		ret = -EINVAL;
+	}
+	else {
+		unsigned long flag;
+
+		spin_lock_irqsave(&tegra_rtc_dev->tegra_rtc_lock, flag);
+		ret = tegra_rtc_wait_while_busy(&tegra_rtc_dev->pdev->dev, true);
+		if (ret == 0) {
+			*val = readl(tegra_rtc_dev->rtc_base +
+					TEGRA_RTC_REG_MILLI_SECONDS);
+			*val += MSEC_PER_SEC *
+				readl(tegra_rtc_dev->rtc_base +
+					TEGRA_RTC_REG_SHADOW_SECONDS);
+
+		}
+		spin_unlock_irqrestore(&tegra_rtc_dev->tegra_rtc_lock, flag);
+	}
+
+	return ret;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(rtc_msec_time_fops, rtc_msec_time_show, NULL, "%llu\n");
+
 static struct dentry *pm_dentry;
 
 static int debugfs_init(void)
@@ -484,6 +514,10 @@ static int debugfs_init(void)
 
 	if (!debugfs_create_file("alarm_msec", S_IWUSR, root, NULL,
 							&alarm_msec_fops))
+		goto err_out;
+
+	if (!debugfs_create_file("rtc_msec_time", S_IRUSR, root, NULL,
+							&rtc_msec_time_fops))
 		goto err_out;
 
 	pm_dentry = root;

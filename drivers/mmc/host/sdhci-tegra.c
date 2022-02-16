@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google, Inc.
- * Copyright (c) 2012-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -269,7 +269,7 @@ static int tegra_sdhci_runtime_resume(struct sdhci_host *host);
 static void tegra_sdhci_post_resume(struct sdhci_host *host);
 static void tegra_sdhci_set_clock(struct sdhci_host *host, unsigned int clock);
 static void tegra_sdhci_update_sdmmc_pinctrl_register(struct sdhci_host *sdhci,
-		bool set);
+               bool set);
 
 static bool tegra_sdhci_is_clk_enabled(struct sdhci_host *host, int reg)
 {
@@ -506,6 +506,14 @@ static void tegra_sdhci_post_init(struct sdhci_host *host)
 		sdhci_writel(host, reg, SDHCI_TEGRA_VENDOR_DLLCAL_CFG);
 
 		mdelay(1);
+
+		/*
+		 * Wait for calibrate_en bit to clear before checking
+		 * calibration status
+		 */
+		while (sdhci_readl(host, SDHCI_TEGRA_VENDOR_DLLCAL_CFG) &
+				SDHCI_DLLCAL_CFG_EN_CALIBRATE)
+			;
 
 		/* Wait until DLL calibration is done */
 		do {
@@ -965,6 +973,15 @@ static void tegra_sdhci_pad_autocalib(struct sdhci_host *host)
 			"%s: error %d in comp vref settings\n",
 			__func__, ret);
 
+	/* Program calibration offsets */
+	ret = tegra_prod_set_by_name_partially(&host->ioaddr,
+			prod_device_states[timing],
+			tegra_host->prods, 0, SDHCI_TEGRA_AUTO_CAL_CONFIG,
+			SDHCI_AUTO_CAL_PUPD_OFFSETS);
+	if (ret < 0)
+		dev_err(mmc_dev(host->mmc),
+			"error %d in autocal-pu-pd-offset settings\n", ret);
+
 	/* Enable Auto Calibration*/
 	ret = tegra_prod_set_by_name_partially(&host->ioaddr,
 			prod_device_states[timing],
@@ -978,15 +995,6 @@ static void tegra_sdhci_pad_autocalib(struct sdhci_host *host)
 	val = sdhci_readl(host, SDHCI_TEGRA_AUTO_CAL_CONFIG);
 	val |= SDHCI_AUTO_CAL_START;
 	sdhci_writel(host,val, SDHCI_TEGRA_AUTO_CAL_CONFIG);
-
-	/* Program calibration offsets */
-	ret = tegra_prod_set_by_name_partially(&host->ioaddr,
-			prod_device_states[timing],
-			tegra_host->prods, 0, SDHCI_TEGRA_AUTO_CAL_CONFIG,
-			SDHCI_AUTO_CAL_PUPD_OFFSETS);
-	if (ret < 0)
-		dev_err(mmc_dev(host->mmc),
-			"error %d in autocal-pu-pd-offset settings\n", ret);
 
 	/* Wait 2us after auto calibration is enabled */
 	udelay(2);
@@ -1555,7 +1563,7 @@ static void tegra_sdhci_signal_voltage_switch_pre(struct sdhci_host *host,
 }
 
 static void tegra_sdhci_update_sdmmc_pinctrl_register(struct sdhci_host *sdhci,
-	bool set)
+       bool set)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(sdhci);
 	struct sdhci_tegra *tegra_host = sdhci_pltfm_priv(pltfm_host);
@@ -1769,8 +1777,7 @@ static void tegra_sdhci_init_pinctrl_info(struct device *dev,
 				ret = pinctrl_select_state(tegra_host->pinctrl_sdmmc,
 					tegra_host->schmitt_disable[i]);
 				if (ret < 0)
-					dev_warn(dev,
-					"setting schmitt state failed\n");
+					dev_warn(dev, "setting schmitt state failed\n");
 			}
 		}
 		tegra_host->drv_code_strength =
@@ -1994,6 +2001,7 @@ static const struct sdhci_tegra_soc_data soc_data_tegra210 = {
 		    NVQUIRK_ENABLE_SDR50 |
 		    NVQUIRK_ENABLE_DDR50 |
 		    NVQUIRK_ENABLE_SDR104 |
+		    NVQUIRK_HAS_PADCALIB |
 		    NVQUIRK_UPDATE_PIN_CNTRL_REG |
 		    NVQUIRK_HAS_PADCALIB |
 		    SDHCI_MISC_CTRL_ENABLE_SDR50,
@@ -2032,8 +2040,7 @@ static const struct sdhci_pltfm_data sdhci_tegra194_pdata = {
 		SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN |
 		SDHCI_QUIRK2_USE_64BIT_ADDR |
-		SDHCI_QUIRK2_HOST_OFF_CARD_ON |
-		SDHCI_QUIRK2_NON_STD_TUN_CARD_CLOCK,
+		SDHCI_QUIRK2_HOST_OFF_CARD_ON,
 	.ops  = &tegra_sdhci_ops,
 };
 
@@ -2389,6 +2396,9 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 
 	if (tegra_host->en_periodic_cflush)
 		host->mmc->caps2 |= MMC_CAP2_PERIODIC_CACHE_FLUSH;
+
+	if (tegra_host->vmmc_always_on)
+		host->mmc->caps2 |= MMC_CAP2_SLOT_REG_ALWAYS_ON;
 
 	host->mmc->caps2 |= MMC_CAP2_EN_CLK_TO_ACCESS_REG;
 	host->mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY;

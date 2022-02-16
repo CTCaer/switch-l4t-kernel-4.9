@@ -3,7 +3,7 @@
  *
  *  Copyright (C) 2012  Intel Corp
  *  Author: Durgadoss R <durgadoss.r@intel.com>
- *  Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
+ *  Copyright (c) 2019-2021, NVIDIA CORPORATION.  All rights reserved.
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *  This program is free software; you can redistribute it and/or modify

@@ -304,8 +304,8 @@ alloc_iova(struct iova_domain *iovad, unsigned long size,
 	 * Till APE binaries are moved to different IOVA,
 	 * This WAR is necessary.
 	 */
-	if (limit_pfn == 0x5ffff)
-		limit_pfn = 0x5e000;
+	if (limit_pfn == __phys_to_pfn(0x5fffffff))
+		limit_pfn = __phys_to_pfn(0x5e000000);
 
 	new_iova = alloc_iova_mem();
 	if (!new_iova)

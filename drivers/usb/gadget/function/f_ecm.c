@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2003-2005,2008 David Brownell
  * Copyright (C) 2008 Nokia Corporation
+ * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -627,6 +628,10 @@ static void ecm_disable(struct usb_function *f)
 
 	if (ecm->port.in_ep->enabled)
 		gether_disconnect(&ecm->port);
+	else {
+		ecm->port.in_ep->desc = NULL;
+		ecm->port.out_ep->desc = NULL;
+	}
 
 	usb_ep_disable(ecm->notify);
 	ecm->notify->desc = NULL;

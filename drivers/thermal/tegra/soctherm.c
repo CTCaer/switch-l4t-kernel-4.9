@@ -25,6 +25,7 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
+#include <linux/leds.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -1027,7 +1028,7 @@ static void soctherm_oc_intr_enable(struct tegra_soctherm *ts,
  * Return: -EINVAL for @alarm = THROTTLE_OC3, otherwise 0 (success).
  */
 static int soctherm_handle_alarm(enum soctherm_throttle_id alarm,
-							struct tegra_soctherm *ts)
+			struct tegra_soctherm *ts)
 {
 	struct soctherm_throt_cfg *throt_cfgs = ts->throt_cfgs;
 	int rv = -EINVAL, val = 0;
@@ -1115,6 +1116,7 @@ static irqreturn_t soctherm_edp_isr_thread(int irq, void *arg)
 	/* rate limiting irq message to every one second */
 	if (printk_timed_ratelimit(&j,  1000)) {
 		pr_err("soctherm: OC ALARM 0x%08x\n", ex);
+		ledtrig_throttle_event();
 	}
 
 	if (ex) {
@@ -2710,11 +2712,16 @@ static ssize_t show_oc_stats_sysfs(struct device *dev,
 		return -EINVAL;
 
 	ret = sprintf(buf, "oc1:%llu oc2:%llu oc3:%llu oc4:%llu oc5:%llu\n",
-		throt_cfgs[THROTTLE_OC1].oc_cfg.oc_cnt + readl(ts->regs + OC1_STATS),
-		throt_cfgs[THROTTLE_OC2].oc_cfg.oc_cnt + readl(ts->regs + OC2_STATS),
-		throt_cfgs[THROTTLE_OC3].oc_cfg.oc_cnt + readl(ts->regs + OC3_STATS),
-		throt_cfgs[THROTTLE_OC4].oc_cfg.oc_cnt + readl(ts->regs + OC4_STATS),
-		throt_cfgs[THROTTLE_OC5].oc_cfg.oc_cnt + readl(ts->regs + OC5_STATS));
+		throt_cfgs[THROTTLE_OC1].oc_cfg.oc_cnt
+		+ readl(ts->regs + OC1_STATS),
+		throt_cfgs[THROTTLE_OC2].oc_cfg.oc_cnt
+		+ readl(ts->regs + OC2_STATS),
+		throt_cfgs[THROTTLE_OC3].oc_cfg.oc_cnt
+		+ readl(ts->regs + OC3_STATS),
+		throt_cfgs[THROTTLE_OC4].oc_cfg.oc_cnt
+		+ readl(ts->regs + OC4_STATS),
+		throt_cfgs[THROTTLE_OC5].oc_cfg.oc_cnt
+		+ readl(ts->regs + OC5_STATS));
 
 	return ret;
 }

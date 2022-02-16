@@ -506,9 +506,9 @@ static int mmc_dbg_card_speed_class_get(void *data, u64 *val)
 {
 		struct mmc_card	*card = data;
 
-			*val = card->speed_class;
+		*val = card->speed_class;
 
-				return 0;
+		return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(mmc_dbg_card_speed_class_fops,
 				mmc_dbg_card_speed_class_get, NULL, "%llu\n");

@@ -178,6 +178,22 @@ static ssize_t hwmon_attr_show(struct device *dev,
 	return sprintf(buf, "%ld\n", val);
 }
 
+static ssize_t hwmon_attr_show_string(struct device *dev,
+				      struct device_attribute *devattr,
+				      char *buf)
+{
+	struct hwmon_device_attribute *hattr = to_hwmon_attr(devattr);
+	const char *s;
+	int ret;
+
+	ret = hattr->ops->read_string(dev, hattr->type, hattr->attr,
+				      hattr->index, &s);
+	if (ret < 0)
+		return ret;
+
+	return sprintf(buf, "%s\n", s);
+}
+
 static ssize_t hwmon_attr_store(struct device *dev,
 				struct device_attribute *devattr,
 				const char *buf, size_t count)
@@ -205,6 +221,17 @@ static int hwmon_attr_base(enum hwmon_sensor_types type)
 	return 1;
 }
 
+static bool is_string_attr(enum hwmon_sensor_types type, u32 attr)
+{
+	return (type == hwmon_temp && attr == hwmon_temp_label) ||
+	       (type == hwmon_in && attr == hwmon_in_label) ||
+	       (type == hwmon_curr && attr == hwmon_curr_label) ||
+	       (type == hwmon_power && attr == hwmon_power_label) ||
+	       (type == hwmon_energy && attr == hwmon_energy_label) ||
+	       (type == hwmon_humidity && attr == hwmon_humidity_label) ||
+	       (type == hwmon_fan && attr == hwmon_fan_label);
+}
+
 static struct attribute *hwmon_genattr(struct device *dev,
 				       const void *drvdata,
 				       enum hwmon_sensor_types type,
@@ -218,6 +245,7 @@ static struct attribute *hwmon_genattr(struct device *dev,
 	struct attribute *a;
 	umode_t mode;
 	char *name;
+	bool is_string = is_string_attr(type, attr);
 
 	/* The attribute is invisible if there is no template string */
 	if (!template)
@@ -227,7 +255,8 @@ static struct attribute *hwmon_genattr(struct device *dev,
 	if (!mode)
 		return ERR_PTR(-ENOENT);
 
-	if ((mode & S_IRUGO) && !ops->read)
+	if ((mode & S_IRUGO) && ((is_string && !ops->read_string) ||
+				 (!is_string && !ops->read)))
 		return ERR_PTR(-EINVAL);
 	if ((mode & S_IWUGO) && !ops->write)
 		return ERR_PTR(-EINVAL);
@@ -252,7 +281,7 @@ static struct attribute *hwmon_genattr(struct device *dev,
 	hattr->ops = ops;
 
 	dattr = &hattr->dev_attr;
-	dattr->show = hwmon_attr_show;
+	dattr->show = is_string ? hwmon_attr_show_string : hwmon_attr_show;
 	dattr->store = hwmon_attr_store;
 
 	a = &dattr->attr;
@@ -263,13 +292,22 @@ static struct attribute *hwmon_genattr(struct device *dev,
 	return a;
 }
 
-static const char * const hwmon_chip_attr_templates[] = {
+/*
+ * Chip attributes are not attribute templates but actual sysfs attributes.
+ * See hwmon_genattr() for special handling.
+ */
+static const char * const hwmon_chip_attrs[] = {
 	[hwmon_chip_temp_reset_history] = "temp_reset_history",
 	[hwmon_chip_in_reset_history] = "in_reset_history",
 	[hwmon_chip_curr_reset_history] = "curr_reset_history",
 	[hwmon_chip_power_reset_history] = "power_reset_history",
 	[hwmon_chip_update_interval] = "update_interval",
 	[hwmon_chip_alarms] = "alarms",
+	[hwmon_chip_samples] = "samples",
+	[hwmon_chip_curr_samples] = "curr_samples",
+	[hwmon_chip_in_samples] = "in_samples",
+	[hwmon_chip_power_samples] = "power_samples",
+	[hwmon_chip_temp_samples] = "temp_samples",
 };
 
 static const char * const hwmon_temp_attr_templates[] = {
@@ -315,6 +353,7 @@ static const char * const hwmon_in_attr_templates[] = {
 	[hwmon_in_max_alarm] = "in%d_max_alarm",
 	[hwmon_in_lcrit_alarm] = "in%d_lcrit_alarm",
 	[hwmon_in_crit_alarm] = "in%d_crit_alarm",
+	[hwmon_in_enable] = "in%d_enable",
 };
 
 static const char * const hwmon_curr_attr_templates[] = {
@@ -400,7 +439,7 @@ static const char * const hwmon_pwm_attr_templates[] = {
 };
 
 static const char * const *__templates[] = {
-	[hwmon_chip] = hwmon_chip_attr_templates,
+	[hwmon_chip] = hwmon_chip_attrs,
 	[hwmon_temp] = hwmon_temp_attr_templates,
 	[hwmon_in] = hwmon_in_attr_templates,
 	[hwmon_curr] = hwmon_curr_attr_templates,
@@ -412,7 +451,7 @@ static const char * const *__templates[] = {
 };
 
 static const int __templates_size[] = {
-	[hwmon_chip] = ARRAY_SIZE(hwmon_chip_attr_templates),
+	[hwmon_chip] = ARRAY_SIZE(hwmon_chip_attrs),
 	[hwmon_temp] = ARRAY_SIZE(hwmon_temp_attr_templates),
 	[hwmon_in] = ARRAY_SIZE(hwmon_in_attr_templates),
 	[hwmon_curr] = ARRAY_SIZE(hwmon_curr_attr_templates),

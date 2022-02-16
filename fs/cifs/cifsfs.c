@@ -2,6 +2,8 @@
  *   fs/cifs/cifsfs.c
  *
  *   Copyright (C) International Business Machines  Corp., 2002,2008
+ *   Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+ *
  *   Author(s): Steve French (sfrench@us.ibm.com)
  *
  *   Common Internet FileSystem (CIFS) client
@@ -1329,9 +1331,9 @@ init_cifs(void)
 	if (rc)
 		goto out_init_cifs_idmap;
 #ifdef CONFIG_CIFS_SYSFS
-        rc = cifs_sysfs_init();
-        if (rc)
-		printk(KERN_WARNING "CIFS: Failed to init sysfs: %d\n", rc);
+	rc = cifs_sysfs_init();
+	if (rc)
+		pr_warn("CIFS: Failed to init sysfs: %d\n", rc);
 #endif
 	return 0;
 

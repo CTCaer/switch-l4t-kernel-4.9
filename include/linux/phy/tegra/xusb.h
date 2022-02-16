@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -108,5 +108,12 @@ int tegra_xusb_padctl_get_vbus_id_num(struct tegra_xusb_padctl *padctl);
 void tegra_xusb_padctl_get_vbus_id_ports(struct tegra_xusb_padctl *padctl,
 	int i, int *usb2_port, int *usb3_port);
 int tegra_xusb_padctl_usb3_port_gen1_only(struct phy *phy, bool on);
-
+void tegra_xusb_padctl_enable_receiver_detector(struct tegra_xusb_padctl
+					*padctl, struct phy *phy);
+void tegra_xusb_padctl_disable_receiver_detector(struct tegra_xusb_padctl
+					*padctl, struct phy *phy);
+void tegra_xusb_padctl_enable_clamp_en_early(struct tegra_xusb_padctl *padctl,
+						struct phy *phy);
+void tegra_xusb_padctl_disable_clamp_en_early(struct tegra_xusb_padctl *padctl,
+						struct phy *phy);
 #endif /* PHY_TEGRA_XUSB_H */

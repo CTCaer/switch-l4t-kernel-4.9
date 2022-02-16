@@ -683,9 +683,12 @@ void kobject_put(struct kobject *kobj)
 {
 	if (kobj) {
 		if (!kobj->state_initialized)
-			WARN(1, KERN_WARNING "kobject: '%s' (%p): is not "
+			/* Bug 200747982: Temporarily disable printing
+			 * kobj->name in the warning message
+			 */
+			WARN(1, KERN_WARNING "kobject: (%p): is not "
 			       "initialized, yet kobject_put() is being "
-			       "called.\n", kobject_name(kobj), kobj);
+			       "called.\n", kobj);
 		kref_put(&kobj->kref, kobject_release);
 	}
 }

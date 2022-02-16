@@ -73,6 +73,10 @@
 #define FUSE_SECURE_MINION_DEBUG_DIS_0		0x4d8
 #define FUSE_SECURE_MINION_DEBUG_DIS_0_MASK	0x1
 
+/* T186+ */
+#define FUSE_PDI0			0x300
+#define FUSE_PDI1			0x304
+
 #ifndef __ASSEMBLY__
 
 u32 tegra_read_chipid(void);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2015-2021, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -192,6 +192,7 @@ static int dram_temp_override;
 static unsigned long mr4_freq_threshold;
 static atomic_t mr4_temp_poll;
 static atomic_t mr4_force_poll;
+static atomic_t mr4_thresh_poll;
 
 static void emc_mr4_poll(unsigned long nothing);
 static struct timer_list emc_timer_mr4 =
@@ -396,7 +397,8 @@ static void emc_mr4_poll(unsigned long nothing)
 
 reset:
 	if (atomic_read(&mr4_temp_poll) == 0 &&
-	    atomic_read(&mr4_force_poll) == 0)
+	    atomic_read(&mr4_force_poll) == 0 &&
+	    atomic_read(&mr4_thresh_poll) == 0)
 		return;
 
 	if (mod_timer(&emc_timer_mr4,
@@ -420,6 +422,17 @@ static void tegra_emc_mr4_temp_trigger(int do_poll)
 	}
 }
 
+static void tegra_emc_mr4_thresh_trigger(int do_poll)
+{
+	if (do_poll) {
+		atomic_set(&mr4_thresh_poll, 1);
+		mod_timer(&emc_timer_mr4,
+			  jiffies + msecs_to_jiffies(timer_period_mr4));
+	} else {
+		atomic_set(&mr4_thresh_poll, 0);
+	}
+}
+
 /*
  * If the freq is higher than some threshold then poll. Only happens if a
  * threshold is actually defined.
@@ -427,9 +440,9 @@ static void tegra_emc_mr4_temp_trigger(int do_poll)
 static void tegra_emc_mr4_freq_check(unsigned long freq)
 {
 	if (mr4_freq_threshold && freq >= mr4_freq_threshold)
-		tegra_emc_mr4_temp_trigger(1);
+		tegra_emc_mr4_thresh_trigger(1);
 	else
-		tegra_emc_mr4_temp_trigger(0);
+		tegra_emc_mr4_thresh_trigger(0);
 }
 
 void tegra210_emc_mr4_set_freq_thresh(unsigned long thresh)
@@ -2020,6 +2033,40 @@ DEFINE_SIMPLE_ATTRIBUTE(mr4_force_poll_fops,
 			get_mr4_force_poll,
 			set_mr4_force_poll, "%llu\n");
 
+static int dram_info_show(struct seq_file *s, void *data)
+{
+	uint32_t mr5, mr6, mr7, mr8, strap;
+	unsigned long flags;
+
+	strap = tegra_read_ram_code();
+	spin_lock_irqsave(&emc_access_lock, flags);
+	mr5 = emc_read_mrr(0, 5) & 0xffU;
+	mr6 = emc_read_mrr(0, 6) & 0xffU;
+	mr7 = emc_read_mrr(0, 7) & 0xffU;
+	mr8 = emc_read_mrr(0, 8) & 0xffU;
+	spin_unlock_irqrestore(&emc_access_lock, flags);
+	seq_printf(s, "DRAM strap: %u\n"
+		      "Manufacturer ID (MR5): %u\n"
+		      "Revision ID-1 (MR6): %u\n"
+		      "Revision ID-2 (MR7): %u\n"
+		      "IO Width/Density/Type (MR8): 0x%02x\n",
+		      strap, mr5, mr6, mr7, mr8);
+
+	return 0;
+}
+
+static int dram_info_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dram_info_show, inode->i_private);
+}
+
+static const struct file_operations dram_info_fops = {
+	.open		= dram_info_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static int tegra_emc_debug_init(void)
 {
 	struct dentry *emc_debugfs_root;
@@ -2093,6 +2140,9 @@ static int tegra_emc_debug_init(void)
 
 	if (!debugfs_create_file("tables_info", S_IRUGO, emc_debugfs_root,
 				 NULL, &emc_dvfs_table_fops))
+		goto err_out;
+	if (!debugfs_create_file("dram_info", 0444, emc_debugfs_root,
+				 NULL, &dram_info_fops))
 		goto err_out;
 
 	return 0;
@@ -2482,6 +2532,42 @@ static struct platform_driver tegra210_emc_driver = {
 	.probe          = tegra210x_emc_probe,
 };
 
+static ssize_t clk_rate_show(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf)
+{
+	return sprintf(buf, "%lu\n", tegra210_emc_get_rate());
+}
+
+static struct kobj_attribute rate_attribute =
+	__ATTR_RO(clk_rate);
+
+static struct attribute *emc_attrs[] = {
+	&rate_attribute.attr,
+	NULL,
+};
+
+static struct attribute_group emc_attr_group = {
+	.attrs = emc_attrs,
+};
+
+static int clk_emc_sysfs_init(void)
+{
+	struct kobject *clk_emc_kobj;
+	int retval;
+
+	clk_emc_kobj = kobject_create_and_add("clk_emc", kernel_kobj);
+	if (!clk_emc_kobj) {
+		pr_err("%s Could not create kobj\n", __func__);
+		return -ENOMEM;
+	}
+
+	retval = sysfs_create_group(clk_emc_kobj, &emc_attr_group);
+	if (retval)
+		kobject_put(clk_emc_kobj);
+
+	return retval;
+}
+
 static int __init tegra210_emc_init(void)
 {
 	return platform_driver_register(&tegra210_emc_driver);
@@ -2492,6 +2578,7 @@ static int __init tegra210_emc_late_init(void)
 {
 	struct device_node *node;
 	struct platform_device *pdev;
+	int ret;
 
 	if (!tegra_emc_init_done)
 		return -ENODEV;
@@ -2509,6 +2596,10 @@ static int __init tegra210_emc_late_init(void)
 	}
 
 	thermal_zone_of_sensor_register(&pdev->dev, 0, NULL, &dram_therm_ops);
+
+	ret = clk_emc_sysfs_init();
+	if (ret)
+		pr_err("%s Error creating clk_emc sysfs init\n", __func__);
 
 	return 0;
 }

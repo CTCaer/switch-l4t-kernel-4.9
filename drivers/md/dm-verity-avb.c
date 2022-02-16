@@ -188,11 +188,12 @@ void dm_verity_avb_error_handler(void)
 	DMINFO("AVB error handler called for %s", avb_vbmeta_device);
 
 	if  (tegra_chip_get_revision() == TEGRA210B01_REVISION_A01) {
-        	if (strcmp(avb_veritymode_managed, "yes") != 0) {
+		if (strcmp(avb_veritymode_managed, "yes") != 0) {
 			DMINFO("EIO mode is set");
 			pmc_reg_val = tegra_pmc_readl(APBDEV_PMC_SCRATCH37_0);
-			tegra_pmc_writel((pmc_reg_val | SCRATCH_AVB_EIO_FLAG), APBDEV_PMC_SCRATCH37_0);
-        	}
+			tegra_pmc_writel((pmc_reg_val | SCRATCH_AVB_EIO_FLAG),
+				APBDEV_PMC_SCRATCH37_0);
+		}
 	}
 
 	if (strcmp(avb_invalidate_on_error, "yes") != 0) {
@@ -244,6 +245,6 @@ module_param_string(invalidate_on_error, avb_invalidate_on_error,
 		    sizeof(avb_invalidate_on_error), 0);
 /* query androidboot.veritymode.managed for EIO mode */
 #undef MODULE_PARAM_PREFIX
-#define MODULE_PARAM_PREFIX     "androidboot.veritymode."
+#define MODULE_PARAM_PREFIX	"androidboot.veritymode."
 module_param_string(managed, avb_veritymode_managed,
-                    sizeof(avb_veritymode_managed), 0);
+		    sizeof(avb_veritymode_managed), 0);

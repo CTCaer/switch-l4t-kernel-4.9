@@ -1,7 +1,7 @@
 /*
  * sysfs for cifs
  *
- * Copyright (c) 2018, NVIDIA Corporation. All Rights Reserved.
+ * Copyright (c) 2018-2021, NVIDIA Corporation. All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -27,37 +27,45 @@ static struct kobj_type cifs_uevent_ktype = {
 
 };
 
-void cifs_sysfs_notify_change(const char* source, cifs_event_type event_type) {
+void
+cifs_sysfs_notify_change(const char *source, enum cifs_event_type event_type)
+{
 	char env_source[30];
 	char env_state[30];
 	char *envp[3] = { env_source, env_state, NULL };
+
 	sprintf(env_source, "SOURCE=%s", source);
 	sprintf(env_state, "STATE=%d", event_type);
 	kobject_uevent_env(cifs_sysfs_kobj, KOBJ_CHANGE, envp);
 }
 
-int cifs_sysfs_init(void) {
+int cifs_sysfs_init(void)
+{
 	int ret;
+
 	cifs_sysfs_kset = kset_create_and_add("cifs", NULL, fs_kobj);
-	if (!cifs_sysfs_kset) {
+	if (!cifs_sysfs_kset)
 		return -ENOMEM;
-	}
+
 	cifs_sysfs_kobj = kzalloc(sizeof(*cifs_sysfs_kobj),
 		GFP_KERNEL);
-	if (!cifs_sysfs_kobj) {
+	if (!cifs_sysfs_kobj)
 		return -ENOMEM;
-	}
+
 	cifs_sysfs_kobj->kset = cifs_sysfs_kset;
-	ret = kobject_init_and_add(cifs_sysfs_kobj, &cifs_uevent_ktype, NULL, "uevent");
-	if (!ret) {
+	ret = kobject_init_and_add(cifs_sysfs_kobj,
+				   &cifs_uevent_ktype,
+				   NULL,
+				   "uevent");
+	if (!ret)
 		kobject_uevent(cifs_sysfs_kobj, KOBJ_ADD);
-	} else {
+	else
 		kfree(cifs_sysfs_kobj);
-	}
 	return ret;
 }
 
-void cifs_sysfs_exit(void) {
+void cifs_sysfs_exit(void)
+{
 	kobject_uevent(cifs_sysfs_kobj, KOBJ_REMOVE);
 	kobject_put(cifs_sysfs_kobj);
 	kset_unregister(cifs_sysfs_kset);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2019 NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -50,6 +50,7 @@
 #define CLK_SOURCE_VI 0x148
 #define CLK_SOURCE_SDMMC2 0x154
 #define CLK_SOURCE_SDMMC4 0x164
+#define CLK_SOURCE_LA 0x1f8
 
 #define CLK_OUT_ENB_Y 0x298
 #define CLK_ENB_PLLP_OUT_CPU BIT(31)
@@ -174,7 +175,7 @@
 
 #define PLLD2_SDM_EN_MASK BIT(31)
 #define PLLD2_SDM_RESET_MASK BIT(27)
-#define PLLD2_SSC_EN_MASK BIT(30)
+#define PLLD2_SSC_EN_MASK 0
 
 #define PLLDP_SS_CFG	0x598
 #define PLLDP_SDM_EN_MASK BIT(31)
@@ -308,13 +309,13 @@ static unsigned long pll_ref_freq;
 static bool t210b01;
 
 static DEFINE_SPINLOCK(pll_d_lock);
-static DEFINE_SPINLOCK(pll_d2_lock);
 static DEFINE_SPINLOCK(pll_e_lock);
 static DEFINE_SPINLOCK(pll_re_lock);
 static DEFINE_SPINLOCK(pll_u_lock);
 static DEFINE_SPINLOCK(emc_lock);
 static DEFINE_SPINLOCK(sor1_lock);
 static DEFINE_SPINLOCK(vi_lock);
+static DEFINE_SPINLOCK(la_lock);
 
 /* possible OSC frequencies in Hz */
 static unsigned long tegra210_input_freq[] = {
@@ -392,8 +393,8 @@ static const char * const aclk_parents[] = {
 
 #define PLLD2_MISC0_DEFAULT_VALUE	0x40000020
 #define PLLD2_MISC1_CFG_DEFAULT_VALUE	0x10000000
-#define PLLD2_MISC2_CTRL1_DEFAULT_VALUE	0xF6E0F620
-#define PLLD2_MISC3_CTRL2_DEFAULT_VALUE	0x00010000
+#define PLLD2_MISC2_CTRL1_DEFAULT_VALUE	0x0
+#define PLLD2_MISC3_CTRL2_DEFAULT_VALUE	0x0
 
 #define PLLDP_MISC0_DEFAULT_VALUE	0x40000020
 #define PLLDP_MISC1_CFG_DEFAULT_VALUE	0xc0000000
@@ -663,30 +664,6 @@ void tegra210_set_sata_pll_seq_sw(bool state)
 	fence_udelay(1, clk_base);
 }
 EXPORT_SYMBOL_GPL(tegra210_set_sata_pll_seq_sw);
-
-void tegra210_plld2_configure_ss(bool enable)
-{
-	u32 val;
-	unsigned long flags = 0;
-	struct clk *plld2 = clks[TEGRA210_CLK_PLL_D2];
-
-	if (!IS_ERR_OR_NULL(plld2))
-		spin_lock_irqsave(to_clk_pll(__clk_get_hw(plld2))->lock, flags);
-
-	val = readl_relaxed(clk_base + PLLD2_MISC1);
-	if (enable)
-		val |= PLLDSS_MISC1_CFG_EN_SSC;
-	else
-		val &= ~PLLDSS_MISC1_CFG_EN_SSC;
-
-	writel_relaxed(val, clk_base + PLLD2_MISC1);
-	fence_udelay(1, clk_base);
-
-	if (!IS_ERR_OR_NULL(plld2))
-		spin_unlock_irqrestore(to_clk_pll(__clk_get_hw(plld2))->lock,
-				       flags);
-}
-EXPORT_SYMBOL_GPL(tegra210_plld2_configure_ss);
 
 void tegra210_csi_source_from_brick(void)
 {
@@ -2584,7 +2561,6 @@ static struct tegra_clk tegra210_clks[tegra_clk_max] __initdata = {
 	[tegra_clk_adsp] = { .dt_id = TEGRA210_CLK_ADSP, .present = true },
 	[tegra_clk_adsp_neon] = { .dt_id = TEGRA210_CLK_ADSP_NEON, .present = true },
 	[tegra_clk_se_8] = { .dt_id = TEGRA210_CLK_SE, .present = true },
-	[tegra_clk_la] = { .dt_id = TEGRA210_CLK_LA, .present = true },
 	[tegra_clk_mc_capa] = { .dt_id = TEGRA210_CLK_MC_CAPA, .present = true },
 	[tegra_clk_mc_cbpa] = { .dt_id = TEGRA210_CLK_MC_CBPA, .present = true },
 	[tegra_clk_mc_ccpa] = { .dt_id = TEGRA210_CLK_MC_CCPA, .present = true },
@@ -3124,6 +3100,16 @@ static struct tegra_clk_periph tegra_ape =
 	TEGRA_CLK_PERIPH(29, 7, 0, 0, 8, 1, 0, 198, TEGRA_PERIPH_ON_APB,
 			 NULL, NULL);
 
+static const char *mux_la[] = {
+	"pll_p", "pll_c2", "pll_c", "pll_c3", "pll_re_out1", "pll_a1", "clk_m", "pll_c4_out0"
+};
+static u32 mux_la_idx[] = {
+	[0] = 0, [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5, [6] = 6, [7] = 7,
+};
+static struct tegra_clk_periph tegra_la =
+	TEGRA_CLK_PERIPH(30, 3, 0, 0, 8, 1, 1, 76, TEGRA_PERIPH_ON_APB,
+			 mux_la_idx, &la_lock);
+
 static __init void tegra210_periph_clk_init(
 	void __iomem *clk_base, void __iomem *pmc_base,
 	struct tegra_clk_pll_params *pllp_params)
@@ -3218,6 +3204,10 @@ static __init void tegra210_periph_clk_init(
 	hw = __clk_get_hw(clks[TEGRA210_CLK_VI]);
 	periph_clk = to_clk_periph(hw);
 	periph_clk->mux.lock = &vi_lock;
+
+	clk = tegra_clk_register_periph("la", mux_la, ARRAY_SIZE(mux_la),
+				&tegra_la, clk_base, CLK_SOURCE_LA, 0);
+	clks[TEGRA210_CLK_LA] = clk;
 }
 
 static void __init tegra210_pll_init(void __iomem *clk_base,
@@ -3440,7 +3430,7 @@ skip_pllms:
 
 	/* PLLD2 */
 	clk = tegra_clk_register_pllss_tegra210("pll_d2", "pll_ref", clk_base,
-					0, &pll_d2_params, &pll_d2_lock);
+					0, &pll_d2_params, NULL);
 	clk_register_clkdev(clk, "pll_d2", NULL);
 	clks[TEGRA210_CLK_PLL_D2] = clk;
 
@@ -3732,12 +3722,13 @@ static struct tegra_clk_init_table init_table[] __initdata = {
 	{ TEGRA210_CLK_SBC4, TEGRA210_CLK_PLL_P, 12000000, 1 },
 	{ TEGRA210_CLK_PLL_U_OUT1, TEGRA210_CLK_CLK_MAX, 48000000, 1 },
 	{ TEGRA210_CLK_PLL_U_OUT2, TEGRA210_CLK_CLK_MAX, 60000000, 1 },
+	{ TEGRA210_CLK_PLL_RE_VCO, TEGRA210_CLK_CLK_MAX, 672000000, 1},
 	{ TEGRA210_CLK_XUSB_GATE, TEGRA210_CLK_CLK_MAX, 0, 1 },
 	{ TEGRA210_CLK_XUSB_SS_SRC, TEGRA210_CLK_PLL_U_480M, 120000000, 0 },
 	{ TEGRA210_CLK_XUSB_FS_SRC, TEGRA210_CLK_PLL_U_48M, 48000000, 0 },
 	{ TEGRA210_CLK_XUSB_HS_SRC, TEGRA210_CLK_XUSB_SS_SRC, 120000000, 0 },
 	{ TEGRA210_CLK_XUSB_SSP_SRC, TEGRA210_CLK_XUSB_SS_SRC, 120000000, 0 },
-	{ TEGRA210_CLK_XUSB_FALCON_SRC, TEGRA210_CLK_PLL_P_OUT_XUSB, 204000000, 0 },
+	{ TEGRA210_CLK_XUSB_FALCON_SRC, TEGRA210_CLK_PLL_RE_OUT, 336000000, 0 },
 	{ TEGRA210_CLK_XUSB_HOST_SRC, TEGRA210_CLK_PLL_P_OUT_XUSB, 102000000, 0 },
 	{ TEGRA210_CLK_XUSB_DEV_SRC, TEGRA210_CLK_PLL_P_OUT_XUSB, 102000000, 0 },
 	{ TEGRA210_CLK_SATA, TEGRA210_CLK_PLL_P, 104000000, 0 },

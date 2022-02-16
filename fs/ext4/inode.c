@@ -2,6 +2,8 @@
  *  linux/fs/ext4/inode.c
  *
  * Copyright (C) 1992, 1993, 1994, 1995
+ * Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+ *
  * Remy Card (card@masi.ibp.fr)
  * Laboratoire MASI - Institut Blaise Pascal
  * Universite Pierre et Marie Curie (Paris VI)

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2010 Google, Inc
- * Copyright (c) 2014-2018, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2014-2020, NVIDIA Corporation. All rights reserved.
  *
  * Author:
  *	Colin Cross <ccross@google.com>
@@ -175,6 +175,7 @@ enum tegra_system_reset_reason {
 	TEGRA_CSITE,		/* 14 */
 	TEGRA_WATCHDOG,		/* 15, T210 */
 	TEGRA_LP0,		/* 16, T210 */
+	PMIC_WATCHDOG_POR,	/* 17 */
 	TEGRA_RESET_REASON_MAX
 };
 
@@ -187,6 +188,9 @@ enum tegra_system_reset_level {
 
 int tegra_pmc_set_reboot_reason(u32 reboot_reason);
 int tegra_pmc_clear_reboot_reason(u32 reboot_reason);
+
+u32 tegra_pmc_gpu_clamp_enable(void);
+u32 tegra_pmc_gpu_clamp_disable(void);
 
 void tegra_pmc_write_bootrom_command(u32 command_offset, unsigned long val);
 void tegra_pmc_reset_system(void);

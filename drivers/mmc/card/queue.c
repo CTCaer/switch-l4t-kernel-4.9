@@ -3,7 +3,7 @@
  *
  *  Copyright (C) 2003 Russell King, All Rights Reserved.
  *  Copyright 2006-2007 Pierre Ossman
- *  Copyright (c) 2015-2017 NVIDIA CORPORATION. All rights reserved.
+ *  Copyright (c) 2015-2019 NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -115,6 +115,7 @@ static int mmc_queue_thread(void *d)
 	cpumask_t cpumask;
 	int ret = 0;
 	cpumask_clear(&cpumask);
+
 	ret = cpumask_parse(CONFIG_MMCQD_CPU_AFFINITY_VALUE, &cpumask);
 	if (!ret)
 		sched_setaffinity(current->pid, &cpumask);

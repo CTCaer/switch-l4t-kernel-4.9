@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007-2008 Advanced Micro Devices, Inc.
- * Copyright (c) 2017-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2017-2020, NVIDIA CORPORATION.  All rights reserved.
  * Author: Joerg Roedel <jroedel@suse.de>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -1289,7 +1289,7 @@ phys_addr_t iommu_iova_to_phys(struct iommu_domain *domain, dma_addr_t iova)
 }
 EXPORT_SYMBOL_GPL(iommu_iova_to_phys);
 
-static size_t iommu_pgsize(struct iommu_domain *domain,
+size_t iommu_pgsize(struct iommu_domain *domain,
 			   unsigned long addr_merge, size_t size)
 {
 	unsigned int pgsize_idx;
@@ -1320,6 +1320,7 @@ static size_t iommu_pgsize(struct iommu_domain *domain,
 
 	return pgsize;
 }
+EXPORT_SYMBOL_GPL(iommu_pgsize);
 
 int iommu_map(struct iommu_domain *domain, unsigned long iova,
 	      phys_addr_t paddr, size_t size, ulong prot)

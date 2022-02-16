@@ -1304,7 +1304,13 @@ static int tegra_xusb_padctl_probe(struct platform_device *pdev)
 
 	err = tegra_xusb_setup_ports(padctl);
 	if (err) {
-		dev_err(&pdev->dev, "failed to setup XUSB ports: %d\n", err);
+		const char *level = KERN_ERR;
+
+		if (err == -EPROBE_DEFER)
+			level = KERN_DEBUG;
+
+		dev_printk(level, &pdev->dev,
+			   "failed to setup XUSB ports: %d\n", err);
 		goto remove_pads;
 	}
 
@@ -1790,6 +1796,38 @@ int tegra_xusb_padctl_usb3_port_gen1_only(struct phy *phy, bool gen1)
 	return -ENOSYS;
 }
 EXPORT_SYMBOL_GPL(tegra_xusb_padctl_usb3_port_gen1_only);
+
+void tegra_xusb_padctl_enable_receiver_detector(struct tegra_xusb_padctl
+					*padctl, struct phy *phy)
+{
+	if (padctl->soc->ops->receiver_detector)
+		padctl->soc->ops->receiver_detector(phy, true);
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_enable_receiver_detector);
+
+void tegra_xusb_padctl_disable_receiver_detector(struct tegra_xusb_padctl
+					*padctl, struct phy *phy)
+{
+	if (padctl->soc->ops->receiver_detector)
+		padctl->soc->ops->receiver_detector(phy, false);
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_disable_receiver_detector);
+
+void tegra_xusb_padctl_enable_clamp_en_early(struct tegra_xusb_padctl
+					*padctl, struct phy *phy)
+{
+	if (padctl->soc->ops->clamp_en_early)
+		padctl->soc->ops->clamp_en_early(phy, true);
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_enable_clamp_en_early);
+
+void tegra_xusb_padctl_disable_clamp_en_early(struct tegra_xusb_padctl
+					*padctl, struct phy *phy)
+{
+	if (padctl->soc->ops->clamp_en_early)
+		padctl->soc->ops->clamp_en_early(phy, false);
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_disable_clamp_en_early);
 
 MODULE_AUTHOR("Thierry Reding <treding@nvidia.com>");
 MODULE_DESCRIPTION("Tegra XUSB Pad Controller driver");

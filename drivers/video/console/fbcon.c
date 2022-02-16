@@ -1041,10 +1041,12 @@ static void fbcon_init(struct vc_data *vc, int init)
 	    (info->fix.type == FB_TYPE_TEXT))
 		logo = 0;
 
-	if (cur_ops && cur_ops->var.xres && cur_ops->var.yres)
+	if ((cur_ops != NULL) && (cur_ops->var.xres != 0UL) &&
+					(cur_ops->var.yres != 0UL)) {
 		var = &cur_ops->var;
-	else
+	} else {
 		var = &info->var;
+	}
 
 	if (var_to_display(p, var, info))
 		return;

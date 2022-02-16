@@ -9,9 +9,14 @@
 #         rt-patch.sh revert-patches; #for reverting
 
 any_failure=0
+
+path_defconfig=../arch/arm64/configs
+l4t_defconfig=tegra_defconfig
+auto_defconfig=tegra_gnu_linux_defconfig
+
 apply_rt_patches()
 {
-	count=$(ls ../arch/arm64/configs/.tmp.tegra*defconfig 2>/dev/null| wc -l)
+	count=$(ls $path_defconfig/.tmp.tegra*defconfig 2>/dev/null| wc -l)
 	if [ $count -gt 0 ]; then
 		echo "The PREEMPT RT patches are already applied to the kernel!"
 	else
@@ -21,44 +26,47 @@ apply_rt_patches()
 			patch -s -d .. -p1 < $p || any_failure=1
 		done
 
-		#make temporary copy of the Automotive defconfig file
-		cp ../arch/arm64/configs/tegra_gnu_linux_defconfig\
-			../arch/arm64/configs/.tmp.tegra_gnu_linux_defconfig
-		./config --file ../arch/arm64/configs/tegra_gnu_linux_defconfig\
-			--enable PREEMPT_RT_FULL\
-			--disable CPU_IDLE_TEGRA18X\
-			--disable CPU_IDLE_TEGRA19X\
-			--disable CPU_FREQ_GOV_INTERACTIVE || any_failure=1
-		echo "PREEMPT RT patches successfully applied for Auto!"
+		for f in $path_defconfig/*; do
+			defconfig=$f
+			tmp_defconfig=${f//$path_defconfig\//$path_defconfig\/.tmp.}
 
-		#make temporary copy of the L4T's defconfig file
-		cp ../arch/arm64/configs/tegra_defconfig\
-			../arch/arm64/configs/.tmp.tegra_defconfig
-		 ./config --file ../arch/arm64/configs/tegra_defconfig\
-			--enable PREEMPT_RT_FULL\
-			--disable CPU_IDLE_TEGRA18X\
-			--disable CPU_IDLE_TEGRA19X\
-			--disable CPU_FREQ_GOV_INTERACTIVE || any_failure=1
-		echo "PREEMPT RT patches successfully applied for L4T!"
+			if [[ "$f" == "$path_defconfig/$l4t_defconfig" ||
+			      "$f" == "$path_defconfig/$auto_defconfig" ]]; then
+				if [ ! -e "$tmp_defconfig" ]; then
+					#make temporary copy of defconfig file
+					cp $defconfig $tmp_defconfig
+					echo "Applying RT macro's to:"\
+					"`(echo $defconfig | cut -d "/" -f5)`"
+					./config --file $defconfig\
+					    --enable PREEMPT_RT_FULL \
+					    --disable DEBUG_PREEMPT \
+					    --disable CPU_IDLE_TEGRA18X \
+					    --disable CPU_FREQ_TIMES \
+					    --disable CPU_FREQ_GOV_SCHEDUTIL \
+					    --disable CPU_FREQ_GOV_INTERACTIVE \
+						|| any_failure=1
+					echo "PREEMPT RT patches successfully"\
+								"applied!"
+				fi
+			fi
+		done
 	fi
 }
 
 revert_rt_patches()
 {
-	count=$(ls ../arch/arm64/configs/.tmp.tegra*defconfig 2>/dev/null| wc -l)
+	count=$(ls $path_defconfig/.tmp.tegra*defconfig 2>/dev/null| wc -l)
 	if [ $count -gt 0 ]; then
 		file_list=`find ../rt-patches -name \*.patch -type f | sort -r`
 		for p in $file_list; do
 			# set flag in case of failure and continue
 			patch -s -R -d .. -p1 < $p || any_failure=1
 		done
-		#  CPU_FREQ_GOV_INTERACTIVE need to keep disable for Automotive
-		cp ../arch/arm64/configs/.tmp.tegra_gnu_linux_defconfig\
-			../arch/arm64/configs/tegra_gnu_linux_defconfig
-		rm -rf ../arch/arm64/configs/.tmp.tegra_gnu_linux_defconfig
-		cp ../arch/arm64/configs/.tmp.tegra_defconfig\
-			../arch/arm64/configs/tegra_defconfig
-		rm -rf ../arch/arm64/configs/.tmp.tegra_defconfig
+		for f in $path_defconfig/.tmp*; do
+			defconfig=`echo $f | cut -d "." -f5`
+			cp $f $path_defconfig/$defconfig
+			rm -rf $f
+		done
 		echo "The PREEMPT RT patches have been successfully reverted!"
 	else
 		echo "The PREEMPT RT patches are not applied to the kernel!"

@@ -5,6 +5,7 @@
  * Copyright (C) 2003-2004 Robert Schwebel, Benedikt Spranger
  * Copyright (C) 2008 Nokia Corporation
  * Copyright (C) 2009 Samsung Electronics
+ * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
  *                    Author: Michal Nazarewicz (mina86@mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -622,6 +623,7 @@ static void rndis_disable(struct usb_function *f)
 	gether_disconnect(&rndis->port);
 
 	usb_ep_disable(rndis->notify);
+	rndis->notify->desc = NULL;
 }
 
 /*-------------------------------------------------------------------------*/

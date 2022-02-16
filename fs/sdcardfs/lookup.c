@@ -179,11 +179,8 @@ static struct dentry *__sdcardfs_interpose(struct dentry *dentry,
 
 	/* check that the lower file system didn't cross a mount point */
 	if (lower_inode->i_sb != lower_sb) {
-		/* but, allow access to all media files in adoptable and internal storage */
-		if (lower_inode->i_uid.val != AID_MEDIA_RW && lower_inode->i_gid.val != AID_MEDIA_RW) {
-			ret_dentry = ERR_PTR(-EXDEV);
-			goto out;
-		}
+		ret_dentry = ERR_PTR(-EXDEV);
+		goto out;
 	}
 
 	/*

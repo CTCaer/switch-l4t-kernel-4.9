@@ -14,7 +14,7 @@
  * Copyright (C) 2008 Google, Inc.
  * Author: Mike Lockwood <lockwood@android.com>
  *
- * Copyright (c) 2018, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2018-2019, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -194,6 +194,26 @@ struct __extcon_info {
 		.type = EXTCON_TYPE_DISP,
 		.id = EXTCON_DISP_AUDIO_AUX3,
 		.name = "AUDIO_AUX3",
+	},
+	[EXTCON_DISP_DSIHPD] = {
+		.type = EXTCON_TYPE_DISP,
+		.id = EXTCON_DISP_DSIHPD,
+		.name = "DSIHPD",
+	},
+	[EXTCON_DISP_HDMI2] = {
+		.type = EXTCON_TYPE_DISP,
+		.id = EXTCON_DISP_HDMI2,
+		.name = "HDMI2",
+	},
+	[EXTCON_DISP_HDMI3] = {
+		.type = EXTCON_TYPE_DISP,
+		.id = EXTCON_DISP_HDMI3,
+		.name = "HDMI3",
+	},
+	[EXTCON_DISP_HDMI4] = {
+		.type = EXTCON_TYPE_DISP,
+		.id = EXTCON_DISP_HDMI4,
+		.name = "HDMI4",
 	},
 
 	/* Miscellaneous external connector */

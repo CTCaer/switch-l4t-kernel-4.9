@@ -675,6 +675,7 @@ void xhci_unmap_td_bounce_buffer(struct xhci_hcd *xhci, struct xhci_ring *ring,
 	struct device *dev = xhci_to_hcd(xhci)->self.controller;
 	struct xhci_segment *seg = td->bounce_seg;
 	struct urb *urb = td->urb;
+	size_t len;
 
 	if (!seg || !urb)
 		return;
@@ -685,11 +686,14 @@ void xhci_unmap_td_bounce_buffer(struct xhci_hcd *xhci, struct xhci_ring *ring,
 		return;
 	}
 
-	/* for in tranfers we need to copy the data from bounce to sg */
-	sg_pcopy_from_buffer(urb->sg, urb->num_mapped_sgs, seg->bounce_buf,
-			     seg->bounce_len, seg->bounce_offs);
 	dma_unmap_single(dev, seg->bounce_dma, ring->bounce_buf_len,
 			 DMA_FROM_DEVICE);
+	/* for in tranfers we need to copy the data from bounce to sg */
+	len = sg_pcopy_from_buffer(urb->sg, urb->num_sgs, seg->bounce_buf,
+			     seg->bounce_len, seg->bounce_offs);
+	if (len != seg->bounce_len)
+		xhci_warn(xhci, "WARN Wrong bounce buffer read length: %ld != %d\n",
+				len, seg->bounce_len);
 	seg->bounce_len = 0;
 	seg->bounce_offs = 0;
 }
@@ -1152,6 +1156,13 @@ static void xhci_handle_cmd_reset_ep(struct xhci_hcd *xhci, int slot_id,
 	} else {
 		/* Clear our internal halted state */
 		xhci->devs[slot_id]->eps[ep_index].ep_state &= ~EP_HALTED;
+
+		/* ring doorbell for the endpoint under soft-retry */
+		if (TRB_TSP & le32_to_cpu(trb->generic.field[3])) {
+			xhci_dbg(xhci, "Ring doorbell for slot_id %d ep_index 0x%x\n",
+				 slot_id, ep_index);
+			xhci_ring_ep_doorbell(xhci, slot_id, ep_index, 0);
+		}
 	}
 }
 
@@ -1611,9 +1622,6 @@ static void handle_port_status(struct xhci_hcd *xhci,
 		usb_hcd_resume_root_hub(hcd);
 	}
 
-	if (hcd->speed >= HCD_USB3 && (temp & PORT_PLS_MASK) == XDEV_INACTIVE)
-		bus_state->port_remote_wakeup &= ~(1 << faked_port_index);
-
 	if ((temp & PORT_PLC) && (temp & PORT_PLS_MASK) == XDEV_RESUME) {
 		xhci_dbg(xhci, "port resume event for port %d\n", port_id);
 
@@ -1632,6 +1640,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 			bus_state->port_remote_wakeup |= 1 << faked_port_index;
 			xhci_test_and_clear_bit(xhci, port_array,
 					faked_port_index, PORT_PLC);
+			usb_hcd_start_port_resume(&hcd->self, faked_port_index);
 			xhci_set_link_state(xhci, port_array, faked_port_index,
 						XDEV_U0);
 			/* Need to wait until the next link state change
@@ -1647,6 +1656,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 			set_bit(faked_port_index, &bus_state->resuming_ports);
 			mod_timer(&hcd->rh_timer,
 				  bus_state->resume_done[faked_port_index]);
+			usb_hcd_start_port_resume(&hcd->self, faked_port_index);
 			/* Do the rest in GetPortStatus */
 		}
 	}
@@ -1666,8 +1676,6 @@ static void handle_port_status(struct xhci_hcd *xhci,
 		if (slot_id && xhci->devs[slot_id])
 			xhci_ring_device(xhci, slot_id);
 		if (bus_state->port_remote_wakeup & (1 << faked_port_index)) {
-			bus_state->port_remote_wakeup &=
-				~(1 << faked_port_index);
 			xhci_test_and_clear_bit(xhci, port_array,
 					faked_port_index, PORT_PLC);
 			usb_wakeup_notification(hcd->self.root_hub,
@@ -2293,6 +2301,31 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_td *td,
 	return finish_td(xhci, td, event_trb, event, ep, status, false);
 }
 
+static void xhci_endpoint_soft_retry(struct xhci_hcd *xhci,
+			unsigned int slot_id,
+			unsigned int dci, bool on)
+{
+	struct xhci_virt_device *xdev = xhci->devs[slot_id];
+	struct usb_host_endpoint *ep;
+
+	if (!xhci->shared_hcd || !xhci->shared_hcd->driver ||
+			!xhci->shared_hcd->driver->endpoint_soft_retry)
+		return;
+
+	if (xdev->udev->speed != USB_SPEED_SUPER)
+		return;
+
+	if (dci & 0x1)
+		ep = xdev->udev->ep_in[(dci - 1)/2];
+	else
+		ep = xdev->udev->ep_out[dci/2];
+
+	if (!ep)
+		return;
+
+	xhci->shared_hcd->driver->endpoint_soft_retry(xhci->shared_hcd, ep, on);
+}
+
 /*
  * If this function returns an error condition, it means it got a Transfer
  * event with a corrupted Slot ID, Endpoint ID, or TRB DMA address.
@@ -2321,6 +2354,7 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 	int ret = 0;
 	int td_num = 0;
 	bool handling_skipped_tds = false;
+	bool disable_u0_ts1_detect = false;
 
 	slot_id = TRB_TO_SLOT_ID(le32_to_cpu(event->flags));
 	xdev = xhci->devs[slot_id];
@@ -2338,6 +2372,11 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 		xhci_debug_segment(xhci, xhci->event_ring->deq_seg);
 		return -ENODEV;
 	}
+
+	if (xhci->shared_hcd->driver->is_u0_ts1_detect_disabled)
+		disable_u0_ts1_detect =
+			xhci->shared_hcd->driver->is_u0_ts1_detect_disabled(
+					xhci->shared_hcd);
 
 	/* Endpoint ID is 1 based, our index is zero based */
 	ep_index = TRB_TO_EP_ID(le32_to_cpu(event->flags)) - 1;
@@ -2385,14 +2424,25 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 	 * transfer type
 	 */
 	case COMP_SUCCESS:
-		if (EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)) == 0)
-			break;
+		if (EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)) == 0) {
+			if (disable_u0_ts1_detect)
+				goto check_soft_try;
+			else
+				break;
+		}
 		if (xhci->quirks & XHCI_TRUST_TX_LENGTH)
 			trb_comp_code = COMP_SHORT_TX;
 		else
 			xhci_warn_ratelimited(xhci,
 					"WARN Successful completion on short TX: needs XHCI_TRUST_TX_LENGTH quirk?\n");
 	case COMP_SHORT_TX:
+check_soft_try:
+		if (disable_u0_ts1_detect && ep_ring->soft_try) {
+			xhci_dbg(xhci, "soft retry completed successfully\n");
+			ep_ring->soft_try = false;
+			xhci_endpoint_soft_retry(xhci,
+						slot_id, ep_index + 1, false);
+		}
 		break;
 	case COMP_STOP:
 		xhci_dbg(xhci, "Stopped on Transfer TRB\n");
@@ -2413,8 +2463,33 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 		status = -EILSEQ;
 		break;
 	case COMP_SPLIT_ERR:
+		xhci->xhci_ereport.comp_tx_err++;
+		xhci_dbg(xhci, "Transfer error on endpoint\n");
+		status = -EPROTO;
+		break;
 	case COMP_TX_ERR:
 		xhci->xhci_ereport.comp_tx_err++;
+		if (disable_u0_ts1_detect &&
+				xdev->udev->speed == USB_SPEED_SUPER &&
+				ep_ring->type != TYPE_ISOC) {
+			if (!ep_ring->soft_try) {
+				xhci_dbg(xhci, "SuperSpeed transfer error, do soft retry\n");
+				ret = xhci_queue_soft_retry(xhci,
+						slot_id, ep_index);
+				if (!ret) {
+					xhci_endpoint_soft_retry(xhci,
+						slot_id, ep_index + 1, true);
+					xhci_ring_cmd_db(xhci);
+					ep_ring->soft_try = true;
+					goto cleanup;
+				}
+			} else {
+				xhci_dbg(xhci, "soft retry complete but transfer still failed\n");
+				ep_ring->soft_try = false;
+			}
+			xhci_endpoint_soft_retry(xhci,
+						slot_id, ep_index + 1, false);
+		}
 		xhci_dbg(xhci, "Transfer error on endpoint\n");
 		status = -EPROTO;
 		break;
@@ -2622,9 +2697,7 @@ cleanup:
 
 		handling_skipped_tds = ep->skip &&
 			trb_comp_code != COMP_MISSED_INT &&
-			trb_comp_code != COMP_PING_ERR &&
-			trb_comp_code != COMP_OVERRUN &&
-			trb_comp_code != COMP_STOP;
+			trb_comp_code != COMP_PING_ERR;
 
 		/*
 		 * Do not update event ring dequeue pointer if we're in a loop
@@ -3186,6 +3259,7 @@ static int xhci_align_td(struct xhci_hcd *xhci, struct urb *urb, u32 enqd_len,
 	unsigned int unalign;
 	unsigned int max_pkt;
 	u32 new_buff_len;
+	size_t len;
 
 	max_pkt = GET_MAX_PACKET(usb_endpoint_maxp(&urb->ep->desc));
 	unalign = (enqd_len + *trb_buff_len) % max_pkt;
@@ -3216,8 +3290,12 @@ static int xhci_align_td(struct xhci_hcd *xhci, struct urb *urb, u32 enqd_len,
 
 	/* create a max max_pkt sized bounce buffer pointed to by last trb */
 	if (usb_urb_dir_out(urb)) {
-		sg_pcopy_to_buffer(urb->sg, urb->num_mapped_sgs,
+		len = sg_pcopy_to_buffer(urb->sg, urb->num_sgs,
 				   seg->bounce_buf, new_buff_len, enqd_len);
+		if (len != new_buff_len)
+			xhci_warn(xhci,
+				"WARN Wrong bounce buffer write length: %ld != %d\n",
+				len, new_buff_len);
 		seg->bounce_dma = dma_map_single(dev, seg->bounce_buf,
 						 max_pkt, DMA_TO_DEVICE);
 	} else {
@@ -3361,7 +3439,7 @@ int xhci_queue_bulk_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 		addr += trb_buff_len;
 		sent_len = trb_buff_len;
 
-		while (sg && sent_len >= block_len && num_sgs) {
+		while (sg && sent_len >= block_len && num_sgs != 0) {
 			/* New sg entry */
 			--num_sgs;
 			sent_len -= block_len;
@@ -4047,6 +4125,25 @@ int xhci_queue_stop_endpoint(struct xhci_hcd *xhci, struct xhci_command *cmd,
 	u32 trb_ep_index = EP_ID_FOR_TRB(ep_index);
 	u32 type = TRB_TYPE(TRB_STOP_RING);
 	u32 trb_suspend = SUSPEND_PORT_FOR_TRB(suspend);
+	bool disable_u0_ts1_detect = false;
+	struct xhci_ring *ep_ring;
+
+	if (xhci->shared_hcd->driver->is_u0_ts1_detect_disabled)
+		disable_u0_ts1_detect =
+			xhci->shared_hcd->driver->is_u0_ts1_detect_disabled(
+					xhci->shared_hcd);
+
+	if (disable_u0_ts1_detect) {
+		ep_ring = xhci_triad_to_transfer_ring(xhci, slot_id,
+			ep_index, 0);
+
+		if (ep_ring && ep_ring->soft_try) {
+			xhci_dbg(xhci, "stop soft retry\n");
+			ep_ring->soft_try = false;
+			xhci_endpoint_soft_retry(xhci,
+				slot_id, ep_index + 1, false);
+		}
+	}
 
 	return queue_command(xhci, cmd, 0, 0, 0,
 			trb_slot_id | trb_ep_index | type | trb_suspend, false);
@@ -4128,5 +4225,21 @@ int xhci_queue_reset_ep(struct xhci_hcd *xhci, struct xhci_command *cmd,
 	u32 type = TRB_TYPE(TRB_RESET_EP);
 
 	return queue_command(xhci, cmd, 0, 0, 0,
+			trb_slot_id | trb_ep_index | type, false);
+}
+
+int xhci_queue_soft_retry(struct xhci_hcd *xhci, int slot_id,
+		unsigned int ep_index)
+{
+	struct xhci_command *command;
+	u32 trb_slot_id = SLOT_ID_FOR_TRB(slot_id);
+	u32 trb_ep_index = EP_ID_FOR_TRB(ep_index);
+	u32 type = TRB_TYPE(TRB_RESET_EP) | TRB_TSP;
+
+	command = xhci_alloc_command(xhci, false, false, GFP_ATOMIC);
+	if (!command)
+		return -EINVAL;
+
+	return queue_command(xhci, command, 0, 0, 0,
 			trb_slot_id | trb_ep_index | type, false);
 }

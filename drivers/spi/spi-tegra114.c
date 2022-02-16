@@ -624,9 +624,12 @@ static int tegra_spi_start_dma_based_transfer(
 	} else if (((len) >> 4) & 0x1) {
 		val |= SPI_TX_TRIG_4 | SPI_RX_TRIG_4;
 		maxburst = 4;
-	} else {
+	} else if (((len) >> 5) & 0x1) {
 		val |= SPI_TX_TRIG_8 | SPI_RX_TRIG_8;
 		maxburst = 8;
+	} else {
+		val |= SPI_TX_TRIG_16 | SPI_RX_TRIG_16;
+		maxburst = 16;
 	}
 
 	if (!tspi->chip_data->intr_mask_reg &&
@@ -1393,7 +1396,7 @@ static int tegra_spi_transfer_one_message(struct spi_master *master,
 	int ret;
 	int gval = 1;
 	bool skip = false;
-	u32 cmd1 = 0;
+	u32 cmd1 = 0, dma_ctl = 0;
 
 	msg->status = 0;
 	msg->actual_length = 0;
@@ -1440,9 +1443,18 @@ static int tegra_spi_transfer_one_message(struct spi_master *master,
 				dmaengine_terminate_all(tspi->rx_dma_chan);
 			ret = -EIO;
 			tegra_spi_dump_regs(tspi);
+			/* Abort transfer by resetting pio/dma bit */
+			if (!tspi->is_curr_dma_xfer) {
+				cmd1 = tegra_spi_readl(tspi, SPI_COMMAND1);
+				cmd1 &= ~SPI_PIO;
+				tegra_spi_writel(tspi, cmd1, SPI_COMMAND1);
+			} else {
+				dma_ctl = tegra_spi_readl(tspi, SPI_DMA_CTL);
+				dma_ctl &= ~SPI_DMA_EN;
+				tegra_spi_writel(tspi, dma_ctl, SPI_DMA_CTL);
+			}
 			reset_control_reset(tspi->rst);
 			tegra_spi_set_intr_mask(tspi);
-			tegra_spi_clear_fifo(tspi);
 			goto complete_xfer;
 		}
 
@@ -1526,7 +1538,6 @@ static irqreturn_t handle_cpu_based_xfer(struct tegra_spi_data *tspi)
 		tegra_spi_dump_regs(tspi);
 		reset_control_reset(tspi->rst);
 		tegra_spi_set_intr_mask(tspi);
-		tegra_spi_clear_fifo(tspi);
 		return IRQ_HANDLED;
 	}
 
@@ -1600,7 +1611,6 @@ static irqreturn_t handle_dma_based_xfer(struct tegra_spi_data *tspi)
 		tegra_spi_dump_regs(tspi);
 		reset_control_reset(tspi->rst);
 		tegra_spi_set_intr_mask(tspi);
-		tegra_spi_clear_fifo(tspi);
 		return IRQ_HANDLED;
 	}
 
@@ -2039,6 +2049,7 @@ static int tegra_spi_remove(struct platform_device *pdev)
 	free_irq(tspi->irq, tspi);
 
 	tegra_spi_debugfs_deinit(tspi);
+	spi_unregister_master(master);
 
 	if (tspi->tx_dma_chan)
 		tegra_spi_deinit_dma_param(tspi, false);

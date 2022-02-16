@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2018-2019, NVIDIA CORPORATION. All rights reserved.
  *
  * This file holds the definitions of quirks found in USB devices.
  * Only quirks that affect the whole device, not an interface,

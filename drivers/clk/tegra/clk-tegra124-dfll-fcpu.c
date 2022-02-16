@@ -1,7 +1,7 @@
 /*
  * Tegra124 DFLL FCPU clock source driver
  *
- * Copyright (C) 2012-2014 NVIDIA Corporation.  All rights reserved.
+ * Copyright (C) 2012-2021 NVIDIA Corporation.  All rights reserved.
  *
  * Aleksandr Frid <afrid@nvidia.com>
  * Paul Walmsley <pwalmsley@nvidia.com>
@@ -622,7 +622,7 @@ static const unsigned long tegra210b01_cpu_max_freq_table[] = {
 	.vmin_coefficients =	{   620000,        0,        0 }, \
 	.cpu_dfll_data = {					  \
 		.tune0_low  = 0x0000FFCF,			  \
-		.tune1_low  = 0x016607FF,			  \
+		.tune1_low  = 0x012207FF,			  \
 		.tune1_high = 0x03FFF7FF,			  \
 		.tune_high_min_millivolts = 850,		  \
 		.tune_high_margin_millivolts = 38,		  \
@@ -756,12 +756,13 @@ static void get_alignment_from_dt(struct device *dev,
 	align->step_uv = 0;
 	align->offset_uv = 0;
 
-	if (of_property_read_u32(dev->of_node, "nvidia,align-step-uv",
+	if (of_property_read_u32(dev->of_node,
+				 "nvidia,pwm-voltage-step-microvolts",
 				  &align->step_uv))
 		align->step_uv = 0;
 
 	if (of_property_read_u32(dev->of_node,
-				"nvidia,align-offset-uv", &align->offset_uv))
+				"nvidia,pwm-min-microvolts", &align->offset_uv))
 		align->offset_uv = 0;
 }
 

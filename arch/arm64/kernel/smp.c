@@ -78,7 +78,7 @@ enum ipi_msg_type {
 	IPI_TIMER,
 	IPI_IRQ_WORK,
 	IPI_WAKEUP,
-	IPI_CUSTOM_FIRST,
+	IPI_CUSTOM_FIRST = 8,
 	IPI_CUSTOM_LAST = 15,
 };
 

@@ -4,7 +4,7 @@
  * This code is based on drivers/scsi/ufs/ufshcd.h
  * Copyright (C) 2011-2013 Samsung India Software Operations
  * Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
- * Copyright (c) 2015-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2015-2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * Authors:
  *	Santosh Yaraganavi <santosh.sy@samsung.com>
@@ -276,6 +276,7 @@ struct ufs_pwr_mode_info {
  * @resume: called during host controller PM callback
  * @dbg_register_dump: used to dump controller debug information
  * @phy_initialization: used to initialize phys
+ * @set_dma_mask: used to set device specific DMA mask
  */
 struct ufs_hba_variant_ops {
 	const char *name;
@@ -292,7 +293,7 @@ struct ufs_hba_variant_ops {
 				     enum ufs_notify_change_status);
 	int	(*link_startup_notify)(struct ufs_hba *,
 				       enum ufs_notify_change_status);
-	void	(*hibern8_entry_notify)(struct ufs_hba *);
+	void	(*hibern8_entry_notify)(struct ufs_hba *, int flag);
 	int	(*pwr_change_notify)(struct ufs_hba *,
 					enum ufs_notify_change_status status,
 					struct ufs_pa_layer_attr *,
@@ -303,6 +304,7 @@ struct ufs_hba_variant_ops {
 	void	(*dbg_register_dump)(struct ufs_hba *hba);
 	int	(*phy_initialization)(struct ufs_hba *);
 	int	(*set_ufs_mphy_clocks)(struct ufs_hba *, bool);
+	int	(*set_dma_mask)(struct ufs_hba *);
 };
 
 /* clock gating state  */
@@ -597,6 +599,8 @@ struct ufs_hba {
 	bool card_present;
 	struct io_latency_state io_lat_read;
 	struct io_latency_state io_lat_write;
+	unsigned card_enumerated:1;
+	struct mutex hotplug_lock;
 };
 
 /* Returns true if clocks can be gated. Otherwise false */
@@ -653,7 +657,7 @@ static inline void ufshcd_rmwl(struct ufs_hba *hba, u32 mask, u32 val, u32 reg)
 	ufshcd_writel(hba, tmp, reg);
 }
 
-int ufshcd_alloc_host(struct device *, struct ufs_hba **);
+int ufshcd_alloc_host(struct ufs_hba *);
 void ufshcd_dealloc_host(struct ufs_hba *);
 int ufshcd_init(struct ufs_hba * , void __iomem * , unsigned int);
 void ufshcd_remove(struct ufs_hba *);
@@ -854,10 +858,11 @@ static inline int ufshcd_vops_link_startup_notify(struct ufs_hba *hba,
 }
 
 
-static inline void ufshcd_vops_hibern8_entry_notify(struct ufs_hba *hba)
+static inline void ufshcd_vops_hibern8_entry_notify(struct ufs_hba *hba,
+							int flag)
 {
 	if (hba->vops && hba->vops->hibern8_entry_notify)
-		hba->vops->hibern8_entry_notify(hba);
+		hba->vops->hibern8_entry_notify(hba, flag);
 }
 
 static inline int ufshcd_vops_pwr_change_notify(struct ufs_hba *hba,
