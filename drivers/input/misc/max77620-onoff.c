@@ -94,6 +94,10 @@ static int max77620_onoff_probe(struct platform_device *pdev)
 
 	onoff->rmap = chip->rmap;
 
+	ret = regmap_read(onoff->rmap, MAX77620_REG_ONOFFIRQ, &code);
+	if (ret < 0)
+		dev_err(dev, "Failed to clear onoff irq: %d\n", ret);
+
 	np = of_get_child_by_name(pdev->dev.parent->of_node, "onoff");
 	if (np && !of_device_is_available(np))
 		np = NULL;
