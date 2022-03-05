@@ -40,6 +40,11 @@ static int st_lsm6dsx_spi_probe(struct spi_device *spi)
 				hw_id, id->name, regmap);
 }
 
+static void st_lsm6dsx_spi_shutdown(struct spi_device *spi)
+{
+	st_lsm6dsx_shutdown(&spi->dev);
+}
+
 static const struct of_device_id st_lsm6dsx_spi_of_match[] = {
 	{
 		.compatible = "st,lsm6ds3",
@@ -82,6 +87,7 @@ static struct spi_driver st_lsm6dsx_driver = {
 		.of_match_table = of_match_ptr(st_lsm6dsx_spi_of_match),
 	},
 	.probe = st_lsm6dsx_spi_probe,
+	.shutdown = st_lsm6dsx_spi_shutdown,
 	.id_table = st_lsm6dsx_spi_id_table,
 };
 module_spi_driver(st_lsm6dsx_driver);
