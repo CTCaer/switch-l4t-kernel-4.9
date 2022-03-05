@@ -752,6 +752,16 @@ static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 	u8 drdy_int_reg;
 	int err;
 
+	/*
+	 * A reset does not clear the fifo and its interrupt.
+	 * And some platforms have always powered on imus.
+	 * Make sure the fifo is flushed before a reset to avoid
+	 * race conditions in irq request later.
+	 */
+	err = st_lsm6dsx_flush_fifo(hw);
+	if (err < 0)
+		return err;
+
 	err = regmap_write(hw->regmap, ST_LSM6DSX_REG_RESET_ADDR,
 			   ST_LSM6DSX_REG_RESET_MASK);
 	if (err < 0)
@@ -932,6 +942,20 @@ const struct dev_pm_ops st_lsm6dsx_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(st_lsm6dsx_suspend, st_lsm6dsx_resume)
 };
 EXPORT_SYMBOL(st_lsm6dsx_pm_ops);
+
+void st_lsm6dsx_shutdown(struct device *dev)
+{
+	struct st_lsm6dsx_hw *hw = dev_get_drvdata(dev);
+
+	dev_info(dev, "%s\n", __func__);
+
+	if (st_lsm6dsx_suspend(dev))
+		return;
+
+	regmap_write(hw->regmap, ST_LSM6DSX_REG_RESET_ADDR,
+		     ST_LSM6DSX_REG_RESET_MASK);
+}
+EXPORT_SYMBOL(st_lsm6dsx_shutdown);
 
 MODULE_AUTHOR("Lorenzo Bianconi <lorenzo.bianconi@st.com>");
 MODULE_AUTHOR("Denis Ciocca <denis.ciocca@st.com>");
