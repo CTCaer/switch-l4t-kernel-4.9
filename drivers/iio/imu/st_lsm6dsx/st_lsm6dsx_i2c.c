@@ -40,6 +40,11 @@ static int st_lsm6dsx_i2c_probe(struct i2c_client *client,
 				hw_id, id->name, regmap);
 }
 
+static void st_lsm6dsx_i2c_shutdown(struct i2c_client *client)
+{
+	st_lsm6dsx_shutdown(&client->dev);
+}
+
 static const struct of_device_id st_lsm6dsx_i2c_of_match[] = {
 	{
 		.compatible = "st,lsm6ds3",
@@ -82,6 +87,7 @@ static struct i2c_driver st_lsm6dsx_driver = {
 		.of_match_table = of_match_ptr(st_lsm6dsx_i2c_of_match),
 	},
 	.probe = st_lsm6dsx_i2c_probe,
+	.shutdown = st_lsm6dsx_i2c_shutdown,
 	.id_table = st_lsm6dsx_i2c_id_table,
 };
 module_i2c_driver(st_lsm6dsx_driver);
