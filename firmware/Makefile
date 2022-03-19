@@ -140,7 +140,7 @@ ifdef CONFIG_BT_BCM
 fw-shipped-m += brcm/BCM4356A3.hcd
 endif
 ifdef CONFIG_BRCMFMAC_PCIE
-fw-shipped-m += brcm/brcmfmac4356-pcie.bin
+fw-shipped-m += brcm/brcmfmac4356A3-pcie.bin
 endif
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
