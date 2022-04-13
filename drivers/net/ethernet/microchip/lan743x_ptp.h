@@ -53,6 +53,8 @@ struct lan743x_ptp {
 	struct ptp_clock_info ptp_clock_info;
 	struct ptp_pin_desc pin_config[1];
 
+	struct tasklet_struct	ptp_isr_bottom_half;
+
 #define LAN743X_PTP_NUMBER_OF_EVENT_CHANNELS (2)
 	unsigned long used_event_ch;
 

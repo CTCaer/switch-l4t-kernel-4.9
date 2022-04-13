@@ -739,6 +739,15 @@ static int lan743x_mdiobus_read(struct mii_bus *bus, int phy_id, int index)
 	u32 val, mii_access;
 	int ret;
 
+        /* Temporary hack to enable 88Q2112 PHY driver probe
+         * Registers 2 & 3 are the Device ID registers
+         * So, hardcode Device ID as the PHY doesn't support MDIO clause-22
+         */
+        if(index == 2)
+                return 0x2b;
+        if(index == 3)
+                return 0x981;
+
 	/* comfirm MII not busy */
 	ret = lan743x_mac_mii_wait_till_not_busy(adapter);
 	if (ret < 0)
@@ -834,7 +843,7 @@ static int lan743x_mac_init(struct lan743x_adapter *adapter)
 	}
 
 	if (!mac_address_valid)
-		random_ether_addr(adapter->mac_address);
+		eth_random_addr(adapter->mac_address);
 	lan743x_mac_set_address(adapter, adapter->mac_address);
 	ether_addr_copy(netdev->dev_addr, adapter->mac_address);
 	return 0;
@@ -1008,7 +1017,7 @@ static int lan743x_phy_open(struct lan743x_adapter *adapter)
 
 	ret = phy_connect_direct(netdev, phydev,
 				 lan743x_phy_link_status_change,
-				 PHY_INTERFACE_MODE_GMII);
+				 PHY_INTERFACE_MODE_RGMII);
 	if (ret)
 		goto return_error;
 
@@ -1675,15 +1684,13 @@ static int lan743x_tx_napi_poll(struct napi_struct *napi, int weight)
 		netif_wake_queue(adapter->netdev);
 	}
 
-	if (!napi_complete(napi))
-		goto done;
+	napi_complete_done(napi, 0);
 
 	/* enable isr */
 	lan743x_csr_write(adapter, INT_EN_SET,
 			  INT_BIT_DMA_TX_(tx->channel_number));
 	lan743x_csr_read(adapter, INT_STS);
 
-done:
 	return 0;
 }
 
@@ -1873,9 +1880,9 @@ static int lan743x_tx_open(struct lan743x_tx *tx)
 	tx->vector_flags = lan743x_intr_get_vector_flags(adapter,
 							 INT_BIT_DMA_TX_
 							 (tx->channel_number));
-	netif_tx_napi_add(adapter->netdev,
-			  &tx->napi, lan743x_tx_napi_poll,
-			  tx->ring_size - 1);
+	netif_napi_add(adapter->netdev,
+		       &tx->napi, lan743x_tx_napi_poll,
+		       tx->ring_size - 1);
 	napi_enable(&tx->napi);
 
 	data = 0;
@@ -2185,8 +2192,7 @@ static int lan743x_rx_napi_poll(struct napi_struct *napi, int weight)
 	if (count == weight)
 		goto done;
 
-	if (!napi_complete_done(napi, count))
-		goto done;
+	napi_complete_done(napi, count);
 
 	if (rx->vector_flags & LAN743X_VECTOR_FLAG_VECTOR_ENABLE_AUTO_SET)
 		rx_tail_flags |= RX_TAIL_SET_TOP_INT_VEC_EN_;
@@ -2567,8 +2573,9 @@ static int lan743x_netdev_change_mtu(struct net_device *netdev, int new_mtu)
 	return ret;
 }
 
-static void lan743x_netdev_get_stats64(struct net_device *netdev,
-				       struct rtnl_link_stats64 *stats)
+static struct rtnl_link_stats64 *
+lan743x_netdev_get_stats64(struct net_device *netdev,
+			   struct rtnl_link_stats64 *stats)
 {
 	struct lan743x_adapter *adapter = netdev_priv(netdev);
 
@@ -2612,6 +2619,8 @@ static void lan743x_netdev_get_stats64(struct net_device *netdev,
 					     STAT_TX_MULTIPLE_COLLISIONS) +
 			    lan743x_csr_read(adapter,
 					     STAT_TX_LATE_COLLISIONS);
+
+	return stats;
 }
 
 static int lan743x_netdev_set_mac_address(struct net_device *netdev,
@@ -2658,6 +2667,8 @@ static void lan743x_full_cleanup(struct lan743x_adapter *adapter)
 	lan743x_mdiobus_cleanup(adapter);
 	lan743x_hardware_cleanup(adapter);
 	lan743x_pci_cleanup(adapter);
+
+	free_netdev(adapter->netdev);
 }
 
 static int lan743x_hardware_init(struct lan743x_adapter *adapter,
@@ -2752,8 +2763,7 @@ static int lan743x_pcidev_probe(struct pci_dev *pdev,
 	struct net_device *netdev = NULL;
 	int ret = -ENODEV;
 
-	netdev = devm_alloc_etherdev(&pdev->dev,
-				     sizeof(struct lan743x_adapter));
+	netdev = alloc_etherdev(sizeof(struct lan743x_adapter));
 	if (!netdev)
 		goto return_error;
 
@@ -2764,11 +2774,10 @@ static int lan743x_pcidev_probe(struct pci_dev *pdev,
 	adapter->msg_enable = NETIF_MSG_DRV | NETIF_MSG_PROBE |
 			      NETIF_MSG_LINK | NETIF_MSG_IFUP |
 			      NETIF_MSG_IFDOWN | NETIF_MSG_TX_QUEUED;
-	netdev->max_mtu = LAN743X_MAX_FRAME_SIZE;
 
 	ret = lan743x_pci_init(adapter, pdev);
 	if (ret)
-		goto return_error;
+		goto cleanup_netdev;
 
 	ret = lan743x_csr_init(adapter);
 	if (ret)
@@ -2784,7 +2793,7 @@ static int lan743x_pcidev_probe(struct pci_dev *pdev,
 
 	adapter->netdev->netdev_ops = &lan743x_netdev_ops;
 	adapter->netdev->ethtool_ops = &lan743x_ethtool_ops;
-	adapter->netdev->features = NETIF_F_SG | NETIF_F_TSO | NETIF_F_HW_CSUM;
+	adapter->netdev->features = 0;
 	adapter->netdev->hw_features = adapter->netdev->features;
 
 	/* carrier off reporting is important to ethtool even BEFORE open */
@@ -2803,6 +2812,9 @@ cleanup_hardware:
 
 cleanup_pci:
 	lan743x_pci_cleanup(adapter);
+
+cleanup_netdev:
+	free_netdev(adapter->netdev);
 
 return_error:
 	pr_warn("Initialization failed\n");
@@ -2850,7 +2862,7 @@ static void lan743x_pcidev_shutdown(struct pci_dev *pdev)
 	lan743x_hardware_cleanup(adapter);
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static u16 lan743x_pm_wakeframe_crc16(const u8 *buf, int len)
 {
 	return bitrev16(crc16(0xFFFF, buf, len));
@@ -3016,7 +3028,7 @@ static int lan743x_pm_resume(struct device *dev)
 static const struct dev_pm_ops lan743x_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(lan743x_pm_suspend, lan743x_pm_resume)
 };
-#endif /*CONFIG_PM */
+#endif /* CONFIG_PM_SLEEP */
 
 static const struct pci_device_id lan743x_pcidev_tbl[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_SMSC, PCI_DEVICE_ID_SMSC_LAN7430) },
@@ -3029,7 +3041,7 @@ static struct pci_driver lan743x_pcidev_driver = {
 	.id_table = lan743x_pcidev_tbl,
 	.probe    = lan743x_pcidev_probe,
 	.remove   = lan743x_pcidev_remove,
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 	.driver.pm = &lan743x_pm_ops,
 #endif
 	.shutdown = lan743x_pcidev_shutdown,
