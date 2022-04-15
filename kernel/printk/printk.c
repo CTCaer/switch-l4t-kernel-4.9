@@ -218,36 +218,17 @@ static int nr_ext_console_drivers;
 
 static int __down_trylock_console_sem(unsigned long ip)
 {
-	int lock_failed;
-	unsigned long flags;
-
-	/*
-	 * Here and in __up_console_sem() we need to be in safe mode,
-	 * because spindump/WARN/etc from under console ->lock will
-	 * deadlock in printk()->down_trylock_console_sem() otherwise.
-	 */
-	printk_safe_enter_irqsave(flags);
-	lock_failed = down_trylock(&console_sem);
-	printk_safe_exit_irqrestore(flags);
-
-	if (lock_failed)
+	if (down_trylock(&console_sem))
 		return 1;
 	mutex_acquire(&console_lock_dep_map, 0, 1, ip);
 	return 0;
 }
 #define down_trylock_console_sem() __down_trylock_console_sem(_RET_IP_)
 
-static void __up_console_sem(unsigned long ip)
-{
-	unsigned long flags;
-
-	mutex_release(&console_lock_dep_map, 1, ip);
-
-	printk_safe_enter_irqsave(flags);
-	up(&console_sem);
-	printk_safe_exit_irqrestore(flags);
-}
-#define up_console_sem() __up_console_sem(_RET_IP_)
+#define up_console_sem() do { \
+	mutex_release(&console_lock_dep_map, 1, _RET_IP_);\
+	up(&console_sem);\
+} while (0)
 
 /*
  * This is used for debugging the mess that is the VT code by
@@ -1850,7 +1831,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 	boot_delay_msec(level);
 	printk_delay();
 
-	printk_safe_enter_irqsave(flags);
+	local_irq_save(flags);
 	this_cpu = smp_processor_id();
 
 	/*
@@ -1866,12 +1847,13 @@ asmlinkage int vprintk_emit(int facility, int level,
 		 */
 		if (!oops_in_progress && !lockdep_recursing(current)) {
 			recursion_bug = true;
-			printk_safe_exit_irqrestore(flags);
+			local_irq_restore(flags);
 			return 0;
 		}
 		zap_locks();
 	}
 
+	lockdep_off();
 	/* This stops the holder of console_sem just where we want him */
 	raw_spin_lock(&logbuf_lock);
 	logbuf_cpu = this_cpu;
@@ -1935,10 +1917,12 @@ asmlinkage int vprintk_emit(int facility, int level,
 
 	logbuf_cpu = UINT_MAX;
 	raw_spin_unlock(&logbuf_lock);
-	printk_safe_exit_irqrestore(flags);
+	lockdep_on();
+	local_irq_restore(flags);
 
 	/* If called from the scheduler, we can not call up(). */
 	if (!in_sched) {
+		lockdep_off();
 		/*
 		 * Try to acquire and then immediately release the console
 		 * semaphore.  The release will print out buffers and wake up
@@ -1946,6 +1930,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 		 */
 		if (console_trylock())
 			console_unlock();
+		lockdep_on();
 	}
 
 	return printed_len;
@@ -2452,8 +2437,7 @@ again:
 		static char force_text[LOG_LINE_MAX + PREFIX_MAX];
 
 
-		printk_safe_enter_irqsave(flags);
-		raw_spin_lock(&logbuf_lock);
+		raw_spin_lock_irqsave(&logbuf_lock, flags);
 		if (seen_seq != log_next_seq) {
 			wake_klogd = true;
 			seen_seq = log_next_seq;
@@ -2517,7 +2501,7 @@ skip:
 		call_console_drivers(level, ext_text, ext_len, text, len);
 		call_force_console_drivers(force_text, force_len);
 		start_critical_timings();
-		printk_safe_exit_irqrestore(flags);
+		local_irq_restore(flags);
 
 		if (do_cond_resched)
 			cond_resched();
@@ -2540,8 +2524,7 @@ skip:
 	 */
 	raw_spin_lock(&logbuf_lock);
 	retry = console_seq != log_next_seq;
-	raw_spin_unlock(&logbuf_lock);
-	printk_safe_exit_irqrestore(flags);
+	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
 
 	if (retry && console_trylock())
 		goto again;
