@@ -449,6 +449,7 @@ struct ucsi_ccg {
 	struct mutex lock;
 	struct ucsi *ucsi;
 	struct ucsi_ppm ppm;
+	struct ucsi_data sync_data;
 
 	struct ucsi_ccg_extcon *typec_extcon[PORT_MAX_NUM];
 	struct ucsi_ccg_extcon *typec_pd_extcon;
@@ -619,6 +620,18 @@ static int ccg_reg_read
 	return 0;
 }
 
+static void clear_int(struct ucsi_ccg *ccg, u8 intval)
+{
+	int ret;
+
+	if (!intval)
+		return;
+
+	ret = ccg_reg_write(ccg, REG_INTR, &intval, 1);
+	if (ret)
+		dev_err(ccg->dev, "clear intr fail\n");
+}
+
 static int ucsi_ccg_cmd(struct ucsi_ppm *ppm, struct ucsi_control *ctrl)
 {
 	struct ucsi_ccg *ccg = container_of(ppm, struct ucsi_ccg, ppm);
@@ -640,33 +653,38 @@ static int ucsi_ccg_cmd(struct ucsi_ppm *ppm, struct ucsi_control *ctrl)
 static int ucsi_ccg_sync(struct ucsi_ppm *ppm)
 {
 	struct ucsi_ccg *ccg = container_of(ppm, struct ucsi_ccg, ppm);
-	int err, i;
+	int i;
 
-	mutex_lock(&ccg->lock);
+	memcpy(ppm->data, &ccg->sync_data, sizeof(struct ucsi_data));
 
-	err = ccg_reg_read(ccg, REG_UCSI_VERSION,
-			   (u8 *)&ppm->data->version, 32);
+	dev_dbg(ccg->dev, "raw_cci 0x%08x\n", ppm->data->raw_cci);
 
-	if (err)
-		dev_err(ccg->dev, "ucsi_ccg_sync: i2c read failed\n");
-	else {
-		dev_dbg(ccg->dev, "raw_cci 0x%08x\n", ppm->data->raw_cci);
-
-		if (ppm->data->cci.data_length) {
-			for (i = 0; i < 4; i++)
-				dev_dbg(ccg->dev, "msg_in[%d] 0x%08x\n",
-						i, ppm->data->message_in[i]);
-		}
+	if (ppm->data->cci.data_length) {
+		for (i = 0; i < 4; i++)
+			dev_dbg(ccg->dev, "msg_in[%d] 0x%08x\n",
+					i, ppm->data->message_in[i]);
 	}
 
-	mutex_unlock(&ccg->lock);
 
 	return 0;
 }
 
 static void ucsi_ccg_notify(struct ucsi_ccg *ccg)
 {
-	ucsi_notify(ccg->ucsi);
+	int err;
+
+	mutex_lock(&ccg->lock);
+
+	err = ccg_reg_read(ccg, REG_UCSI_VERSION,
+			(u8 *)&ccg->sync_data, sizeof(struct ucsi_data));
+	if (err) {
+		dev_err(ccg->dev, "%s: i2c read failed\n", __func__);
+	} else {
+		ucsi_notify(ccg->ucsi);
+		clear_int(ccg, UCSI_READ_INT);
+	}
+
+	mutex_unlock(&ccg->lock);
 }
 
 static bool
@@ -1396,19 +1414,6 @@ static void ccg_pd_event(struct ucsi_ccg *ccg, int index)
 	}
 }
 
-static void clear_int(struct ucsi_ccg *ccg, u8 intval)
-{
-	int ret;
-
-	if (!intval)
-		return;
-
-	ret = ccg_reg_write(ccg, REG_INTR, &intval, 1);
-	if (ret)
-		dev_err(ccg->dev, "clear intr fail\n");
-}
-
-
 static void ccg_int_handler(struct ucsi_ccg *ccg)
 {
 	struct device *dev = ccg->dev;
@@ -1422,9 +1427,10 @@ static void ccg_int_handler(struct ucsi_ccg *ccg)
 
 	/* UCSI event */
 	if (intval & UCSI_READ_INT) {
-		clear_int(ccg, UCSI_READ_INT);
 		if (!test_bit(INIT_PENDING, &ccg->flags))
 			ucsi_ccg_notify(ccg);
+		else
+			clear_int(ccg, UCSI_READ_INT);
 	}
 
 	/* DEV event */

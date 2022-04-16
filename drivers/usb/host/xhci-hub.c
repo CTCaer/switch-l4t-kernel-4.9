@@ -801,6 +801,7 @@ static u32 xhci_get_port_status(struct usb_hcd *hcd,
 				set_bit(wIndex, &bus_state->resuming_ports);
 				bus_state->resume_done[wIndex] = timeout;
 				mod_timer(&hcd->rh_timer, timeout);
+				usb_hcd_start_port_resume(&hcd->self, wIndex);
 			}
 		/* Has resume been signalled for USB_RESUME_TIME yet? */
 		} else if (time_after_eq(jiffies,
@@ -843,6 +844,7 @@ static u32 xhci_get_port_status(struct usb_hcd *hcd,
 				clear_bit(wIndex, &bus_state->rexit_ports);
 			}
 
+			usb_hcd_end_port_resume(&hcd->self, wIndex);
 			bus_state->port_c_suspend |= 1 << wIndex;
 			bus_state->suspended_ports &= ~(1 << wIndex);
 		} else {
@@ -865,6 +867,7 @@ static u32 xhci_get_port_status(struct usb_hcd *hcd,
 	    (raw_port_status & PORT_PLS_MASK) != XDEV_RESUME) {
 		bus_state->resume_done[wIndex] = 0;
 		clear_bit(wIndex, &bus_state->resuming_ports);
+		usb_hcd_end_port_resume(&hcd->self, wIndex);
 	}
 
 
@@ -1086,6 +1089,40 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				temp = readl(port_array[wIndex]);
 				break;
 			}
+
+			/*
+			 * For xHCI 1.1 according to section 4.19.1.2.4.1 a
+			 * root hub port's transition to compliance mode upon
+			 * detecting LFPS timeout may be controlled by an
+			 * Compliance Transition Enabled (CTE) flag (not
+			 * software visible). This flag is set by writing 0xA
+			 * to PORTSC PLS field which will allow transition to
+			 * compliance mode the next time LFPS timeout is
+			 * encountered. A warm reset will clear it.
+			 *
+			 * The CTE flag is only supported if the HCCPARAMS2 CTC
+			 * flag is set, otherwise, the compliance substate is
+			 * automatically entered as on 1.0 and prior.
+			 */
+			if (link_state == USB_SS_PORT_LS_COMP_MOD) {
+				if (!HCC2_CTC(xhci->hcc_params2)) {
+					xhci_dbg(xhci, "CTC flag is 0, port already supports entering compliance mode\n");
+					break;
+				}
+
+				if ((temp & PORT_CONNECT)) {
+					xhci_warn(xhci, "Can't set compliance mode when port is connected\n");
+					goto error;
+				}
+
+				xhci_dbg(xhci, "Enable compliance mode transition for port %d\n",
+						wIndex);
+				xhci_set_link_state(xhci, port_array, wIndex,
+						link_state);
+				temp = readl(port_array[wIndex]);
+				break;
+			}
+
 			/* Port must be enabled */
 			if (!(temp & PORT_PE)) {
 				retval = -ENODEV;
@@ -1259,6 +1296,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 					goto error;
 
 				set_bit(wIndex, &bus_state->resuming_ports);
+				usb_hcd_start_port_resume(&hcd->self, wIndex);
 				xhci_set_link_state(xhci, port_array, wIndex,
 							XDEV_RESUME);
 				spin_unlock_irqrestore(&xhci->lock, flags);
@@ -1267,6 +1305,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				xhci_set_link_state(xhci, port_array, wIndex,
 							XDEV_U0);
 				clear_bit(wIndex, &bus_state->resuming_ports);
+				usb_hcd_end_port_resume(&hcd->self, wIndex);
 			}
 			bus_state->port_c_suspend |= 1 << wIndex;
 

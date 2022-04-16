@@ -412,6 +412,9 @@ static void tegra194_utmi_bias_pad_power_on(struct tegra_xusb_padctl *padctl)
 	padctl_readl_poll(padctl, XUSB_PADCTL_USB2_BIAS_PAD_CTL1,
 		USB2_TRK_COMPLETED, USB2_TRK_COMPLETED, 100);
 
+	/* XUSB_PADCTL_USB2_OTG_PADX_CTL1[USB2_PD_TRK] acts as a trigger.
+	 * It would reset itself to 1 once the tracking completed.
+	 */
 	if (!padctl->is_xhci_iov)
 		clk_disable_unprepare(priv->usb2_trk_clk);
 
@@ -421,6 +424,7 @@ static void tegra194_utmi_bias_pad_power_on(struct tegra_xusb_padctl *padctl)
 static void tegra194_utmi_bias_pad_power_off(struct tegra_xusb_padctl *padctl)
 {
 	struct tegra194_xusb_padctl *priv = to_tegra194_xusb_padctl(padctl);
+	u32 reg;
 
 	mutex_lock(&padctl->lock);
 
@@ -434,9 +438,15 @@ static void tegra194_utmi_bias_pad_power_off(struct tegra_xusb_padctl *padctl)
 		return;
 	}
 
+	if (!padctl->cdp_used) {
+		/* only turn BIAS pad off when host CDP isn't enabled */
+		reg = padctl_readl(padctl, XUSB_PADCTL_USB2_BIAS_PAD_CTL0);
+		reg |= BIAS_PAD_PD;
+		padctl_writel(padctl, reg, XUSB_PADCTL_USB2_BIAS_PAD_CTL0);
+	}
+
 	mutex_unlock(&padctl->lock);
 }
-
 
 static inline bool is_utmi_phy(struct phy *phy);
 void tegra194_utmi_pad_power_on(struct phy *phy)
@@ -2677,6 +2687,66 @@ static int tegra194_usb3_port_gen1_only(struct phy *phy, bool gen1)
 	return 0;
 }
 
+static int tegra194_usb2_set_host_cdp(struct tegra_xusb_padctl *padctl,
+					struct phy *phy, bool enable)
+{
+	struct tegra_xusb_lane *lane;
+	u32 reg;
+	unsigned int index;
+
+	if (!phy)
+		return -EINVAL;
+
+	lane = phy_get_drvdata(phy);
+	index = lane->index;
+
+	dev_dbg(padctl->dev, "%sable USB2 port %d Tegra CDP\n",
+		 enable ? "en" : "dis", index);
+	if (enable) {
+		reg = padctl_readl(padctl,
+				   USB2_BATTERY_CHRG_OTGPADX_CTL0(index));
+		reg &= ~PD_CHG;
+		padctl_writel(padctl, reg,
+			      USB2_BATTERY_CHRG_OTGPADX_CTL0(index));
+
+		reg = padctl_readl(padctl,
+				   XUSB_PADCTL_USB2_OTG_PADX_CTL0(index));
+		reg |= (USB2_OTG_PD2 | USB2_OTG_PD2_OVRD_EN);
+		padctl_writel(padctl, reg,
+			      XUSB_PADCTL_USB2_OTG_PADX_CTL0(index));
+
+		reg = padctl_readl(padctl,
+				   USB2_BATTERY_CHRG_OTGPADX_CTL0(index));
+		reg |= ON_SRC_EN;
+		padctl_writel(padctl, reg,
+			      USB2_BATTERY_CHRG_OTGPADX_CTL0(index));
+
+		/* Dont let BIAS pad power down */
+		padctl->cdp_used = true;
+	} else {
+		reg = padctl_readl(padctl,
+				   USB2_BATTERY_CHRG_OTGPADX_CTL0(index));
+		reg |= PD_CHG;
+		padctl_writel(padctl, reg,
+			      USB2_BATTERY_CHRG_OTGPADX_CTL0(index));
+
+		reg = padctl_readl(padctl,
+				   XUSB_PADCTL_USB2_OTG_PADX_CTL0(index));
+		reg &= ~USB2_OTG_PD2_OVRD_EN;
+		padctl_writel(padctl, reg,
+			      XUSB_PADCTL_USB2_OTG_PADX_CTL0(index));
+
+		reg = padctl_readl(padctl,
+				   USB2_BATTERY_CHRG_OTGPADX_CTL0(index));
+		reg &= ~ON_SRC_EN;
+		padctl_writel(padctl, reg,
+			      USB2_BATTERY_CHRG_OTGPADX_CTL0(index));
+
+		padctl->cdp_used = false;
+	}
+
+	return 0;
+}
 static const struct tegra_xusb_padctl_ops tegra194_xusb_padctl_ops = {
 	.probe = tegra194_xusb_padctl_probe,
 	.remove = tegra194_xusb_padctl_remove,
@@ -2711,6 +2781,7 @@ static const struct tegra_xusb_padctl_ops tegra194_xusb_padctl_ops = {
 	.overcurrent_detected = tegra194_phy_xusb_overcurrent_detected,
 	.handle_overcurrent = tegra194_phy_xusb_handle_overcurrent,
 	.usb3_port_gen1_only = tegra194_usb3_port_gen1_only,
+	.set_host_cdp = tegra194_usb2_set_host_cdp,
 };
 
 static const char * const tegra194_supply_names[] = {
