@@ -264,6 +264,11 @@ config MARVELL_PHY
 	---help---
 	  Currently has a driver for the 88E1011S
 
+config MV88Q2112_PHY
+        tristate "Marvell 88Q2112 PHY"
+        ---help---
+          Currently supports the MV88Q2112 PHY
+
 config MICREL_PHY
 	tristate "Micrel PHYs"
 	---help---
