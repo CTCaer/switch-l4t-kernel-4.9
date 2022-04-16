@@ -937,6 +937,14 @@ KBUILD_CPPFLAGS += $(ARCH_CPPFLAGS) $(KCPPFLAGS)
 KBUILD_AFLAGS   += $(ARCH_AFLAGS)   $(KAFLAGS)
 KBUILD_CFLAGS   += $(ARCH_CFLAGS)   $(KCFLAGS)
 
+#set flags to pass kernel, driver build if using clang for kernel, driver
+#currently build pass with those flasgs, but can't boot
+ifeq ($(cc-name),clang)
+KBUILD_CFLAGS += -fno-builtin-bcmp -Wno-parentheses-equality -Wno-varargs -Wno-typedef-redefinition -Wno-self-assign -Wno-enum-conversion \
+               -Wno-pointer-bool-conversion -Wno-constant-conversion -Wno-non-literal-null-conversion -Wno-tentative-definition-incomplete-type \
+               -Wframe-larger-than=4096 -Wno-deprecated-declarations -Wno-shift-count-negative
+endif
+
 # Use --build-id when available.
 LDFLAGS_BUILD_ID = $(patsubst -Wl$(comma)%,%,\
 			      $(call cc-ldoption, -Wl$(comma)--build-id,))
