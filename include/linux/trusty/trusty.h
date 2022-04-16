@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 Google, Inc.
- * Copyright (c) 2016-2017, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2016-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -66,10 +66,6 @@ enum {
 int trusty_call_notifier_register(struct device *dev,
 				  struct notifier_block *n);
 int trusty_call_notifier_unregister(struct device *dev,
-				    struct notifier_block *n);
-int trusty_panic_notifier_register(struct device *dev,
-				  struct notifier_block *n);
-int trusty_panic_notifier_unregister(struct device *dev,
 				    struct notifier_block *n);
 const char *trusty_version_str_get(struct device *dev);
 u32 trusty_get_api_version(struct device *dev);
