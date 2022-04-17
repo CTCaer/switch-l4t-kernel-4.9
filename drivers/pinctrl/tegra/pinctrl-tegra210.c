@@ -202,7 +202,7 @@ struct tegra210_pinctrl_soc {
 #define TEGRA_PIN_SHUTDOWN			_PIN(7)
 #define TEGRA_DRV_PAD_QSPI_COMP			_PIN(8)
 #define TEGRA_DRV_PAD_QSPI_COMP_CONTROL		_PIN(9)
-#define TEGRA_DRV_PAD_QSPI_LPBK_CONTROL		_PIN(10)
+#define TEGRA_DRV_PAD_QSPI_SCK_CFG		_PIN(10)
 #define TEGRA_PAD_DSI_AB_CONTROL		_PIN(11)
 #define TEGRA_PAD_DSI_CD_CONTROL		_PIN(12)
 #define TEGRA_PIN_SDMMC2_CLK			_PIN(13)
@@ -1240,8 +1240,8 @@ static const unsigned drive_qspi_comp_control_pins[] = {
 	TEGRA_DRV_PAD_QSPI_COMP_CONTROL,
 };
 
-static const unsigned drive_qspi_lpbk_control_pins[] = {
-	TEGRA_DRV_PAD_QSPI_LPBK_CONTROL,
+static const unsigned drive_qspi_sck_cfg_pins[] = {
+	TEGRA_DRV_PAD_QSPI_SCK_CFG,
 };
 
 enum tegra_mux {
@@ -1582,7 +1582,7 @@ static struct tegra_pingroup tegra210_groups[] = {
 	PINGROUP(spi4_miso_pd0,        SPI4,       RSVD1,  RSVD2, RSVD3, 0x307c, Y,   Y,       N,       N,	0xb00, -1,      -1,      -1,      -1,      28,     2,      30,     2, -1),
 	PINGROUP(spi4_sck_pc5,         SPI4,       RSVD1,  RSVD2, RSVD3, 0x3080, Y,   Y,       N,       N,	0xb08, -1,      -1,      -1,      -1,      28,     2,      30,     2, -1),
 	PINGROUP(spi4_cs0_pc6,         SPI4,       RSVD1,  RSVD2, RSVD3, 0x3084, Y,   Y,       N,       N,	0xafc, -1,      -1,      -1,      -1,      28,     2,      30,     2, -1),
-	PINGROUP(qspi_sck_pee0,        QSPI,       RSVD1,  RSVD2, RSVD3, 0x3088, Y,   Y,       N,       N,	0xa90, -1,      -1,      -1,      -1,      28,     2,      30,     2, -1),
+	PINGROUP(qspi_sck_pee0,        QSPI,       RSVD1,  RSVD2, RSVD3, 0x3088, Y,   Y,       N,       N,	0xb78, -1,      -1,      -1,      -1,      -1,     -1,     -1,     -1, 0),
 	PINGROUP(qspi_cs_n_pee1,       QSPI,       RSVD1,  RSVD2, RSVD3, 0x308c, Y,   Y,       N,       N,	-1,    -1,      -1,      -1,      -1,      -1,     -1,     -1,     -1, -1),
 	PINGROUP(qspi_io0_pee2,        QSPI,       RSVD1,  RSVD2, RSVD3, 0x3090, Y,   Y,       N,       N,	-1,    -1,      -1,      -1,      -1,      -1,     -1,     -1,     -1, -1),
 	PINGROUP(qspi_io1_pee3,        QSPI,       RSVD1,  RSVD2, RSVD3, 0x3094, Y,   Y,       N,       N,	-1,    -1,      -1,      -1,      -1,      -1,     -1,     -1,     -1, -1),
@@ -1740,7 +1740,7 @@ static struct tegra_pingroup tegra210_groups[] = {
 	DRV_PINGROUP(sdmmc3, 0xab0, 12, 7,  20, 7,  28, 2,  30, 2),
 	DRV_PINGROUP(sdmmc4, 0xab4, 2,  6,  8,  6,  28, 2,  30, 2),
 	DRV_PINGROUP(qspi_comp_control, 0xb70, -1, -1, -1, -1, -1, -1, -1, -1),
-	DRV_PINGROUP(qspi_lpbk_control, 0xb78, -1, -1, -1, -1, -1, -1, -1, -1),
+	DRV_PINGROUP(qspi_sck_cfg, 0xa90, -1, -1, -1, -1, 28, 2, 30, 2),
 	DRV_PINGROUP(qspi_comp, 0xa78, 12, 5, 20, 5, -1, -1, -1, -1),
 	PAD_PINGROUP(dsi_ab, 0xac0, 22),
 	PAD_PINGROUP(dsi_cd, 0xac0, 21),
