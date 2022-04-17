@@ -549,6 +549,7 @@ static struct avc_node *avc_alloc_node(void)
 	struct avc_node *node;
 
 	node = kmem_cache_zalloc(avc_node_cachep, GFP_NOWAIT);
+	kmemleak_not_leak(node);
 	if (!node)
 		goto out;
 
