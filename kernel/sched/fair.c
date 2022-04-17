@@ -3098,8 +3098,6 @@ __update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 	WRITE_ONCE(*ptr, res);                                  \
 } while (0)
 
-#ifdef CONFIG_FAIR_GROUP_SCHED
-
 #if defined(CONFIG_TASK_WEIGHT) || defined(CONFIG_CGROUP_SCHEDTUNE)
 void task_decayed_load(struct task_struct *p, struct sched_avg *avg)
 {
@@ -3112,6 +3110,8 @@ void task_decayed_load(struct task_struct *p, struct sched_avg *avg)
         }
 }
 #endif
+
+#ifdef CONFIG_FAIR_GROUP_SCHED
 
 /**
  * update_tg_load_avg - update the tg's load avg
@@ -5656,6 +5656,7 @@ unsigned long capacity_min_of(int cpu)
 	       arch_scale_min_freq_capacity(NULL, cpu)
 	       >> SCHED_CAPACITY_SHIFT;
 }
+
 
 static inline bool energy_aware(void)
 {
