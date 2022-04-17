@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014-2020, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -218,6 +218,10 @@ void tegra_init_revision(void)
 	enum tegra_revision id_and_rev = TEGRA_REVISION_UNKNOWN;
 	char sub_type = 0;
 	int i;
+	bool minor_matched = false;
+	bool major_matched = false;
+	bool chipid_matched = false;
+	int match = -1;
 
 	id = tegra_read_chipid();
 	chipid = tegra_hidrev_get_chipid(id);
@@ -255,33 +259,40 @@ void tegra_init_revision(void)
 	}
 	pr_info("tegra-id: opt_subrevision=%x.\n", subrev);
 
-	if (sub_type) {
-		for (i = 0; i < ARRAY_SIZE(tegra_chip_revisions); i++) {
-			if ((chipid != tegra_chip_revisions[i].chipid) ||
-			    (minor != tegra_chip_revisions[i].minor) ||
-			    (major != tegra_chip_revisions[i].major) ||
-			    (sub_type != tegra_chip_revisions[i].sub_type))
-				continue;
+	for (i = 0; i < ARRAY_SIZE(tegra_chip_revisions); i++) {
+		if (chipid != tegra_chip_revisions[i].chipid)
+			continue;
+		if (!chipid_matched) {
+			chipid_matched = true;
+			match = i;
+		}
 
-			revision = tegra_chip_revisions[i].revision;
-			id_and_rev = tegra_chip_revisions[i].id_and_rev;
+		if (major != tegra_chip_revisions[i].major)
+			continue;
+		if (!major_matched) {
+			major_matched = true;
+			match = i;
+		}
+
+		if(minor != tegra_chip_revisions[i].minor)
+			continue;
+		if(!minor_matched) {
+			minor_matched = true;
+			match = i;
+		}
+
+		if(!sub_type)
+			break;
+		if(sub_type == tegra_chip_revisions[i].sub_type) {
+			match = i;
 			break;
 		}
 	}
 
-	if (revision == TEGRA_REVISION_UNKNOWN) {
-		for (i = 0; i < ARRAY_SIZE(tegra_chip_revisions); i++) {
-			if ((chipid != tegra_chip_revisions[i].chipid) ||
-			    (minor != tegra_chip_revisions[i].minor) ||
-			    (major != tegra_chip_revisions[i].major))
-				continue;
-
-			revision = tegra_chip_revisions[i].revision;
-			id_and_rev = tegra_chip_revisions[i].id_and_rev;
-			break;
-		}
+	if (match >= 0) {
+		revision = tegra_chip_revisions[match].revision;
+		id_and_rev = tegra_chip_revisions[match].id_and_rev;
 	}
-
 exit:
 	tegra_sku_info.revision = revision;
 	tegra_sku_info.id_and_rev = id_and_rev;

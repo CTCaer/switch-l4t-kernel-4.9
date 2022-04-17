@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2020, NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -286,6 +286,9 @@ int tegra_split_mem_active(void);
 /* check if in hypervisor mode */
 bool is_tegra_hypervisor_mode(void);
 
+/* check if safety build */
+bool is_tegra_safety_build(void);
+
 void tegra_get_netlist_revision(u32 *netlist, u32* patchid);
 bool tegra_cpu_is_asim(void);
 bool tegra_cpu_is_dsim(void);
@@ -301,11 +304,6 @@ static inline bool tegra_platform_is_qt(void)
 static inline bool tegra_platform_is_fpga(void)
 {
 	return tegra_get_platform() == TEGRA_PLATFORM_FPGA;
-}
-static inline bool tegra_platform_is_unit_fpga(void)
-{
-	/* Deprecated API, return false */
-	return false;
 }
 static inline bool tegra_platform_is_vdk(void)
 {
