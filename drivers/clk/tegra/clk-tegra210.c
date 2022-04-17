@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2019 NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -50,6 +50,7 @@
 #define CLK_SOURCE_VI 0x148
 #define CLK_SOURCE_SDMMC2 0x154
 #define CLK_SOURCE_SDMMC4 0x164
+#define CLK_SOURCE_LA 0x1f8
 
 #define CLK_OUT_ENB_Y 0x298
 #define CLK_ENB_PLLP_OUT_CPU BIT(31)
@@ -314,6 +315,7 @@ static DEFINE_SPINLOCK(pll_u_lock);
 static DEFINE_SPINLOCK(emc_lock);
 static DEFINE_SPINLOCK(sor1_lock);
 static DEFINE_SPINLOCK(vi_lock);
+static DEFINE_SPINLOCK(la_lock);
 
 /* possible OSC frequencies in Hz */
 static unsigned long tegra210_input_freq[] = {
@@ -2559,7 +2561,6 @@ static struct tegra_clk tegra210_clks[tegra_clk_max] __initdata = {
 	[tegra_clk_adsp] = { .dt_id = TEGRA210_CLK_ADSP, .present = true },
 	[tegra_clk_adsp_neon] = { .dt_id = TEGRA210_CLK_ADSP_NEON, .present = true },
 	[tegra_clk_se_8] = { .dt_id = TEGRA210_CLK_SE, .present = true },
-	[tegra_clk_la] = { .dt_id = TEGRA210_CLK_LA, .present = true },
 	[tegra_clk_mc_capa] = { .dt_id = TEGRA210_CLK_MC_CAPA, .present = true },
 	[tegra_clk_mc_cbpa] = { .dt_id = TEGRA210_CLK_MC_CBPA, .present = true },
 	[tegra_clk_mc_ccpa] = { .dt_id = TEGRA210_CLK_MC_CCPA, .present = true },
@@ -3099,6 +3100,16 @@ static struct tegra_clk_periph tegra_ape =
 	TEGRA_CLK_PERIPH(29, 7, 0, 0, 8, 1, 0, 198, TEGRA_PERIPH_ON_APB,
 			 NULL, NULL);
 
+static const char *mux_la[] = {
+	"pll_p", "pll_c2", "pll_c", "pll_c3", "pll_re_out1", "pll_a1", "clk_m", "pll_c4_out0"
+};
+static u32 mux_la_idx[] = {
+	[0] = 0, [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5, [6] = 6, [7] = 7,
+};
+static struct tegra_clk_periph tegra_la =
+	TEGRA_CLK_PERIPH(30, 3, 0, 0, 8, 1, 1, 76, TEGRA_PERIPH_ON_APB,
+			 mux_la_idx, &la_lock);
+
 static __init void tegra210_periph_clk_init(
 	void __iomem *clk_base, void __iomem *pmc_base,
 	struct tegra_clk_pll_params *pllp_params)
@@ -3193,6 +3204,10 @@ static __init void tegra210_periph_clk_init(
 	hw = __clk_get_hw(clks[TEGRA210_CLK_VI]);
 	periph_clk = to_clk_periph(hw);
 	periph_clk->mux.lock = &vi_lock;
+
+	clk = tegra_clk_register_periph("la", mux_la, ARRAY_SIZE(mux_la),
+				&tegra_la, clk_base, CLK_SOURCE_LA, 0);
+	clks[TEGRA210_CLK_LA] = clk;
 }
 
 static void __init tegra210_pll_init(void __iomem *clk_base,

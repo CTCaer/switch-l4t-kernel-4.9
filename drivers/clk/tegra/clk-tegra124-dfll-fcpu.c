@@ -1,7 +1,7 @@
 /*
  * Tegra124 DFLL FCPU clock source driver
  *
- * Copyright (C) 2012-2014 NVIDIA Corporation.  All rights reserved.
+ * Copyright (C) 2012-2021 NVIDIA Corporation.  All rights reserved.
  *
  * Aleksandr Frid <afrid@nvidia.com>
  * Paul Walmsley <pwalmsley@nvidia.com>
@@ -756,12 +756,13 @@ static void get_alignment_from_dt(struct device *dev,
 	align->step_uv = 0;
 	align->offset_uv = 0;
 
-	if (of_property_read_u32(dev->of_node, "nvidia,align-step-uv",
+	if (of_property_read_u32(dev->of_node,
+				 "nvidia,pwm-voltage-step-microvolts",
 				  &align->step_uv))
 		align->step_uv = 0;
 
 	if (of_property_read_u32(dev->of_node,
-				"nvidia,align-offset-uv", &align->offset_uv))
+				"nvidia,pwm-min-microvolts", &align->offset_uv))
 		align->offset_uv = 0;
 }
 
