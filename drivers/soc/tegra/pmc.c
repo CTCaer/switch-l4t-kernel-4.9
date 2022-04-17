@@ -998,6 +998,20 @@ enum tegra_system_reset_reason tegra_pmc_get_system_reset_reason(void)
 }
 EXPORT_SYMBOL(tegra_pmc_get_system_reset_reason);
 
+u32 tegra_pmc_gpu_clamp_enable(void)
+{
+	tegra_pmc_writel_relaxed(0x1, GPU_RG_CNTRL);
+	return tegra_pmc_readl(GPU_RG_CNTRL);
+}
+EXPORT_SYMBOL(tegra_pmc_gpu_clamp_enable);
+
+u32 tegra_pmc_gpu_clamp_disable(void)
+{
+	tegra_pmc_writel_relaxed(0, GPU_RG_CNTRL);
+	return tegra_pmc_readl(GPU_RG_CNTRL);
+}
+EXPORT_SYMBOL(tegra_pmc_gpu_clamp_disable);
+
 enum tegra_system_reset_level tegra_pmc_get_system_reset_level(void)
 {
 	u32 rst_lvl, reset_reg;

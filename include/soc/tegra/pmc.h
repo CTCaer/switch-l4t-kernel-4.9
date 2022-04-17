@@ -189,6 +189,9 @@ enum tegra_system_reset_level {
 int tegra_pmc_set_reboot_reason(u32 reboot_reason);
 int tegra_pmc_clear_reboot_reason(u32 reboot_reason);
 
+u32 tegra_pmc_gpu_clamp_enable(void);
+u32 tegra_pmc_gpu_clamp_disable(void);
+
 void tegra_pmc_write_bootrom_command(u32 command_offset, unsigned long val);
 void tegra_pmc_reset_system(void);
 enum tegra_system_reset_reason tegra_pmc_get_system_reset_reason(void);
