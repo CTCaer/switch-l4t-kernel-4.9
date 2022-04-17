@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2015-2021, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -2532,6 +2532,42 @@ static struct platform_driver tegra210_emc_driver = {
 	.probe          = tegra210x_emc_probe,
 };
 
+static ssize_t clk_rate_show(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf)
+{
+	return sprintf(buf, "%lu\n", tegra210_emc_get_rate());
+}
+
+static struct kobj_attribute rate_attribute =
+	__ATTR_RO(clk_rate);
+
+static struct attribute *emc_attrs[] = {
+	&rate_attribute.attr,
+	NULL,
+};
+
+static struct attribute_group emc_attr_group = {
+	.attrs = emc_attrs,
+};
+
+static int clk_emc_sysfs_init(void)
+{
+	struct kobject *clk_emc_kobj;
+	int retval;
+
+	clk_emc_kobj = kobject_create_and_add("clk_emc", kernel_kobj);
+	if (!clk_emc_kobj) {
+		pr_err("%s Could not create kobj\n", __func__);
+		return -ENOMEM;
+	}
+
+	retval = sysfs_create_group(clk_emc_kobj, &emc_attr_group);
+	if (retval)
+		kobject_put(clk_emc_kobj);
+
+	return retval;
+}
+
 static int __init tegra210_emc_init(void)
 {
 	return platform_driver_register(&tegra210_emc_driver);
@@ -2542,6 +2578,7 @@ static int __init tegra210_emc_late_init(void)
 {
 	struct device_node *node;
 	struct platform_device *pdev;
+	int ret;
 
 	if (!tegra_emc_init_done)
 		return -ENODEV;
@@ -2559,6 +2596,10 @@ static int __init tegra210_emc_late_init(void)
 	}
 
 	thermal_zone_of_sensor_register(&pdev->dev, 0, NULL, &dram_therm_ops);
+
+	ret = clk_emc_sysfs_init();
+	if (ret)
+		pr_err("%s Error creating clk_emc sysfs init\n", __func__);
 
 	return 0;
 }
