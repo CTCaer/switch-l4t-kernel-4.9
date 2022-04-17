@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2017, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014-2020, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -146,12 +146,18 @@ __tegra_smmu_parse_as_prop(struct device *dev, struct device_node *np,
 
 	err  = of_property_read_u64(np, "iova-start",  &prop->iova_start);
 	err |= of_property_read_u64(np, "iova-size",   &prop->iova_size);
-	err |= of_property_read_u32(np, "num-pf-page", &prop->num_pf_page);
-	err |= of_property_read_u32(np, "gap-page",    &prop->gap_page);
 	if (err) {
 		dev_err(dev, "invalid address-space-prop %s\n",	np->name);
 		return ERR_PTR(-EINVAL);
 	}
+
+	err = of_property_read_u32(np, "num-pf-page", &prop->num_pf_page);
+	if (err)
+		prop->num_pf_page = 0;
+
+	err = of_property_read_u32(np, "gap-page",    &prop->gap_page);
+	if (err)
+		prop->gap_page = 0;
 
 	err = of_property_read_u32(np, "alignment", &prop->alignment);
 	if (err)
