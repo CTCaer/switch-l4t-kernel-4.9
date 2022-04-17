@@ -1,7 +1,7 @@
 /*
  * QSPI driver for NVIDIA's Tegra210 QUAD SPI Controller.
  *
- * Copyright (c) 2013-2019, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2021, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -636,18 +636,19 @@ static void tegra_qspi_dump_regs(const char *heading,
 	if (heading)
 		dev_info(tqspi->dev, "%s\n", heading);
 
-	dev_err(tqspi->dev, "CMD_0: \t\t\t0x%08lx\n", command1_reg);
+	dev_err(tqspi->dev, "CMD_0: \t\t\t0x%08x\n", command1_reg);
 	dev_err(tqspi->dev, "FIFO_STS: \t\t\t0x%08x\n", fifo_status_reg);
-	dev_err(tqspi->dev, "DMA_CTL: \t\t\t0x%08lx\n", dma_ctrl_reg);
-	dev_err(tqspi->dev, "TRANS_STS: \t\t\t0x%08lx\n", trans_status_reg);
-	dev_err(tqspi->dev, "GLOBAL_CONFIG: \t\t\t0x%08lx\n", gl_config_reg);
-	dev_err(tqspi->dev, "DMA_BLK:  \t\t\t0x%08lx\n", dma_blk_reg);
-	dev_err(tqspi->dev, "INTR:  \t\t\t0x%08lx\n", intr_mask_reg);
-	dev_err(tqspi->dev, "MISC-REG: \t\t\t0x%08lx\n", misc_reg);
-	dev_err(tqspi->dev, "CMD_VAl:  \t\t\t0x%08lx\n", cmd_value);
-	dev_err(tqspi->dev, "ADR_VAL:  \t\t\t0x%08lx\n", addr_value);
-	dev_err(tqspi->dev, "CMD_CFG:  \t\t\t0x%08lx\n", cmd_config);
-	dev_err(tqspi->dev, "ADR_CFG:  \t\t\t0x%08lx\n", addr_config);
+	dev_err(tqspi->dev, "DMA_CTL: \t\t\t0x%08x\n", dma_ctrl_reg);
+	dev_err(tqspi->dev, "TRANS_STS: \t\t\t0x%08x\n", trans_status_reg);
+	dev_err(tqspi->dev, "GLOBAL_CONFIG: \t\t\t0x%08x\n", gl_config_reg);
+	dev_err(tqspi->dev, "DMA_BLK:  \t\t\t0x%08x\n", dma_blk_reg);
+	dev_err(tqspi->dev, "INTR:  \t\t\t0x%08x\n", intr_mask_reg);
+	dev_err(tqspi->dev, "MISC-REG: \t\t\t0x%08x\n", misc_reg);
+	dev_err(tqspi->dev, "CMD_VAl:  \t\t\t0x%08x\n", cmd_value);
+	dev_err(tqspi->dev, "ADR_VAL:  \t\t\t0x%08x\n", addr_value);
+	dev_err(tqspi->dev, "CMD_CFG:  \t\t\t0x%08x\n", cmd_config);
+	dev_err(tqspi->dev, "ADR_CFG:  \t\t\t0x%08x\n", addr_config);
+}
 #else
 static void tegra_qspi_dump_regs(const char *heading,
 				 struct tegra_qspi_data *tqspi)
@@ -998,9 +999,12 @@ static int tegra_qspi_start_dma_based_transfer(
 	} else if (((len) >> 4) & 0x1) {
 		val |= QSPI_TX_TRIG_4 | QSPI_RX_TRIG_4;
 		maxburst = 4;
-	} else {
+	} else if (((len) >> 5) & 0x1) {
 		val |= QSPI_TX_TRIG_8 | QSPI_RX_TRIG_8;
 		maxburst = 8;
+	} else {
+		val |= QSPI_TX_TRIG_16 | QSPI_RX_TRIG_16;
+		maxburst = 16;
 	}
 	if ((tqspi->cur_direction & DATA_DIR_TX) ||
 	    (tqspi->cur_direction & DATA_DIR_RX)) {
@@ -1543,6 +1547,7 @@ static int tegra_qspi_combined_sequence_transfer(struct tegra_qspi_data *tqspi,
 	struct spi_transfer *xfer;
 	struct spi_device *spi = msg->spi;
 	u8 transfer_phase = 0, bus_width = X1;
+	u32 cmd1 = 0, dma_ctl = 0;
 	int ret;
 	u32 qspi_setting = 0;
 	u32 address_value = 0;
@@ -1628,6 +1633,21 @@ static int tegra_qspi_combined_sequence_transfer(struct tegra_qspi_data *tqspi,
 					dmaengine_terminate_all(
 						tqspi->rx_dma_chan);
 
+				/* Abort transfer by resetting pio/dma bit */
+				if (!tqspi->is_curr_dma_xfer) {
+					cmd1 = tegra_qspi_readl(tqspi,
+						QSPI_COMMAND1);
+					cmd1 &= ~QSPI_PIO;
+					tegra_qspi_writel(tqspi,
+						cmd1, QSPI_COMMAND1);
+				} else {
+					dma_ctl = tegra_qspi_readl(tqspi,
+						  QSPI_DMA_CTL);
+					dma_ctl &= ~QSPI_DMA_EN;
+					tegra_qspi_writel(tqspi,
+						dma_ctl, QSPI_DMA_CTL);
+				}
+
 				/* Reset controller if timeout happens */
 				reset_control_reset(tqspi->rstc);
 				ret = -EIO;
@@ -1657,6 +1677,7 @@ static int tegra_qspi_non_combined_sequence_transfer
 	struct spi_transfer *xfer;
 	struct spi_device *spi = msg->spi;
 	int ret;
+	u32 cmd1 = 0, dma_ctl = 0;
 	u8 val = 0;
 
 	val = tegra_qspi_readl(tqspi, QSPI_GLOBAL_CONFIG);
@@ -1687,6 +1708,16 @@ static int tegra_qspi_non_combined_sequence_transfer
 			    (tqspi->cur_direction & DATA_DIR_RX))
 				dmaengine_terminate_all(tqspi->rx_dma_chan);
 
+			/* Abort transfer by resetting pio/dma bit */
+			if (!tqspi->is_curr_dma_xfer) {
+				cmd1 = tegra_qspi_readl(tqspi, QSPI_COMMAND1);
+				cmd1 &= ~QSPI_PIO;
+				tegra_qspi_writel(tqspi, cmd1, QSPI_COMMAND1);
+			} else {
+				dma_ctl = tegra_qspi_readl(tqspi, QSPI_DMA_CTL);
+				dma_ctl &= ~QSPI_DMA_EN;
+				tegra_qspi_writel(tqspi, dma_ctl, QSPI_DMA_CTL);
+			}
 			/* Reset controller in case of timeout happens */
 			reset_control_reset(tqspi->rstc);
 				ret = -EIO;
@@ -2037,14 +2068,14 @@ static struct tegra_qspi_device_controller_data *tegra_qspi_get_cdata_dt(
 	if (!of_property_read_u32(data_np, "nvidia,x1-bus-speed", &pval))
 		cdata->x1_bus_speed = pval;
 
-	if (!of_property_read_u32(data_np, "nvidia,x1-dymmy-cycle", &pval))
-		cdata->x1_dymmy_cycle = pval;
+	if (!of_property_read_u32(data_np, "nvidia,x1-dummy-cycle", &pval))
+		cdata->x1_dummy_cycle = pval;
 
 	if (!of_property_read_u32(data_np, "nvidia,x4-bus-speed", &pval))
 		cdata->x4_bus_speed = pval;
 
-	if (!of_property_read_u32(data_np, "nvidia,x4-dymmy-cycle", &pval))
-		cdata->x4_dymmy_cycle = pval;
+	if (!of_property_read_u32(data_np, "nvidia,x4-dummy-cycle", &pval))
+		cdata->x4_dummy_cycle = pval;
 
 	if (!of_property_read_u32(data_np, "nvidia,x4-is-ddr", &pval))
 		cdata->x4_is_ddr = pval;

@@ -79,6 +79,7 @@
 #define SR1NV_BLOCK_PROT			(0x7<<2)
 #define CR3V_512PAGE_SIZE			(1<<4)
 #define RDCR_DUMMY_CYCLE			(3<<6)
+#define STATUS_BLOCK_PROT			(0xF << 2)
 
 #define JEDEC_ID_S25FX512S	0x010220
 #define JEDEC_ID_S25FS256S	0x010219
@@ -510,6 +511,10 @@ static int read_sr1_reg(struct qspi *flash, uint8_t *regval)
 	}
 
 	*regval = rx_buf[0];
+
+	if (WARN_ON(rx_buf[0] & STATUS_BLOCK_PROT))
+		dev_err(&flash->spi->dev,
+			"block protection enabled %u\n", rx_buf[0]);
 	return status;
 }
 
@@ -559,6 +564,12 @@ static int qspi_write_status_cfgr_reg(struct qspi *flash, uint8_t sr,
 	struct spi_message m;
 	struct spi_transfer t;
 	uint8_t code = MX_WRSR;
+
+	if (WARN_ON(sr & STATUS_BLOCK_PROT)) {
+		dev_err(&flash->spi->dev,
+			"avoiding block protect bits overwrite %u\n", sr);
+		sr &= ~STATUS_BLOCK_PROT;
+	}
 
 	tx_buf[0] = code;
 	tx_buf[1] = sr;

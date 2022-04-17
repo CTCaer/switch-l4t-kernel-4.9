@@ -77,9 +77,9 @@ child node of the spi slave node.
 
 - nvidia,x1-len-limit:		Integer, X1 Length limit.
 - nvidia,x1-bus-speed:		Integer, X1 Bus speed.
-- nvidia,x1-dymmy-cycle:	Integer, X1 dummy cycle.
+- nvidia,x1-dummy-cycle:	Integer, X1 dummy cycle.
 - nvidia,x4-bus-speed:		Integer, X4 bus speed.
-- nvidia,x4-dymmy-cycle:	Integer, X4 dummy cycle.
+- nvidia,x4-dummy-cycle:	Integer, X4 dummy cycle.
 - nvidia,x4-is-ddr:		Integer, X4 is DDR?
 - nvidia,ctrl-bus-clk-ratio	Integer, clock ratio bewteen ctrl & bus clk
 - nvidia,combined-seq-mode-en:  Boolean, Select combined sequence mode.
@@ -182,9 +182,9 @@ For Tegra186:
 			controller-data {
 					nvidia,x1-len-limit = <16>;
 					nvidia,x1-bus-speed = <136000000>; /* In Mhz */
-					nvidia,x1-dymmy-cycle = <0>;
+					nvidia,x1-dummy-cycle = <0>;
 					nvidia,x4-bus-speed = <136000000>;
-					nvidia,x4-dymmy-cycle = <8>;
+					nvidia,x4-dummy-cycle = <8>;
 					nvidia,ifddr-div2-sdr = <1>;
 					nvidia,x4-is-ddr;
 			};
@@ -205,9 +205,9 @@ For Tegra186:
 			controller-data {
 				nvidia,x1-len-limit = <16>;
 				nvidia,x1-bus-speed = <136000000>; /* In Mhz */
-				nvidia,x1-dymmy-cycle = <8>;
+				nvidia,x1-dummy-cycle = <8>;
 				nvidia,x4-bus-speed = <136000000>;
-				nvidia,x4-dymmy-cycle = <8>;
+				nvidia,x4-dummy-cycle = <8>;
 				nvidia,ifddr-div2-sdr = <1>;
 				nvidia,x4-is-ddr;
 			};
