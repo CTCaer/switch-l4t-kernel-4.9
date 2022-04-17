@@ -117,7 +117,7 @@
 #define ADMA_SHRD_SEM_WAIT_COUNT		50
 
 struct tegra_adma;
-struct device *dma_device;
+static struct device *dma_device;
 
 /*
  * struct tegra_adma_war - Tegra chip specific sw war data

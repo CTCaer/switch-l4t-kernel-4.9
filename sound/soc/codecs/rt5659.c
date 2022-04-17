@@ -30,7 +30,6 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/rt5659.h>
-#include <linux/of_gpio.h>
 
 #include "rl6231.h"
 #include "rt5659.h"
@@ -1412,7 +1411,7 @@ static irqreturn_t rt5659_irq(int irq, void *data)
 	struct rt5659_priv *rt5659 = data;
 
 	if (rt5659->pdata.jd_src == RT5659_JD3 ||
-	    rt5659->pdata.jd_src == RT5659_JD_NULL)
+	    rt5659->pdata.jd_src == RT5659_JD_HDA_HEADER)
 		queue_delayed_work(system_power_efficient_wq,
 				   &rt5659->jack_detect_work,
 				   msecs_to_jiffies(250));
@@ -3892,7 +3891,7 @@ static int rt5659_probe(struct snd_soc_codec *codec)
 	rt5659->codec = codec;
 
 	switch (rt5659->pdata.jd_src) {
-	case RT5659_JD_NULL:
+	case RT5659_JD_HDA_HEADER:
 		rt5659_intel_hd_header_probe_setup(rt5659);
 		break;
 	default:
@@ -3921,7 +3920,7 @@ static int rt5659_suspend(struct device *dev)
 	}
 
 	if (rt5659->pdata.jd_src == RT5659_JD3 ||
-	    rt5659->pdata.jd_src == RT5659_JD_NULL)
+	    rt5659->pdata.jd_src == RT5659_JD_HDA_HEADER)
 		cancel_delayed_work_sync(&rt5659->jack_detect_work);
 
 	regcache_cache_only(rt5659->regmap, true);
@@ -3940,7 +3939,7 @@ static int rt5659_resume(struct device *dev)
 		enable_irq(rt5659->i2c->irq);
 
 	if (rt5659->pdata.jd_src == RT5659_JD3 ||
-	    rt5659->pdata.jd_src == RT5659_JD_NULL)
+	    rt5659->pdata.jd_src == RT5659_JD_HDA_HEADER)
 		queue_delayed_work(system_power_efficient_wq,
 				   &rt5659->jack_detect_work, 0);
 
@@ -4283,7 +4282,7 @@ static int rt5659_i2c_probe(struct i2c_client *i2c,
 {
 	struct rt5659_platform_data *pdata = dev_get_platdata(&i2c->dev);
 	struct rt5659_priv *rt5659;
-	int ret, jack_gpio;
+	int ret;
 	unsigned int val;
 
 	rt5659 = devm_kzalloc(&i2c->dev, sizeof(struct rt5659_priv),
@@ -4471,7 +4470,7 @@ static int rt5659_i2c_probe(struct i2c_client *i2c,
 		INIT_DELAYED_WORK(&rt5659->jack_detect_work,
 			rt5659_jack_detect_work);
 		break;
-	case RT5659_JD_NULL:
+	case RT5659_JD_HDA_HEADER:
 		regmap_write(rt5659->regmap, RT5659_GPIO_CTRL_1, 0x8000);
 		regmap_write(rt5659->regmap, RT5659_GPIO_CTRL_3, 0x8000);
 		regmap_write(rt5659->regmap, RT5659_RC_CLK_CTRL, 0x0900);
@@ -4488,13 +4487,6 @@ static int rt5659_i2c_probe(struct i2c_client *i2c,
 	}
 
 	regmap_update_bits(rt5659->regmap, RT5659_CLK_DET, 0x4, 0x4);
-
-	jack_gpio = of_get_gpio(rt5659->i2c->dev.of_node, 0);
-	if (gpio_is_valid(jack_gpio)) {
-		rt5659->i2c->irq = gpio_to_irq(jack_gpio);
-		dev_dbg(&i2c->dev, "irq = %d, assigned for jack interrupt handling\n",
-			rt5659->i2c->irq);
-	}
 
 	if (rt5659->i2c->irq) {
 		ret = devm_request_threaded_irq(&i2c->dev, i2c->irq, NULL,
@@ -4524,7 +4516,7 @@ static int rt5659_i2c_remove(struct i2c_client *i2c)
 	}
 
 	if (rt5659->pdata.jd_src == RT5659_JD3 ||
-	    rt5659->pdata.jd_src == RT5659_JD_NULL)
+	    rt5659->pdata.jd_src == RT5659_JD_HDA_HEADER)
 		cancel_delayed_work_sync(&rt5659->jack_detect_work);
 
 	return 0;
