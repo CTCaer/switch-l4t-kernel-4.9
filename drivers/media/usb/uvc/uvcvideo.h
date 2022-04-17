@@ -201,7 +201,7 @@
 /* Maximum number of packets per URB. */
 #define UVC_MAX_PACKETS		32
 /* Maximum status buffer size in bytes of interrupt URB. */
-#define UVC_MAX_STATUS_SIZE	1024
+#define UVC_MAX_STATUS_SIZE	32
 
 #define UVC_CTRL_CONTROL_TIMEOUT	500
 #define UVC_CTRL_STREAMING_TIMEOUT	5000
