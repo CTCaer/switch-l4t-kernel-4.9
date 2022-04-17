@@ -205,6 +205,16 @@ struct __extcon_info {
 		.id = EXTCON_DISP_HDMI2,
 		.name = "HDMI2",
 	},
+	[EXTCON_DISP_HDMI3] = {
+		.type = EXTCON_TYPE_DISP,
+		.id = EXTCON_DISP_HDMI3,
+		.name = "HDMI3",
+	},
+	[EXTCON_DISP_HDMI4] = {
+		.type = EXTCON_TYPE_DISP,
+		.id = EXTCON_DISP_HDMI4,
+		.name = "HDMI4",
+	},
 
 	/* Miscellaneous external connector */
 	[EXTCON_DOCK] = {
