@@ -79,3 +79,13 @@ config ARCH_TEGRA_210_SOC
 
 endif
 endif
+
+config TEGRA_USE_NA_GPCPLL
+	bool "Enable noise aware mode of GM20B GPCPLL on Tegra"
+	depends on COMMON_CLK
+	depends on ARCH_TEGRA_210_SOC
+	default y
+	help
+	  Enable noise aware (NA) mode of GM20b GPCPLL. In this mode PLL output
+	  frequency is automatically adjusted when GM20b voltage is fluctuating
+	  because of transient PMIC or power distribution tree noise.
