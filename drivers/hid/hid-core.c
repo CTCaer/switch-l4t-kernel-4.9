@@ -5,7 +5,7 @@
  *  Copyright (c) 2000-2005 Vojtech Pavlik <vojtech@suse.cz>
  *  Copyright (c) 2005 Michael Haboustak <mike-@cinci.rr.com> for Concept2, Inc
  *  Copyright (c) 2006-2012 Jiri Kosina
- *  Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
+ *  Copyright (c) 2019-2022, NVIDIA CORPORATION. All rights reserved.
  */
 
 /*
@@ -1501,7 +1501,6 @@ int hid_report_raw_event(struct hid_device *hid, int type, u8 *data, u32 size,
 	if (csize < rsize) {
 		dbg_hid("report %d is too short, (%d < %d)\n", report->id,
 				csize, rsize);
-		memset(cdata + csize, 0, rsize - csize);
 	}
 
 	if ((hid->claimed & HID_CLAIMED_HIDDEV) && hid->hiddev_report_event)
