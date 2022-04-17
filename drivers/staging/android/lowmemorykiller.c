@@ -74,6 +74,8 @@ static char *freed_procs[FREED_PROC_DEPTH];
 static char freed_procs_buffer[FREED_PROC_DEPTH * PROC_NAME_LENGTH];
 
 static int lowmem_minfree_size = 4;
+static int swap_free_low_percentage = 15;
+static int VISIBLE_LOW_OOM_ADJ = 150;
 
 static unsigned long lowmem_deathpending_timeout;
 
@@ -96,6 +98,9 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 {
 	struct task_struct *tsk;
 	struct task_struct *selected = NULL;
+	struct sysinfo mem;
+	bool swap_is_low = false;
+	int swap_low_threshold =0;
 	unsigned long rem = 0;
 	int tasksize;
 	int i;
@@ -128,6 +133,19 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		}
 	}
 
+    /* Check free swap levels */
+    si_swapinfo(&mem);
+    if (swap_free_low_percentage) {
+        if (!swap_low_threshold) {
+            swap_low_threshold = mem.totalswap * swap_free_low_percentage / 100;
+        }
+
+		/* swap is low and mem free is low */
+		swap_is_low = mem.freeswap < swap_low_threshold;
+		if (swap_is_low && (min_score_adj == lowmem_adj[2] || min_score_adj == lowmem_adj[3]))
+			min_score_adj = VISIBLE_LOW_OOM_ADJ;
+    }
+
 	lowmem_print(3, "lowmem_scan %lu, %x, ofree %d %d, ma %hd\n",
 		     sc->nr_to_scan, sc->gfp_mask, other_free,
 		     other_file, min_score_adj);
@@ -159,6 +177,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			return 0;
 		}
 		oom_score_adj = p->signal->oom_score_adj;
+
 		if (oom_score_adj < min_score_adj) {
 			task_unlock(p);
 			continue;
