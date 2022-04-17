@@ -139,6 +139,7 @@ enum sas_sata_vsp_regs {
 	VSR_PHY_MODE11		= 0x0B * 4, /* Event Counter 3 */
 	VSR_PHY_ACT_LED		= 0x0C * 4, /* Activity LED control */
 
+	VSR_PHY_PWR_PLL_CONTROL = 0x100,
 	VSR_PHY_FFE_CONTROL	= 0x10C,
 	VSR_PHY_DFE_UPDATE_CRTL	= 0x110,
 	VSR_REF_CLOCK_CRTL	= 0x1A0,
