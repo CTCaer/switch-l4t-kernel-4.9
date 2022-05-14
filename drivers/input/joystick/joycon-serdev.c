@@ -52,9 +52,9 @@ static const u8 JC_CMD_HORIINPUTREPORT		= 0x9A;
 /* Used in handshake */
 static const u8 JC_INIT_MAC			= 0x01;
 static const u8 JC_INIT_BAUDRATE		= 0x20;
-static const u8 JC_INIT_UNK1			= 0x11;
-static const u8 JC_INIT_UNK2			= 0x10;
-static const u8 JC_INIT_UNK3			= 0x12;
+static const u8 JC_INIT_BRATE_DONE		= 0x11;
+static const u8 JC_INIT_DONE			= 0x10;
+static const u8 JC_INIT_RATE			= 0x12;
 
 /* Input Reports */
 static const u8 JC_INPUT_EXT_ACK		= 0x1F;
@@ -354,7 +354,7 @@ static const u16 JC_RUMBLE_DFLT_HIGH_FREQ = 320;
 static const u16 JC_RUMBLE_PERIOD_MS = 50;
 
 static const unsigned int JC_UART_BAUD_LOW = 1000000;
-static const unsigned int JC_UART_BAUD_HIGH = 3125000;
+static const unsigned int JC_UART_BAUD_HIGH = 3000000;
 
 /* Each physical controller is associated with a joycon_ctlr struct */
 struct joycon_ctlr {
@@ -1869,12 +1869,12 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 	return 0;
 }
 
-/* configures the joy-con to use 3125000bps */
+/* configures the joy-con to use 3000000bps */
 static int joycon_change_baud(struct joycon_ctlr *ctlr)
 {
 	int ret;
 	u8 hdata[] = {JC_INIT_BAUDRATE, 0x08, 0x00, 0x00, 0xBD};
-	u8 data[] = {0xC0, 0xC6, 0x2D, 0x00, 0x00, 0x00, 0x00, 0x00};
+	u8 data[] = {0xC0, 0xC6, 0x2D, 0x00, 0x00, 0x00, 0x00, 0x00}; /* 3000000bps */
 	struct joycon_uart_packet *packet;
 
 	dev_info(&ctlr->sdev->dev, "Increasing joy-con baud to 3125000bps\n");
@@ -1891,7 +1891,9 @@ static int joycon_change_baud(struct joycon_ctlr *ctlr)
 	}
 	packet = (struct joycon_uart_packet *) ctlr->input_buf;
 	if (packet->header_data[0] != JC_INIT_BAUDRATE) {
-		dev_err(&ctlr->sdev->dev, "Invalid baudrate set response\n");
+		dev_err(&ctlr->sdev->dev,
+			"Invalid baudrate set resp; val=0x%02x\n",
+			packet->header_data[0]);
 		return -EINVAL;
 	}
 
@@ -1904,39 +1906,40 @@ static int joycon_change_baud(struct joycon_ctlr *ctlr)
 	return 0;
 }
 
-/* send generic handshake step (unk1 and unk2 in the sequence)*/
-static int joycon_init_unk(struct joycon_ctlr *ctlr, u8 unk)
+/* send generic handshake step */
+static int joycon_init_handshake(struct joycon_ctlr *ctlr, u8 handshake)
 {
 	int ret;
-	u8 request_unk_data[] = {unk};
+	u8 hdata[] = {handshake};
 	struct joycon_uart_packet *packet;
 
 	ctlr->uart_cmd_match = JC_CMD_INITRET;
-	ret = joycon_send_command(ctlr, JC_CMD_EXTSEND, request_unk_data,
-				  sizeof(request_unk_data), HZ);
+	ret = joycon_send_command(ctlr, JC_CMD_EXTSEND, hdata,
+				  sizeof(hdata), HZ);
 	if (ret) {
 		dev_err(&ctlr->sdev->dev,
-			"Failed to retrieve UNK(%u) resp; ret=%d\n",
-			unk, ret);
+			"Failed to retrieve handshake (0x%02x) resp; ret=%d\n",
+			handshake, ret);
 		return ret;
 	}
 
 	packet = (struct joycon_uart_packet *) ctlr->input_buf;
-	if (packet->header_data[0] != unk) {
-		dev_err(&ctlr->sdev->dev, "Invalid unk(0x%02x) response\n",
-			unk);
+	if (packet->header_data[0] != handshake) {
+		dev_err(&ctlr->sdev->dev,
+			"Invalid handshake (0x%02x) resp; val=0x%02x\n",
+			handshake, packet->header_data[0]);
 		return -EINVAL;
 	}
 
 	return 0;
 }
 
-/* The final step in the handshake includes extra data */
-static int joycon_init_unk3(struct joycon_ctlr *ctlr)
+/* The final step in the handshake is to set input report rate */
+static int joycon_init_report_rate(struct joycon_ctlr *ctlr)
 {
 	int ret;
-	u8 hdata[] = {JC_INIT_UNK3, 0x04, 0x00, 0x00, 0x12};
-	u8 data[] = {0xA6, 0x0F, 0x00, 0x00, 0x00};
+	u8 hdata[] = {JC_INIT_RATE, 0x04, 0x00, 0x00, 0x12};
+	u8 data[] = {0x0F, 0x00, 0x00, 0x00};
 	struct joycon_uart_packet *packet;
 
 	ctlr->uart_cmd_match = JC_CMD_INITRET;
@@ -1951,8 +1954,10 @@ static int joycon_init_unk3(struct joycon_ctlr *ctlr)
 		return ret;
 	}
 	packet = (struct joycon_uart_packet *) ctlr->input_buf;
-	if (packet->header_data[0] != JC_INIT_UNK3) {
-		dev_err(&ctlr->sdev->dev, "Invalid unk3 response\n");
+	if (packet->header_data[0] != JC_INIT_RATE) {
+		dev_err(&ctlr->sdev->dev,
+			"Invalid set rate resp; val=0x%02x\n",
+			packet->header_data[0]);
 		return -EINVAL;
 	}
 	return 0;
@@ -1989,18 +1994,23 @@ static int joycon_handshake(struct joycon_ctlr *ctlr)
 		goto exit;
 
 	if (!ctlr->is_hori) {
+		/* set higher baudrate */
 		ret = joycon_change_baud(ctlr);
 		if (ret)
 			goto exit_restore_baud;
 
-		/* send the unknown magic init sequences */
-		ret = joycon_init_unk(ctlr, JC_INIT_UNK1);
+		/* send host baudrate change confirmation */
+		ret = joycon_init_handshake(ctlr, JC_INIT_BRATE_DONE);
 		if (ret)
 			goto exit_restore_baud;
-		ret = joycon_init_unk(ctlr, JC_INIT_UNK2);
+		
+		/* send initialization done */
+		ret = joycon_init_handshake(ctlr, JC_INIT_DONE);
 		if (ret)
 			goto exit_restore_baud;
-		ret = joycon_init_unk3(ctlr);
+
+		/* set input report rate */
+		ret = joycon_init_report_rate(ctlr);
 		if (ret)
 			goto exit_restore_baud;
 		dev_info(dev, "completed handshake\n");
