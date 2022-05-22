@@ -36,6 +36,7 @@
 #include <linux/serdev.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/tty.h>
 
 /*
  * Reference the url below for the following protocol defines:
@@ -1148,11 +1149,40 @@ static void joycon_disconnect(struct joycon_ctlr *ctlr)
 	}
 }
 
+struct serport {
+	struct tty_port *port;
+	struct tty_struct *tty;
+	struct tty_driver *tty_drv;
+	int tty_idx;
+	unsigned long flags;
+};
+
+static int joycon_set_baudrate(struct joycon_ctlr *ctlr, unsigned int speed)
+{
+	struct serport *serport = serdev_controller_get_drvdata(ctlr->sdev->ctrl);
+	struct tty_struct *tty = serport->tty;
+	struct ktermios ktermios = tty->termios;
+
+	int ret;
+
+	/* Manually clear/set dual STOP bit depending on baudrate */
+	if (speed != JC_UART_BAUD_HIGH)
+		ktermios.c_cflag &= ~CSTOPB;
+	else
+		ktermios.c_cflag |= CSTOPB;
+
+	tty_set_termios(tty, &ktermios);
+
+	ret = serdev_device_set_baudrate(ctlr->sdev, speed);
+
+	return ret;
+}
+
 static int joycon_enter_detection(struct joycon_ctlr *ctlr)
 {
 	int ret;
 
-	ret = serdev_device_set_baudrate(ctlr->sdev, JC_UART_BAUD_LOW);
+	ret = joycon_set_baudrate(ctlr, JC_UART_BAUD_LOW);
 	if (ret != JC_UART_BAUD_LOW) {
 		dev_err(&ctlr->sdev->dev,
 			"Failed to set initial serial baudrate; ret=%d\n", ret);
@@ -1877,7 +1907,7 @@ static int joycon_change_baud(struct joycon_ctlr *ctlr)
 	u8 data[] = {0xC0, 0xC6, 0x2D, 0x00, 0x00, 0x00, 0x00, 0x00}; /* 3000000bps */
 	struct joycon_uart_packet *packet;
 
-	dev_info(&ctlr->sdev->dev, "Increasing joy-con baud to 3125000bps\n");
+	dev_info(&ctlr->sdev->dev, "Increasing joy-con baud to 3000000bps\n");
 
 	ctlr->uart_cmd_match = JC_CMD_INITRET;
 	ctlr->msg_type = JOYCON_MSG_TYPE_UART_CMD;
@@ -1897,7 +1927,7 @@ static int joycon_change_baud(struct joycon_ctlr *ctlr)
 		return -EINVAL;
 	}
 
-	ret = serdev_device_set_baudrate(ctlr->sdev, JC_UART_BAUD_HIGH);
+	ret = joycon_set_baudrate(ctlr, JC_UART_BAUD_HIGH);
 	if (ret != JC_UART_BAUD_HIGH) {
 		dev_err(&ctlr->sdev->dev,
 			"Failed to change serdev baudrate; ret=%d\n", ret);
@@ -2029,7 +2059,7 @@ static int joycon_handshake(struct joycon_ctlr *ctlr)
 
 exit_restore_baud:
 	dev_info(dev, "returning to low baudrate for detection\n");
-	baudret = serdev_device_set_baudrate(ctlr->sdev, JC_UART_BAUD_LOW);
+	baudret = joycon_set_baudrate(ctlr, JC_UART_BAUD_LOW);
 	if (baudret != JC_UART_BAUD_LOW) {
 		dev_err(&ctlr->sdev->dev,
 			"Failed to change serdev baudrate; ret=%d\n", baudret);
@@ -2109,7 +2139,7 @@ static int joycon_post_handshake(struct joycon_ctlr *ctlr)
 	return 0;
 error:
 	dev_info(dev, "returning to low baudrate for detection\n");
-	baudret = serdev_device_set_baudrate(ctlr->sdev, JC_UART_BAUD_LOW);
+	baudret = joycon_set_baudrate(ctlr, JC_UART_BAUD_LOW);
 	if (baudret != JC_UART_BAUD_LOW) {
 		dev_err(&ctlr->sdev->dev,
 			"Failed to change serdev baudrate; ret=%d\n", baudret);
