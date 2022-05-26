@@ -408,7 +408,6 @@ struct tegra_pcie_soc_data {
 	bool			dvfs_mselect;
 	bool			dvfs_afi;
 	bool			update_clamp_threshold;
-	int				check_link_timeout;
 	struct pcie_dvfs	dvfs_tbl[10][2];
 };
 
@@ -2164,7 +2163,7 @@ static bool tegra_pcie_port_check_link(struct tegra_pcie_port *port)
 	writel(value, port->base + NV_PCIE2_RP_PRIV_MISC);
 
 	do {
-		unsigned int timeout = port->pcie->soc_data->check_link_timeout;
+		unsigned int timeout = TEGRA_PCIE_LINKUP_TIMEOUT;
 
 		do {
 			value = readl(port->base + RP_VEND_XP);
@@ -3408,9 +3407,6 @@ static int tegra_pcie_parse_dt(struct tegra_pcie *pcie)
 		pcie->busn.end = 0xff;
 		pcie->busn.flags = IORESOURCE_BUS;
 	}
-
-	if (of_property_read_u32(np, "nvidia,check-lane-timeout", &pcie->soc_data->check_link_timeout))
-		pcie->soc_data->check_link_timeout = TEGRA_PCIE_LINKUP_TIMEOUT;
 
 	/* parse root ports */
 	for_each_child_of_node(np, port) {
