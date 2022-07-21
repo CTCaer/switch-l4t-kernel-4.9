@@ -120,7 +120,10 @@ static const u16 JC_MAX_STICK_MAG		= 32767;
 static const u16 JC_STICK_FUZZ			= 250;
 static const u16 JC_STICK_FLAT			= 500;
 
-/* frequency/amplitude tables for rumble */
+/* frequency/amplitude defines and tables for rumble */
+static const u32 JC_RUMBLE_MASK			= 0xFF80FE00;
+static const u32 JC_RUMBLE_ZERO_AMP		= 0x40000000;
+
 struct joycon_rumble_freq_data {
 	u16 high;
 	u8 low;
@@ -329,7 +332,7 @@ struct joycon_input_report {
 	u8 button_status[3];
 	u8 left_stick[3];
 	u8 right_stick[3];
-	u8 vibrator_report;
+	u8 sixaxis_report;
 
 	/*
 	 * If support for firmware updates, gyroscope data, and/or NFC/IR
@@ -433,7 +436,7 @@ struct joycon_ctlr {
 	u16 rumble_lh_freq;
 	u16 rumble_rl_freq;
 	u16 rumble_rh_freq;
-	bool rumble_zero_amp;
+	bool rumble_keep_alive;
 };
 
 static int joycon_serdev_send(struct joycon_ctlr *ctlr, u8 *data,
@@ -915,10 +918,9 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 
 	spin_lock_irqsave(&ctlr->lock, flags);
 	if (!ctlr->is_hori && IS_ENABLED(CONFIG_JOYCON_SERDEV_FF) &&
-		rep->vibrator_report &&
 		(msecs - ctlr->rumble_msecs) >= JC_RUMBLE_PERIOD_MS &&
 		(ctlr->rumble_queue_head != ctlr->rumble_queue_tail ||
-		 !ctlr->rumble_zero_amp))
+		 ctlr->rumble_keep_alive))
 		queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
 
 	ctlr->last_input_report_msecs = jiffies_to_msecs(jiffies);
@@ -1240,12 +1242,22 @@ static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
 	struct device *dev = &ctlr->sdev->dev;
 	struct joycon_subcmd_request *subcmd;
 	u8 buffer[sizeof(*subcmd) - 1] = { 0 };
+	u32 rumble[2];
 
 	subcmd = (struct joycon_subcmd_request *)buffer;
 
 	spin_lock_irqsave(&ctlr->lock, flags);
 	memcpy(subcmd->rumble_data, ctlr->rumble_data[ctlr->rumble_queue_tail],
 	       JC_RUMBLE_DATA_SIZE);
+	/* Set keep alive flag */
+	memcpy(&rumble, subcmd->rumble_data, sizeof(rumble));
+	if (ctlr->ctlr_type == JOYCON_TYPE_LEFT) {
+		ctlr->rumble_keep_alive = (rumble[0] & JC_RUMBLE_MASK) !=
+					  JC_RUMBLE_ZERO_AMP;
+	} else {
+		ctlr->rumble_keep_alive = (rumble[1] & JC_RUMBLE_MASK) !=
+					  JC_RUMBLE_ZERO_AMP;
+	}
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	subcmd->output_id = JC_OUTPUT_RUMBLE_ONLY;
@@ -1258,7 +1270,7 @@ static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
 	ret = joycon_send_packet(ctlr, JC_CMD_EXTRET,
 				 (u8 *)&subcmd_size, sizeof(subcmd_size),
 				 (u8 *)subcmd, sizeof(*subcmd) - 1,
-				 HZ/4, false);
+				 ctlr->rumble_keep_alive ? HZ : HZ/4, false);
 	if (ret < 0)
 		dev_dbg(dev, "send subcommand failed; ret=%d\n", ret);
 	return ret;
@@ -1393,6 +1405,7 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_weak, u16 amp_str
 	u16 freq_r_high;
 	u16 freq_l_low;
 	u16 freq_l_high;
+	bool removed;
 	unsigned long flags;
 
 	spin_lock_irqsave(&ctlr->lock, flags);
@@ -1400,8 +1413,6 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_weak, u16 amp_str
 	freq_r_high = ctlr->rumble_rh_freq;
 	freq_l_low = ctlr->rumble_ll_freq;
 	freq_l_high = ctlr->rumble_lh_freq;
-	/* this flag is used to reduce subcommand traffic */
-	ctlr->rumble_zero_amp = (amp_strong == 0) && (amp_weak == 0);
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	/* right joy-con */
@@ -1417,10 +1428,11 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_weak, u16 amp_str
 		ctlr->rumble_queue_head = 0;
 	memcpy(ctlr->rumble_data[ctlr->rumble_queue_head], data,
 	       JC_RUMBLE_DATA_SIZE);
+	removed = ctlr->ctlr_state == JOYCON_CTLR_STATE_INIT || ctlr->ctlr_removed;
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	/* don't wait for the periodic send (reduces latency) */
-	if (schedule_now)
+	if (schedule_now && !removed)
 		queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
 
 	return 0;
@@ -2403,7 +2415,7 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 err_sdev_close:
 	serdev_device_close(serdev);
 err:
-	return ret;;
+	return ret;
 }
 
 static void joycon_stop_queues(struct joycon_ctlr *ctlr)
