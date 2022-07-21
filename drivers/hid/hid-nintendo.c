@@ -179,7 +179,10 @@ static const u16 JC_IMU_GYRO_RES_PER_DPS	= 14247; /* (14.247*1000) */
 static const u16 JC_IMU_GYRO_FUZZ		= 10;
 static const u16 JC_IMU_GYRO_FLAT		/*= 0*/;
 
-/* frequency/amplitude tables for rumble */
+/* frequency/amplitude defines and tables for rumble */
+static const u32 JC_RUMBLE_MASK			= 0xFF80FE00;
+static const u32 JC_RUMBLE_ZERO_AMP		= 0x40000000;
+
 struct joycon_rumble_freq_data {
 	u16 high;
 	u8 low;
@@ -391,7 +394,7 @@ struct joycon_input_report {
 	u8 button_status[3];
 	u8 left_stick[3];
 	u8 right_stick[3];
-	u8 vibrator_report;
+	u8 sixaxis_report;
 
 	union {
 		struct joycon_subcmd_reply subcmd_reply;
@@ -476,7 +479,7 @@ struct joycon_ctlr {
 	u16 rumble_lh_freq;
 	u16 rumble_rl_freq;
 	u16 rumble_rh_freq;
-	bool rumble_zero_amp;
+	bool rumble_keep_alive;
 
 	/* imu */
 	struct input_dev *imu_input;
@@ -1114,7 +1117,7 @@ static void joycon_parse_imu_report(struct joycon_ctlr *ctlr,
 	ctlr->imu_last_pkt_ms = msecs;
 
 	/* Each IMU input report contains three samples */
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < rep->sixaxis_report; i++) {
 		input_event(idev, EV_MSC, MSC_TIMESTAMP,
 			    ctlr->imu_timestamp_us);
 
@@ -1198,7 +1201,8 @@ static void joycon_parse_imu_report(struct joycon_ctlr *ctlr,
 		input_report_abs(idev, ABS_Z, value[5]);
 		input_sync(idev);
 		/* convert to micros and divide by 3 (3 samples per report). */
-		ctlr->imu_timestamp_us += ctlr->imu_avg_delta_ms * 1000 / 3;
+		ctlr->imu_timestamp_us += ctlr->imu_avg_delta_ms * 1000 /
+					  rep->sixaxis_report;
 	}
 }
 
@@ -1212,10 +1216,10 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 	unsigned long msecs = jiffies_to_msecs(jiffies);
 
 	spin_lock_irqsave(&ctlr->lock, flags);
-	if (IS_ENABLED(CONFIG_NINTENDO_FF) && rep->vibrator_report &&
+	if (IS_ENABLED(CONFIG_NINTENDO_FF) &&
 	    (msecs - ctlr->rumble_msecs) >= JC_RUMBLE_PERIOD_MS &&
 	    (ctlr->rumble_queue_head != ctlr->rumble_queue_tail ||
-	     !ctlr->rumble_zero_amp))
+	     ctlr->rumble_keep_alive))
 		queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
 
 	/* Parse the battery status */
@@ -1361,6 +1365,7 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
 {
 	int ret;
+	u32 rumble[2];
 	unsigned long flags;
 	struct joycon_rumble_output rumble_output = { 0 };
 
@@ -1376,6 +1381,16 @@ static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
 	memcpy(rumble_output.rumble_data,
 	       ctlr->rumble_data[ctlr->rumble_queue_tail],
 	       JC_RUMBLE_DATA_SIZE);
+	/* Set keep alive flag */
+	memcpy(&rumble, rumble_output.rumble_data, sizeof(rumble));
+	if (ctlr->ctlr_type == JOYCON_CTLR_TYPE_JCL) {
+		ctlr->rumble_keep_alive = (rumble[0] & JC_RUMBLE_MASK) !=
+					  JC_RUMBLE_ZERO_AMP;
+	}
+	else {
+		ctlr->rumble_keep_alive = (rumble[1] & JC_RUMBLE_MASK) !=
+					  JC_RUMBLE_ZERO_AMP;
+	}
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	rumble_output.output_id = JC_OUTPUT_RUMBLE_ONLY;
@@ -1400,11 +1415,12 @@ static void joycon_rumble_worker(struct work_struct *work)
 		mutex_lock(&ctlr->output_mutex);
 		ret = joycon_send_rumble_data(ctlr);
 		mutex_unlock(&ctlr->output_mutex);
-
 		/* -ENODEV means the controller was just unplugged */
+		if (ret == -ENODEV)
+			break;
+
 		spin_lock_irqsave(&ctlr->lock, flags);
-		if (ret < 0 && ret != -ENODEV &&
-		    ctlr->ctlr_state != JOYCON_CTLR_STATE_REMOVED)
+		if (ret < 0)
 			hid_warn(ctlr->hdev, "Failed to set rumble; e=%d", ret);
 
 		ctlr->rumble_msecs = jiffies_to_msecs(jiffies);
@@ -1517,6 +1533,7 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_weak, u16 amp_str
 	u16 freq_r_high;
 	u16 freq_l_low;
 	u16 freq_l_high;
+	bool removed;
 	unsigned long flags;
 
 	spin_lock_irqsave(&ctlr->lock, flags);
@@ -1524,8 +1541,6 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_weak, u16 amp_str
 	freq_r_high = ctlr->rumble_rh_freq;
 	freq_l_low = ctlr->rumble_ll_freq;
 	freq_l_high = ctlr->rumble_lh_freq;
-	/* this flag is used to reduce subcommand traffic */
-	ctlr->rumble_zero_amp = (amp_strong == 0) && (amp_weak == 0);
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	/* right joy-con */
@@ -1541,10 +1556,11 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_weak, u16 amp_str
 		ctlr->rumble_queue_head = 0;
 	memcpy(ctlr->rumble_data[ctlr->rumble_queue_head], data,
 	       JC_RUMBLE_DATA_SIZE);
+	removed = ctlr->ctlr_state == JOYCON_CTLR_STATE_REMOVED;
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	/* don't wait for the periodic send (reduces latency) */
-	if (schedule_now)
+	if (schedule_now && !removed)
 		queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
 
 	return 0;
@@ -2339,6 +2355,26 @@ err:
 	return ret;
 }
 
+static void nintendo_hid_leds_remove(struct hid_device *hdev,
+				     struct joycon_ctlr *ctlr)
+{
+	int i;
+
+	for (i = 0; i < JC_NUM_LEDS; i++) {
+		struct led_classdev *led = &ctlr->leds[i];
+		struct led_classdev empty = { 0 };
+
+		devm_led_classdev_unregister(&hdev->dev, led);
+		ctlr->leds[i] = empty;
+	}
+	if (ctlr->ctlr_type == JOYCON_CTLR_TYPE_JCR) {
+		struct led_classdev empty = { 0 };
+
+		devm_led_classdev_unregister(&hdev->dev, &ctlr->home_led);
+		ctlr->home_led = empty;
+	}
+}
+
 static void nintendo_hid_remove(struct hid_device *hdev)
 {
 	struct joycon_ctlr *ctlr = hid_get_drvdata(hdev);
@@ -2357,6 +2393,9 @@ static void nintendo_hid_remove(struct hid_device *hdev)
 
 	destroy_workqueue(ctlr->rumble_queue);
 	destroy_workqueue(ctlr->led_queue);
+
+	input_unregister_device(ctlr->input);
+	nintendo_hid_leds_remove(hdev, ctlr);
 
 	hid_hw_close(hdev);
 	hid_hw_stop(hdev);
