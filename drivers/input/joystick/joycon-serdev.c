@@ -1247,6 +1247,14 @@ static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
 	subcmd = (struct joycon_subcmd_request *)buffer;
 
 	spin_lock_irqsave(&ctlr->lock, flags);
+	/*
+	 * If the controller has been removed, just return ENODEV so the LED
+	 * subsystem doesn't print invalid errors on removal.
+	 */
+	if (ctlr->ctlr_removed) {
+		spin_unlock_irqrestore(&ctlr->lock, flags);
+		return -ENODEV;
+	}
 	memcpy(subcmd->rumble_data, ctlr->rumble_data[ctlr->rumble_queue_tail],
 	       JC_RUMBLE_DATA_SIZE);
 	/* Set keep alive flag */
@@ -1288,10 +1296,12 @@ static void joycon_rumble_worker(struct work_struct *work)
 		mutex_lock(&ctlr->output_mutex);
 		ret = joycon_send_rumble_data(ctlr);
 		mutex_unlock(&ctlr->output_mutex);
-
 		/* -ENODEV means the controller was just unplugged */
+		if (ret == -ENODEV)
+			break;
+
 		spin_lock_irqsave(&ctlr->lock, flags);
-		if (ret < 0 && ret != -ENODEV && !ctlr->ctlr_removed)
+		if (ret < 0)
 			dev_warn(&ctlr->sdev->dev,
 				 "Failed to set rumble; e=%d", ret);
 
