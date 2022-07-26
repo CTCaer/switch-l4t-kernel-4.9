@@ -72,5 +72,6 @@ static inline bool acpi_psci_present(void) { return false; }
 
 extern void (*psci_handle_reboot_cmd)(const char *cmd);
 extern void (*psci_prepare_poweroff)(void);
+extern void (*psci_power_reset)(void);
 
 #endif /* __LINUX_PSCI_H */
