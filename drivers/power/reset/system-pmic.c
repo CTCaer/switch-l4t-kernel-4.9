@@ -168,6 +168,7 @@ struct system_pmic_dev *system_pmic_register(struct device *dev,
 		if (!ops->power_reset)
 			goto scrub;
 		pm_power_reset = system_pmic_power_reset;
+		psci_power_reset = system_pmic_power_reset;
 	}
 
 	psci_prepare_poweroff = system_pmic_prepare_power_off;
@@ -190,8 +191,11 @@ void system_pmic_unregister(struct system_pmic_dev *pmic_dev)
 	if (system_pmic_dev->allow_power_off)
 		pm_power_off = NULL;
 
-	if (system_pmic_dev->allow_power_reset)
+	if (system_pmic_dev->allow_power_reset) {
 		pm_power_reset = NULL;
+		psci_power_reset = NULL;
+	}
+		
 
 	psci_prepare_poweroff = NULL;
 
