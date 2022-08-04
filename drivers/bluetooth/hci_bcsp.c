@@ -65,7 +65,6 @@ struct bcsp_struct {
 	u8	rxseq_txack;		/* rxseq == txack. */
 	u8	rxack;			/* Last packet sent by us that the peer ack'ed */
 	struct	timer_list tbcsp;
-	struct	hci_uart *hu;
 
 	enum {
 		BCSP_W4_PKT_DELIMITER,
@@ -126,7 +125,7 @@ static void bcsp_slip_msgdelim(struct sk_buff *skb)
 {
 	const char pkt_delim = 0xc0;
 
-	skb_put_data(skb, &pkt_delim, 1);
+	memcpy(skb_put(skb, 1), &pkt_delim, 1);
 }
 
 static void bcsp_slip_one_byte(struct sk_buff *skb, u8 c)
@@ -136,13 +135,13 @@ static void bcsp_slip_one_byte(struct sk_buff *skb, u8 c)
 
 	switch (c) {
 	case 0xc0:
-		skb_put_data(skb, &esc_c0, 2);
+		memcpy(skb_put(skb, 2), &esc_c0, 2);
 		break;
 	case 0xdb:
-		skb_put_data(skb, &esc_db, 2);
+		memcpy(skb_put(skb, 2), &esc_db, 2);
 		break;
 	default:
-		skb_put_data(skb, &c, 1);
+		memcpy(skb_put(skb, 1), &c, 1);
 	}
 }
 
@@ -424,7 +423,7 @@ static void bcsp_handle_le_pkt(struct hci_uart *hu)
 		BT_DBG("Found a LE conf pkt");
 		if (!nskb)
 			return;
-		skb_put_data(nskb, conf_rsp_pkt, 4);
+		memcpy(skb_put(nskb, 4), conf_rsp_pkt, 4);
 		hci_skb_pkt_type(nskb) = BCSP_LE_PKT;
 
 		skb_queue_head(&bcsp->unrel, nskb);
@@ -448,7 +447,7 @@ static inline void bcsp_unslip_one_byte(struct bcsp_struct *bcsp, unsigned char 
 			bcsp->rx_esc_state = BCSP_ESCSTATE_ESC;
 			break;
 		default:
-			skb_put_data(bcsp->rx_skb, &byte, 1);
+			memcpy(skb_put(bcsp->rx_skb, 1), &byte, 1);
 			if ((bcsp->rx_skb->data[0] & 0x40) != 0 &&
 			    bcsp->rx_state != BCSP_W4_CRC)
 				bcsp_crc_update(&bcsp->message_crc, byte);
@@ -459,7 +458,7 @@ static inline void bcsp_unslip_one_byte(struct bcsp_struct *bcsp, unsigned char 
 	case BCSP_ESCSTATE_ESC:
 		switch (byte) {
 		case 0xdc:
-			skb_put_data(bcsp->rx_skb, &c0, 1);
+			memcpy(skb_put(bcsp->rx_skb, 1), &c0, 1);
 			if ((bcsp->rx_skb->data[0] & 0x40) != 0 &&
 			    bcsp->rx_state != BCSP_W4_CRC)
 				bcsp_crc_update(&bcsp->message_crc, 0xc0);
@@ -468,7 +467,7 @@ static inline void bcsp_unslip_one_byte(struct bcsp_struct *bcsp, unsigned char 
 			break;
 
 		case 0xdd:
-			skb_put_data(bcsp->rx_skb, &db, 1);
+			memcpy(skb_put(bcsp->rx_skb, 1), &db, 1);
 			if ((bcsp->rx_skb->data[0] & 0x40) != 0 &&
 			    bcsp->rx_state != BCSP_W4_CRC)
 				bcsp_crc_update(&bcsp->message_crc, 0xdb);
@@ -698,10 +697,10 @@ static int bcsp_recv(struct hci_uart *hu, const void *data, int count)
 }
 
 	/* Arrange to retransmit all messages in the relq. */
-static void bcsp_timed_event(struct timer_list *t)
+static void bcsp_timed_event(unsigned long arg)
 {
-	struct bcsp_struct *bcsp = from_timer(bcsp, t, tbcsp);
-	struct hci_uart *hu = bcsp->hu;
+	struct hci_uart *hu = (struct hci_uart *)arg;
+	struct bcsp_struct *bcsp = hu->priv;
 	struct sk_buff *skb;
 	unsigned long flags;
 
@@ -730,12 +729,13 @@ static int bcsp_open(struct hci_uart *hu)
 		return -ENOMEM;
 
 	hu->priv = bcsp;
-	bcsp->hu = hu;
 	skb_queue_head_init(&bcsp->unack);
 	skb_queue_head_init(&bcsp->rel);
 	skb_queue_head_init(&bcsp->unrel);
 
-	timer_setup(&bcsp->tbcsp, bcsp_timed_event, 0);
+	init_timer(&bcsp->tbcsp);
+	bcsp->tbcsp.function = bcsp_timed_event;
+	bcsp->tbcsp.data     = (u_long)hu;
 
 	bcsp->rx_state = BCSP_W4_PKT_DELIMITER;
 

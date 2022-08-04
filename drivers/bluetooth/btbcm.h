@@ -44,8 +44,8 @@ struct bcm_set_sleep_mode {
 	__u8 tristate_control;
 	__u8 usb_auto_sleep;
 	__u8 usb_resume_timeout;
-	__u8 break_to_host;
 	__u8 pulsed_host_wake;
+	__u8 break_to_host;
 } __packed;
 
 struct bcm_set_pcm_int_params {
@@ -73,8 +73,7 @@ int btbcm_patchram(struct hci_dev *hdev, const struct firmware *fw);
 int btbcm_setup_patchram(struct hci_dev *hdev);
 int btbcm_setup_apple(struct hci_dev *hdev);
 
-int btbcm_initialize(struct hci_dev *hdev, char *fw_name, size_t len,
-		     bool reinit);
+int btbcm_initialize(struct hci_dev *hdev, char *fw_name, size_t len);
 int btbcm_finalize(struct hci_dev *hdev);
 
 #else
@@ -105,7 +104,7 @@ static inline int btbcm_setup_apple(struct hci_dev *hdev)
 }
 
 static inline int btbcm_initialize(struct hci_dev *hdev, char *fw_name,
-				   size_t len, bool reinit)
+				   size_t len)
 {
 	return 0;
 }
