@@ -102,7 +102,7 @@ static int tegra_usb_cd_update_charging_current(struct tegra_usb_cd *ucd)
 	int max_ua = 0, ret = 0;
 
 #if IS_ENABLED(CONFIG_USB_TEGRA_CD_NO_USERSPACE)
-	ucd->sdp_cdp_current_limit_ma = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
+	ucd->sdp_cdp_current_limit_ma = USB_CHARGING_SDP_CURRENT_LIMIT_UA;
 #endif
 
 	switch (ucd->connect_type) {
@@ -132,7 +132,7 @@ static int tegra_usb_cd_update_charging_current(struct tegra_usb_cd *ucd)
 	case EXTCON_CHG_USB_CDP:
 		dev_info(ucd->dev, "connected to CDP\n");
 		if (ucd->sdp_cdp_current_limit_ma > 2)
-			max_ua = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
+			max_ua = ucd->cdp_current_limit_ma * 1000;
 		else
 			max_ua = ucd->sdp_cdp_current_limit_ma * 1000;
 		break;
@@ -339,6 +339,11 @@ static int tegra_usb_cd_parse_dt(struct platform_device *pdev,
 	if (!np)
 		goto out;
 
+	of_property_read_u32(np, "nvidia,cdp-current-limit-ua", &current_ua);
+	if (current_ua)
+		ucd->cdp_current_limit_ma = current_ua / 1000;
+	else
+		ucd->cdp_current_limit_ma = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
 	of_property_read_u32(np, "nvidia,dcp-current-limit-ua", &current_ua);
 	ucd->dcp_current_limit_ma = current_ua / 1000;
 	of_property_read_u32(np, "nvidia,qc2-current-limit-ua", &current_ua);

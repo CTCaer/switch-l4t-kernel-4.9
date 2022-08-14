@@ -58,8 +58,9 @@ struct tegra_usb_cd {
 	struct tegra_xusb_padctl *padctl;
 	int open_count;
 	unsigned int connect_type;
-	u32 sdp_cdp_current_limit_ma;
 	u32 current_limit_ma;
+	u32 sdp_cdp_current_limit_ma;
+	u32 cdp_current_limit_ma;
 	u32 dcp_current_limit_ma;
 	u32 qc2_current_limit_ma;
 	u32 qc2_voltage;
