@@ -2323,7 +2323,7 @@ static void tegra210_init_emc_data_smc(struct platform_device *pdev,
 	regs.args[4] = 0;
 	regs.args[5] = 0;
 	pmc_send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
-	base = regs.args[0] != (u64)(-ENOTSUP) ? regs.args[0] : 0;
+	base = regs.args[0] != (u64)(-45) ? regs.args[0] : 0;
 
 	regs.args[0] = EMC_TABLE_SIZE;
 	regs.args[1] = 0;
@@ -2332,7 +2332,7 @@ static void tegra210_init_emc_data_smc(struct platform_device *pdev,
 	regs.args[4] = 0;
 	regs.args[5] = 0;
 	pmc_send_smc(TEGRA_SIP_EMC_COMMAND_FID, &regs);
-	size = regs.args[0] != (u64)(-ENOTSUP) ? regs.args[0] : 0;
+	size = regs.args[0] != (u64)(-45) ? regs.args[0] : 0;
 	if (!size)
 		base = 0;
 
