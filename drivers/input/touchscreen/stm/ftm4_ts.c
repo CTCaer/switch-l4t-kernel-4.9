@@ -50,7 +50,8 @@
 *           | - Ensure power off on suspend for saving power
 *           | - Correct logging to debug level instead of info/error
 * 02/26/2021| Better palm removal detection
-* 12/20/2021| Allow calibration on init disable via device tree or sysfs
+* 12/20/2021| Allow calibration on init to be disabled via device tree
+* 07/31/2022| Allow calibration on init to be disabled via module parameter
 *******************************************************************************/
 
 #include <linux/init.h>
@@ -86,13 +87,16 @@ static int  fts_input_open(struct input_dev *dev);
 static void fts_input_close(struct input_dev *dev);
 static void fts_release_all_finger(struct fts_ts_info *info);
 
+static int skip_tuning = 0;
+module_param(skip_tuning, int, 0660);
+
 int fts_write_reg(struct fts_ts_info *info, unsigned char *reg, unsigned short num_com)
 {
 	struct i2c_msg xfer_msg[2];
 	int ret = 0;
 
 	if (info->power_state == FTS_POWER_STATE_POWERDOWN) {
-		tsp_debug_err(&info->client->dev, "%s: Sensor stopped\n", __func__);
+		tsp_debug_err(&info->client->dev, "%s: Sensor is stopped\n", __func__);
 		goto exit;
 	}
 
@@ -118,7 +122,7 @@ int fts_read_reg(struct fts_ts_info *info, unsigned char *reg, int cnum, unsigne
 	int ret = 0;
 
 	if (info->power_state == FTS_POWER_STATE_POWERDOWN) {
-		tsp_debug_err(&info->client->dev, "%s: Sensor stopped\n", __func__);
+		tsp_debug_err(&info->client->dev, "%s: Sensor is stopped\n", __func__);
 		goto exit;
 	}
 
@@ -210,7 +214,7 @@ int fts_read_chip_id(struct fts_ts_info *info)
 		return ret;
 	}
 
-	tsp_debug_err(&info->client->dev,
+	tsp_debug_info(&info->client->dev,
 		"FTS %02X%02X%02X =  %02X %02X %02X %02X %02X %02X\n",
 		regAdd[0], regAdd[1], regAdd[2],
 		val[1], val[2], val[3], val[4],
@@ -311,7 +315,7 @@ int fts_get_channel_info(struct fts_ts_info *info)
 	while (fts_read_reg(info, &cmd[0], 1, (unsigned char *)data, FTS_EVENT_SIZE)) {
 		if (data[0] == EVENTID_RESULT_READ_REGISTER) {
 			if ((data[1] == cmd[1]) && (data[2] == cmd[2])) {
-				tsp_debug_err(&info->client->dev, "FTS Channel Sense: %d, Force: %d\n",
+				tsp_debug_info(&info->client->dev, "FTS Channel Sense: %d, Force: %d\n",
 					data[3], data[4]);
 				rc = 0;
 				break;
@@ -387,7 +391,7 @@ static int fts_init(struct fts_ts_info *info)
 		tsp_debug_err(&info->client->dev, "%s: Failed to fts_read_chip_id\n", __func__);
 
 	/* Calibrate touch panel */
-	if (!info->board->disable_tuning)
+	if (!info->board->disable_tuning && !skip_tuning)
 		fts_auto_calibration(info);
 
 	/* Enable finger sense mode */
@@ -575,7 +579,7 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 
 			/* Palm rejection */
 			if (z > PRESSURE_MAX) {
-				tsp_debug_err(&info->client->dev, "Palm Detected\n");
+				tsp_debug_info(&info->client->dev, "Palm Detected\n");
 				tsp_debug_dbg(&info->client->dev,
 					"%s: [ID:%2d  X:%4d  Y:%4d  Z:%4d  Orient:%2d  tc:%2d]\n", __func__,
 					TouchID, x, y, z, orient, info->touch_count);
@@ -643,7 +647,7 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 		case EVENTID_LEAVE_POINTER:
 			if (info->palm_pressed) {
 				if (info->palm_touch_id == TouchID) {
-					tsp_debug_err(&info->client->dev, "Palm Released\n");
+					tsp_debug_info(&info->client->dev, "Palm Released\n");
 					fts_release_all_finger(info);
 					info->palm_pressed = false;
 				}
@@ -927,27 +931,27 @@ static int fts_parse_dt(struct i2c_client *client)
 	}
 
 	if (of_property_read_string(np, "stm,regulator_dvdd", &pdata->regulator_dvdd))
-		tsp_debug_err(dev, "Failed to get regulator_dvdd name property\n");
+		tsp_debug_info(dev, "Failed to get regulator_dvdd name property\n");
 
 	if (of_property_read_string(np, "stm,regulator_avdd", &pdata->regulator_avdd))
-		tsp_debug_err(dev, "Failed to get regulator_avdd name property\n");
+		tsp_debug_info(dev, "Failed to get regulator_avdd name property\n");
 
 	pdata->vdd_gpio = of_get_named_gpio(np, "stm,vdd-gpio", 0);
 	if (gpio_is_valid(pdata->vdd_gpio))
-		tsp_debug_err(dev, "vdd_gpio : %s\n", gpio_get_value(pdata->vdd_gpio) ? "On" : "Off");
+		tsp_debug_dbg(dev, "vdd_gpio : %s\n", gpio_get_value(pdata->vdd_gpio) ? "On" : "Off");
 	else
-		tsp_debug_err(dev, "Failed to get vdd_gpio gpio\n");
+		tsp_debug_info(dev, "Failed to get vdd_gpio gpio\n");
 
 	pdata->vio_gpio = of_get_named_gpio(np, "stm,vio-gpio", 0);
 	if (gpio_is_valid(pdata->vio_gpio))
-		tsp_debug_err(dev, "vio_gpio : %s\n", gpio_get_value(pdata->vio_gpio) ? "On" : "Off");
+		tsp_debug_dbg(dev, "vio_gpio : %s\n", gpio_get_value(pdata->vio_gpio) ? "On" : "Off");
 	else
-		tsp_debug_err(dev, "Failed to get vio_gpio gpio\n");
+		tsp_debug_info(dev, "Failed to get vio_gpio gpio\n");
 
 	pdata->delayed_open = of_property_read_bool(np, "stm,delayed-open");
 
 	if (of_property_read_u32(np, "stm,delayed-open-time", &pdata->delayed_open_time)) {
-		tsp_debug_err(dev, "Failed to get delayed-open-time property\n");
+		tsp_debug_info(dev, "Failed to get delayed-open-time property. Using default.\n");
 		pdata->delayed_open_time = FTS_INPUT_OPEN_DWORK_TIME;
 	}
 
@@ -1205,12 +1209,12 @@ static void fts_release_all_finger(struct fts_ts_info *info)
 
 static int fts_stop_device(struct fts_ts_info *info)
 {
-	tsp_debug_err(&info->client->dev, "%s\n", __func__);
+	tsp_debug_info(&info->client->dev, "%s\n", __func__);
 
 	mutex_lock(&info->device_mutex);
 
 	if (info->power_state == FTS_POWER_STATE_POWERDOWN) {
-		tsp_debug_err(&info->client->dev, "%s already powered off\n", __func__);
+		tsp_debug_dbg(&info->client->dev, "%s already powered off\n", __func__);
 		goto out;
 	}
 
@@ -1234,12 +1238,12 @@ static int fts_stop_device(struct fts_ts_info *info)
 
 static int fts_start_device(struct fts_ts_info *info)
 {
-	tsp_debug_err(&info->client->dev, "%s\n", __func__);
+	tsp_debug_info(&info->client->dev, "%s\n", __func__);
 
 	mutex_lock(&info->device_mutex);
 
 	if (info->power_state == FTS_POWER_STATE_ACTIVE) {
-		tsp_debug_err(&info->client->dev, "%s already powered on\n", __func__);
+		tsp_debug_dbg(&info->client->dev, "%s already powered on\n", __func__);
 		goto out;
 	}
 
@@ -1257,7 +1261,7 @@ static int fts_start_device(struct fts_ts_info *info)
 	info->palm_pressed = false;
 
 	/* Calibrate touch panel */
-	if (!info->board->disable_tuning)
+	if (!info->board->disable_tuning && !skip_tuning)
 		fts_auto_calibration(info);
 
 	/* Enable finger sense mode. */
