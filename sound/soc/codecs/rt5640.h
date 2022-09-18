@@ -2162,6 +2162,8 @@ struct rt5640_priv {
 
 	bool ext_mic;
 
+    int eq_config;
+
 	/* Jack data */
 	int jack_gpio;
 	bool jack_init_state;
