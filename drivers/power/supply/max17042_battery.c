@@ -1131,11 +1131,15 @@ max17042_parse_dt(struct device *dev)
 
 	ret = of_property_read_u32_array(np, "maxim,cell-char-tbl",
 		temp_cell_char_tbl, ARRAY_SIZE(temp_cell_char_tbl));
-	if (ret < 0)
-		return ERR_PTR(ret);
+	if (ret < 0) {
+		if (ret != -EINVAL)
+			return ERR_PTR(ret);
+	} else {
+		for (i = 0; i < MAX17042_CHARACTERIZATION_DATA_SIZE; i++)
+			config_data->cell_char_tbl[i] = (u16)temp_cell_char_tbl[i];
+	}
 
-	for (i = 0; i < MAX17042_CHARACTERIZATION_DATA_SIZE; i++)
-		config_data->cell_char_tbl[i] = (u16)temp_cell_char_tbl[i];
+	
 
 	/*
 	 * Require current sense resistor value to be specified for
