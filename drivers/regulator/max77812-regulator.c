@@ -339,6 +339,8 @@ static int max77812_config_init(struct max77812_regulator *max77812, int id)
 	case MAX77812_REG_ID_M4:
 		reg_addr = MAX77812_REG_M4_CFG;
 		break;
+	default:
+		return -EINVAL;
 	}
 
 	if (rail_config && mask) {
@@ -527,8 +529,7 @@ static int max77812_probe(struct i2c_client *client,
 		break;
 	default:
 		dev_err(dev, "I2C address invalid: 0x%02x\n", addr);
-		ret = -EINVAL;
-		break;
+		return -EINVAL;
 	}
 
 	for (id = 0; id < max_regs; ++id) {
