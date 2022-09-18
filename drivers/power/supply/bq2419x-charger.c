@@ -55,6 +55,7 @@
 #define bq_chg_err(bq, fmt, ...)			\
 		dev_err(bq->dev, "Charging Fault: " fmt, ##__VA_ARGS__)
 
+#define BQ2419X_INPUT_SYS_MIN_OFFSET	3000
 #define BQ2419X_INPUT_VINDPM_OFFSET	3880
 #define BQ2419X_CHARGE_ICHG_OFFSET	512
 #define BQ2419X_PRE_CHG_IPRECHG_OFFSET	128
@@ -133,6 +134,7 @@ struct bq2419x_chip {
 	bool				shutdown_complete;
 	bool				charging_disabled_on_suspend;
 	bool				thermal_chg_disable;
+	struct bq2419x_reg_info		input_sys;
 	struct bq2419x_reg_info		input_src;
 	struct bq2419x_reg_info		chg_current_control;
 	struct bq2419x_reg_info		prechg_term_control;
@@ -370,6 +372,7 @@ static int bq2419x_val_to_reg(int val, int offset, int div, int nbits,
 static int bq2419x_process_charger_plat_data(struct bq2419x_chip *bq2419x,
 		struct bq2419x_charger_platform_data *chg_pdata)
 {
+	int sys_voltage_input;
 	int voltage_input;
 	int fast_charge_current;
 	int pre_charge_current;
@@ -378,9 +381,11 @@ static int bq2419x_process_charger_plat_data(struct bq2419x_chip *bq2419x,
 	int ir_compensation_voltage;
 	int thermal_regulation_threshold;
 	int charge_voltage_limit;
-	int vindpm, ichg, iprechg, iterm, bat_comp, vclamp, treg, vreg, wtreg;
+	int sys_min, vindpm, ichg, iprechg, iterm, bat_comp, vclamp, treg, vreg, wtreg;
 
 	if (chg_pdata) {
+		sys_voltage_input =
+			chg_pdata->sys_input_voltage_limit_mV ?: 3500;
 		voltage_input = chg_pdata->input_voltage_limit_mV ?: 4200;
 		fast_charge_current =
 			chg_pdata->fast_charge_current_limit_mA ?: 4544;
@@ -397,6 +402,7 @@ static int bq2419x_process_charger_plat_data(struct bq2419x_chip *bq2419x,
 		charge_voltage_limit =
 			chg_pdata->charge_voltage_limit_mV ?: 4208;
 	} else {
+		sys_voltage_input = 3500;
 		voltage_input = 4200;
 		fast_charge_current = 4544;
 		pre_charge_current = 256;
@@ -406,6 +412,11 @@ static int bq2419x_process_charger_plat_data(struct bq2419x_chip *bq2419x,
 		thermal_regulation_threshold = 100;
 		charge_voltage_limit = 4208;
 	}
+
+	sys_min = bq2419x_val_to_reg(sys_voltage_input,
+			BQ2419X_INPUT_SYS_MIN_OFFSET, 100, 3, 0);
+	bq2419x->input_sys.mask = BQ2419x_SYS_MIN_MASK;
+	bq2419x->input_sys.val = sys_min << 1;
 
 	vindpm = bq2419x_val_to_reg(voltage_input,
 			BQ2419X_INPUT_VINDPM_OFFSET, 80, 4, 0);
@@ -502,6 +513,14 @@ static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 			bq2419x->prechg_term_control.val);
 	if (ret < 0) {
 		dev_err(bq2419x->dev, "CHRG_TERM_REG write failed %d\n", ret);
+		return ret;
+	}
+
+	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
+			bq2419x->input_sys.mask,
+			bq2419x->input_sys.val);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "PWR_ON_REG write failed %d\n", ret);
 		return ret;
 	}
 
@@ -1959,6 +1978,14 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client,
 					batt_reg_node, &bq2419x_chg_reg_desc);
 		if (!chg_pdata->ridata)
 			return ERR_PTR(-EINVAL);
+
+		ret = of_property_read_u32(batt_reg_node,
+				"ti,sys-input-voltage-limit-millivolt", &pval);
+		if (ret < 0)
+			ret = of_property_read_u32(batt_reg_node,
+				"ti,sys-input-voltage-limit-mv", &pval);
+		if (!ret)
+			bcharger_pdata->sys_input_voltage_limit_mV = pval;
 
 		ret = of_property_read_u32(batt_reg_node,
 				"ti,input-voltage-limit-millivolt", &pval);

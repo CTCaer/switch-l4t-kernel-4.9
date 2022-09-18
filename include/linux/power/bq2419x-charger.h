@@ -65,6 +65,8 @@
 #define BQ2419X_BOOST_LIM_500_MA	0x00
 #define BQ2419X_BOOST_LIM_1300_MA	0x01
 
+#define BQ2419x_SYS_MIN_MASK		0x0E
+
 #define BQ2419X_ENABLE_CHARGE_MASK	0x30
 #define BQ2419X_ENABLE_VBUS_CHARGE	0x30
 #define BQ2419X_ENABLE_VBUS		0x20
@@ -144,6 +146,7 @@ struct bq2419x_vbus_platform_data {
  * struct bq2419x_charger_platform_data - bq2419x charger platform data.
  */
 struct bq2419x_charger_platform_data {
+	int sys_input_voltage_limit_mV;
 	int input_voltage_limit_mV;
 	int fast_charge_current_limit_mA;
 	int pre_charge_current_limit_mA;
