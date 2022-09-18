@@ -21,8 +21,35 @@
  *
  */
 
-#define BCM_UART_CLOCK_48MHZ	0x01
-#define BCM_UART_CLOCK_24MHZ	0x02
+#define BCM_SCO_PCM_ROUTING_PCM		0x00
+#define BCM_SCO_PCM_ROUTING_TRS		0x01 /* Transport */
+#define BCM_SCO_PCM_ROUTING_CDC		0x02 /* Codec */
+#define BCM_SCO_PCM_ROUTING_I2S		0x03
+
+#define BCM_SCO_PCM_RATE_128_KBPS	0x00
+#define BCM_SCO_PCM_RATE_256_KBPS	0x01
+#define BCM_SCO_PCM_RATE_512_KBPS	0x02
+#define BCM_SCO_PCM_RATE_1024_KBPS	0x03
+#define BCM_SCO_PCM_RATE_2048_KBPS	0x04
+
+#define BCM_UART_CLOCK_48MHZ		0x01
+#define BCM_UART_CLOCK_24MHZ		0x02
+
+struct bcm_update_uart_sco_pcm {
+	__u8 sco_routing;
+	__u8 pcm_interface_rate;
+	__u8 frame_type;
+	__u8 sync_mode;
+	__u8 clock_mode;
+} __packed;
+
+struct bcm_update_uart_sco_pcm_fmt {
+	__u8 lsb_first;
+	__u8 fill_bits;
+	__u8 fill_method;
+	__u8 fill_num;
+	__u8 right_justify;
+} __packed;
 
 struct bcm_update_uart_baud_rate {
 	__le16 zero;

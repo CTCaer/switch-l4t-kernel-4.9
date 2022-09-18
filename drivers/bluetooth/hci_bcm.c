@@ -120,6 +120,7 @@ struct bcm_device {
 	u32			oper_speed;
 	int			irq;
 	bool			irq_active_low;
+	bool			sco_over_pcm;
 
 #ifdef CONFIG_PM
 	struct hci_uart		*hu;
@@ -191,6 +192,49 @@ static int bcm_set_baudrate(struct hci_uart *hu, unsigned int speed)
 	if (IS_ERR(skb)) {
 		int err = PTR_ERR(skb);
 		bt_dev_err(hdev, "BCM: failed to write update baudrate (%d)",
+			   err);
+		return err;
+	}
+
+	kfree_skb(skb);
+
+	return 0;
+}
+
+static int bcm_set_sco_pcm(struct hci_uart *hu)
+{
+	struct hci_dev *hdev = hu->hdev;
+	struct sk_buff *skb;
+	struct bcm_update_uart_sco_pcm param1 = { 0 };
+	struct bcm_update_uart_sco_pcm_fmt param2 = { 0 };
+
+	bt_dev_info(hdev, "Set Controller SCO over PCM\n");
+
+	param1.sco_routing = BCM_SCO_PCM_ROUTING_PCM;
+	param1.pcm_interface_rate = BCM_SCO_PCM_RATE_512_KBPS;
+
+	/* This Broadcom specific command changes the UART's controller SCO
+	 * PCM config.
+	 */
+	skb = __hci_cmd_sync(hdev, 0xfc1c, sizeof(param1), &param1,
+			     HCI_INIT_TIMEOUT);
+	if (IS_ERR(skb)) {
+		int err = PTR_ERR(skb);
+		bt_dev_err(hdev, "BCM: failed to write sco pcm config (%d)",
+			   err);
+		return err;
+	}
+
+	kfree_skb(skb);
+
+	/* This Broadcom specific command changes the UART's controller SCO
+	 * PCM format.
+	 */
+	skb = __hci_cmd_sync(hdev, 0xfc1e, sizeof(param2), &param2,
+			     HCI_INIT_TIMEOUT);
+	if (IS_ERR(skb)) {
+		int err = PTR_ERR(skb);
+		bt_dev_err(hdev, "BCM: failed to write sco pcm format (%d)",
 			   err);
 		return err;
 	}
@@ -438,6 +482,7 @@ out:
 	if (bcm->dev) {
 		hu->init_speed = bcm->dev->init_speed;
 		hu->oper_speed = 3000000;
+		hu->sco_over_pcm = bcm->dev->sco_over_pcm;
 		err = bcm_gpio_set_power(bcm->dev, true);
 		if (err)
 			goto err_unset_hu;
@@ -566,6 +611,12 @@ finalize:
 	err = btbcm_finalize(hu->hdev);
 	if (err)
 		return err;
+
+	if (hu->sco_over_pcm) {
+		err = bcm_set_sco_pcm(hu);
+		if (err)
+			return err;
+	}
 
 	if (!bcm_request_irq(bcm))
 		err = bcm_setup_sleep(hu);
@@ -1002,6 +1053,7 @@ static int bcm_acpi_probe(struct bcm_device *dev)
 static int bcm_of_probe(struct bcm_device *bdev)
 {
 	device_property_read_u32(bdev->dev, "max-speed", &bdev->oper_speed);
+	bdev->sco_over_pcm = device_property_read_bool(bdev->dev, "brcm,sco-pcm");
 	return 0;
 }
 

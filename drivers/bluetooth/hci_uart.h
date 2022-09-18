@@ -93,8 +93,9 @@ struct hci_uart {
 	struct sk_buff		*tx_skb;
 	unsigned long		tx_state;
 
-	unsigned int init_speed;
-	unsigned int oper_speed;
+	unsigned int		init_speed;
+	unsigned int		oper_speed;
+	bool			sco_over_pcm;
 
 	u8			alignment;
 	u8			padding;
