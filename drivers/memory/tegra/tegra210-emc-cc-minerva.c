@@ -1234,7 +1234,7 @@ static u32 _minerva_periodic_compensation_handler(struct emc_table *src_emc_entr
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U0_INDEX] = 0;
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U0_INDEX] = 0;
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D1U0_INDEX] = 0;
-		udelay(1); // Avoid unaligned access on O2.
+		ndelay(1); // Avoid unaligned access on O2.
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D0U1_INDEX] = 0;
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C1D0U1_INDEX] = 0;
 		dst_emc_entry->ptfv_list[PTFV_DQSOSC_MOVAVG_C0D1U1_INDEX] = 0;
@@ -1251,7 +1251,7 @@ static u32 _minerva_periodic_compensation_handler(struct emc_table *src_emc_entr
 	return _minerva_update_clock_tree_delay(src_emc_entry, dst_emc_entry, dram_dev_num, channel1_enabled, DVFS_UPDATE);
 }
 
-u32 __do_periodic_emc_compensation_icosa(
+u32 __do_periodic_emc_compensation_minerva(
 			struct emc_table *current_timing)
 {
 	u32 dram_dev_num, adel, i, pd_mask;
@@ -1353,7 +1353,7 @@ u32 __do_periodic_emc_compensation_icosa(
 /*
  * Do the clock change sequence.
  */
-void emc_set_clock_icosa(struct emc_table *next_timing,
+void emc_set_clock_minerva(struct emc_table *next_timing,
 			  struct emc_table *last_timing,
 			  int training, u32 clksrc)
 {

@@ -2027,10 +2027,10 @@ void emc_set_clock_r21021(struct emc_table *next_timing,
 			  struct emc_table *last_timing,
 			  int training, u32 clksrc);
 u32  __do_periodic_emc_compensation_r21021(struct emc_table *current_timing);
-void emc_set_clock_icosa(struct emc_table *next_timing,
+void emc_set_clock_minerva(struct emc_table *next_timing,
 			  struct emc_table *last_timing,
 			  int training, u32 clksrc);
-u32  __do_periodic_emc_compensation_icosa(struct emc_table *current_timing);
+u32  __do_periodic_emc_compensation_minerva(struct emc_table *current_timing);
 int tegra_emc_dt_parse_pdata(struct platform_device *pdev,
 			     struct emc_table **tables,
 			     struct emc_table **derated_tables,
