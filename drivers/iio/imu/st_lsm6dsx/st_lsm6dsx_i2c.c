@@ -63,6 +63,18 @@ static const struct of_device_id st_lsm6dsx_i2c_of_match[] = {
 		.data = (void *)ST_LSM6DSM_ID,
 	},
 	{
+		.compatible = "st,lsm6do",
+		.data = (void *)ST_LSM6DSO_ID,
+	},
+	{
+		.compatible = "st,lsm6dox",
+		.data = (void *)ST_LSM6DSOX_ID,
+	},
+	{
+		.compatible = "st,lsm6dop",
+		.data = (void *)ST_LSM6DSOP_ID,
+	},
+	{
 		.compatible = "st,ism330dlc",
 		.data = (void *)ST_ISM330DLC_ID,
 	},
@@ -75,6 +87,9 @@ static const struct i2c_device_id st_lsm6dsx_i2c_id_table[] = {
 	{ ST_LSM6DS3H_DEV_NAME, ST_LSM6DS3H_ID },
 	{ ST_LSM6DSL_DEV_NAME, ST_LSM6DSL_ID },
 	{ ST_LSM6DSM_DEV_NAME, ST_LSM6DSM_ID },
+	{ ST_LSM6DSO_DEV_NAME, ST_LSM6DSO_ID },
+	{ ST_LSM6DSOX_DEV_NAME, ST_LSM6DSOX_ID },
+	{ ST_LSM6DSOP_DEV_NAME, ST_LSM6DSOP_ID },
 	{ ST_ISM330DLC_DEV_NAME, ST_ISM330DLC_ID },
 	{},
 };

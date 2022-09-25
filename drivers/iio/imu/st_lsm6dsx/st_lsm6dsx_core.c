@@ -81,6 +81,8 @@
 #define ST_LSM6DSX_GYRO_FS_1000_GAIN		IIO_DEGREE_TO_RAD(35000)
 #define ST_LSM6DSX_GYRO_FS_2000_GAIN		IIO_DEGREE_TO_RAD(70000)
 
+#define ST_LSM6DSX_TS_SENSITIVITY		25000UL /* 25us */
+
 struct st_lsm6dsx_odr {
 	u16 hz;
 	u8 val;
@@ -294,9 +296,40 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 			},
 		},
 	},
+	{
+		.wai = 0x6c,
+		.max_fifo_size = 512,
+		.id = {
+			[0] = ST_LSM6DSO_ID,
+			[1] = ST_LSM6DSOX_ID,
+			[2] = ST_LSM6DSOP_ID,
+		},
+		.fifo_ops = {
+			.fifo_th = {
+				.addr = 0x07,
+				.mask = GENMASK(8, 0),
+			},
+			.fifo_diff = {
+				.addr = 0x3a,
+				.mask = GENMASK(9, 0),
+			},
+			.th_wl = 1,
+		},
+		.ts_settings = {
+			.timer_en = {
+				.addr = 0x19,
+				.mask = BIT(5),
+			},
+			.decimator = {
+				.addr = 0x0a,
+				.mask = GENMASK(7, 6),
+			},
+			.freq_fine = 0x63,
+		},
+	},
 };
 
-#define ST_LSM6DSX_CHANNEL(chan_type, addr, mod, scan_idx)		\
+#define ST_LSM6DSX_CHANNEL(chan_type, addr, mod, scan_idx, _ext_info)	\
 {									\
 	.type = chan_type,						\
 	.address = addr,						\
@@ -312,25 +345,31 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		.storagebits = 16,					\
 		.endianness = IIO_LE,					\
 	},								\
+	.ext_info = _ext_info,						\
 }
+
+static const struct iio_chan_spec_ext_info st_lsm6dsx_ext_infos[] = {
+	IIO_MOUNT_MATRIX(IIO_SHARED_BY_ALL, st_lsm6dsx_get_mount_matrix),
+	{},
+};
 
 static const struct iio_chan_spec st_lsm6dsx_acc_channels[] = {
 	ST_LSM6DSX_CHANNEL(IIO_ACCEL, ST_LSM6DSX_REG_ACC_OUT_X_L_ADDR,
-			   IIO_MOD_X, 0),
+			   IIO_MOD_X, 0, st_lsm6dsx_ext_infos),
 	ST_LSM6DSX_CHANNEL(IIO_ACCEL, ST_LSM6DSX_REG_ACC_OUT_Y_L_ADDR,
-			   IIO_MOD_Y, 1),
+			   IIO_MOD_Y, 1, st_lsm6dsx_ext_infos),
 	ST_LSM6DSX_CHANNEL(IIO_ACCEL, ST_LSM6DSX_REG_ACC_OUT_Z_L_ADDR,
-			   IIO_MOD_Z, 2),
+			   IIO_MOD_Z, 2, st_lsm6dsx_ext_infos),
 	IIO_CHAN_SOFT_TIMESTAMP(3),
 };
 
 static const struct iio_chan_spec st_lsm6dsx_gyro_channels[] = {
 	ST_LSM6DSX_CHANNEL(IIO_ANGL_VEL, ST_LSM6DSX_REG_GYRO_OUT_X_L_ADDR,
-			   IIO_MOD_X, 0),
+			   IIO_MOD_X, 0, st_lsm6dsx_ext_infos),
 	ST_LSM6DSX_CHANNEL(IIO_ANGL_VEL, ST_LSM6DSX_REG_GYRO_OUT_Y_L_ADDR,
-			   IIO_MOD_Y, 1),
+			   IIO_MOD_Y, 1, st_lsm6dsx_ext_infos),
 	ST_LSM6DSX_CHANNEL(IIO_ANGL_VEL, ST_LSM6DSX_REG_GYRO_OUT_Z_L_ADDR,
-			   IIO_MOD_Z, 2),
+			   IIO_MOD_Z, 2, st_lsm6dsx_ext_infos),
 	IIO_CHAN_SOFT_TIMESTAMP(3),
 };
 
@@ -456,6 +495,16 @@ int st_lsm6dsx_sensor_disable(struct st_lsm6dsx_sensor *sensor)
 	sensor->hw->enable_mask &= ~BIT(sensor->id);
 
 	return 0;
+}
+
+const struct iio_mount_matrix *
+st_lsm6dsx_get_mount_matrix(struct iio_dev *iio_dev,
+			      const struct iio_chan_spec *chan)
+{
+	struct st_lsm6dsx_sensor *sensor = iio_priv(iio_dev);
+	struct st_lsm6dsx_hw *hw = sensor->hw;
+
+	return &hw->orientation;
 }
 
 static int st_lsm6dsx_read_oneshot(struct st_lsm6dsx_sensor *sensor,
@@ -744,6 +793,24 @@ static int st_lsm6dsx_init_hw_timer(struct st_lsm6dsx_hw *hw)
 		if (err < 0)
 			return err;
 	}
+
+	/* calibrate timestamp sensitivity */
+	hw->ts_gain = ST_LSM6DSX_TS_SENSITIVITY;
+	if (ts_settings->freq_fine) {
+		err = regmap_read(hw->regmap, ts_settings->freq_fine, &val);
+		if (err < 0)
+			return err;
+
+		/*
+		 * linearize the AN5192 formula:
+		 * 1 / (1 + x) ~= 1 - x (Taylor’s Series)
+		 * ttrim[s] = 1 / (40000 * (1 + 0.0015 * val))
+		 * ttrim[ns] ~= 25000 - 37.5 * val
+		 * ttrim[ns] ~= 25000 - (37500 * val) / 1000
+		 */
+		hw->ts_gain -= ((s8)val * 37500) / 1000;
+	}
+
 	return 0;
 }
 
@@ -860,6 +927,12 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id, const char *name,
 	hw->dev = dev;
 	hw->irq = irq;
 	hw->regmap = regmap;
+
+	err = of_iio_read_mount_matrix(dev, "mount-matrix", &hw->orientation);
+	if (err) {
+		dev_err(dev, "failed to retrieve mounting matrix %d\n", err);
+		return err;
+	}
 
 	err = st_lsm6dsx_check_whoami(hw, hw_id);
 	if (err < 0)
