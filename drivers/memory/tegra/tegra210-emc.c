@@ -181,8 +181,8 @@ static struct supported_sequence supported_seqs[] = {
 	},
 	{
 		0x7,
-		emc_set_clock_icosa,
-		__do_periodic_emc_compensation_icosa,
+		emc_set_clock_minerva,
+		__do_periodic_emc_compensation_minerva,
 		"Minerva Training Cell v1.2_lpddr4"
 	},
 	{
