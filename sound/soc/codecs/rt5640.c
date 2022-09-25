@@ -566,6 +566,15 @@ static const char * const rt5640_clsd_spk_ratio[] = {"1.66x", "1.83x", "1.94x",
 static SOC_ENUM_SINGLE_DECL(rt5640_clsd_spk_ratio_enum, RT5640_CLS_D_OUT,
 			    RT5640_CLSD_RATIO_SFT, rt5640_clsd_spk_ratio);
 
+static const struct soc_mixer_control dac1_spk_playback_vol = {
+	.reg = RT5640_DAC1_DIG_VOL,
+	.rreg = RT5640_DAC1_DIG_VOL,
+	.shift = RT5640_L_VOL_SFT,
+	.rshift = RT5640_R_VOL_SFT,
+	.max = CUSTOM_DAC_SPK_MAX_VAL_FRIG,
+	.platform_max = CUSTOM_DAC_SPK_MAX_VAL_FRIG,
+};
+
 static struct snd_kcontrol_new rt5640_snd_controls[] = {
 	/* Speaker Output Volume */
 	SOC_DOUBLE("Speaker Channel Switch", RT5640_SPK_VOL,
@@ -3111,9 +3120,7 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 			if (!strcmp(rt5640_snd_controls[i].name,
 				    "DAC1 Speaker Playback Volume")) {
 				rt5640_snd_controls[i].private_value =
-					SOC_DOUBLE_VALUE(RT5640_DAC1_DIG_VOL,
-					     RT5640_L_VOL_SFT, RT5640_R_VOL_SFT,
-					     CUSTOM_DAC_SPK_MAX_VAL_FRIG, 0, 0);
+					(unsigned long)&dac1_spk_playback_vol;
 				break;
 			}
 		}
