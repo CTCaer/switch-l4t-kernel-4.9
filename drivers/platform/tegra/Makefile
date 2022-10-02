@@ -23,8 +23,6 @@ obj-y += powergate/
 
 obj-$(CONFIG_PSTORE_RAM) += tegra_ramoops.o
 
-obj-$(CONFIG_TEGRA_CPU_VOLT_CAP)	+= tegra_volt_cap.o
-
 obj-y					+= tegra-hv-mode.o
 
 obj-$(CONFIG_TEGRA_HV_XHCI_DEBUG)	+= tegra-hv-xhci-debug.o
