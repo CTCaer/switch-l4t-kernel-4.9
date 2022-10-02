@@ -3737,7 +3737,7 @@ int shrink_memory_handler(struct ctl_table *table, int write,
 		ret = proc_dointvec(table, write, buffer, lenp, ppos);
 		if(ret == 0) {
 			nr_to_reclaim = min(nr_total_pages/2,
-					(shrink_memory_size * 1024 *1024) >> PAGE_SHIFT);
+					((unsigned long)shrink_memory_size * 1024 *1024) >> PAGE_SHIFT);
 			sc.nr_to_reclaim = nr_to_reclaim;
 			nr_reclaimed = __shrink_all_memory(&sc);
 			pr_info("Reclaimed %lu pages\n", nr_reclaimed);
