@@ -120,7 +120,7 @@ struct bcm_device {
 	u32			oper_speed;
 	int			irq;
 	bool			irq_active_low;
-	bool			sco_over_pcm;
+	u32			sco_routing;
 
 #ifdef CONFIG_PM
 	struct hci_uart		*hu;
@@ -201,16 +201,16 @@ static int bcm_set_baudrate(struct hci_uart *hu, unsigned int speed)
 	return 0;
 }
 
-static int bcm_set_sco_pcm(struct hci_uart *hu)
+static int bcm_set_sco_cfg(struct hci_uart *hu)
 {
 	struct hci_dev *hdev = hu->hdev;
 	struct sk_buff *skb;
-	struct bcm_update_uart_sco_pcm param1 = { 0 };
+	struct bcm_update_uart_sco_pcm param1;
 	struct bcm_update_uart_sco_pcm_fmt param2 = { 0 };
 
-	bt_dev_info(hdev, "Set Controller SCO over PCM\n");
+	bt_dev_dbg(hdev, "Set Controller SCO config (%d)\n", hu->sco_routing);
 
-	param1.sco_routing = BCM_SCO_PCM_ROUTING_PCM;
+	param1.sco_routing = hu->sco_routing;
 	param1.pcm_interface_rate = BCM_SCO_PCM_RATE_512_KBPS;
 
 	/* This Broadcom specific command changes the UART's controller SCO
@@ -230,16 +230,21 @@ static int bcm_set_sco_pcm(struct hci_uart *hu)
 	/* This Broadcom specific command changes the UART's controller SCO
 	 * PCM format.
 	 */
-	skb = __hci_cmd_sync(hdev, 0xfc1e, sizeof(param2), &param2,
-			     HCI_INIT_TIMEOUT);
-	if (IS_ERR(skb)) {
-		int err = PTR_ERR(skb);
-		bt_dev_err(hdev, "BCM: failed to write sco pcm format (%d)",
-			   err);
-		return err;
-	}
+	if (hu->sco_routing == BCM_SCO_PCM_ROUTING_PCM ||
+	    hu->sco_routing == BCM_SCO_PCM_ROUTING_I2S) {
+		skb = __hci_cmd_sync(hdev, 0xfc1e, sizeof(param2), &param2,
+				     HCI_INIT_TIMEOUT);
+		if (IS_ERR(skb)) {
+			int err = PTR_ERR(skb);
+			bt_dev_err(hdev,
+				   "BCM: failed to write sco pcm format (%d)",
+				   err);
+			return err;
+		}
 
-	kfree_skb(skb);
+		kfree_skb(skb);
+	}
+	
 
 	return 0;
 }
@@ -482,7 +487,7 @@ out:
 	if (bcm->dev) {
 		hu->init_speed = bcm->dev->init_speed;
 		hu->oper_speed = 3000000;
-		hu->sco_over_pcm = bcm->dev->sco_over_pcm;
+		hu->sco_routing = bcm->dev->sco_routing;
 		err = bcm_gpio_set_power(bcm->dev, true);
 		if (err)
 			goto err_unset_hu;
@@ -605,18 +610,18 @@ static int bcm_setup(struct hci_uart *hu)
 			host_set_baudrate(hu, speed);
 	}
 
+	if (hu->sco_routing >= 0) {
+		err = bcm_set_sco_cfg(hu);
+		if (err)
+			return err;
+	}
+
 finalize:
 	release_firmware(fw);
 
 	err = btbcm_finalize(hu->hdev);
 	if (err)
 		return err;
-
-	if (hu->sco_over_pcm) {
-		err = bcm_set_sco_pcm(hu);
-		if (err)
-			return err;
-	}
 
 	if (!bcm_request_irq(bcm))
 		err = bcm_setup_sleep(hu);
@@ -1053,7 +1058,8 @@ static int bcm_acpi_probe(struct bcm_device *dev)
 static int bcm_of_probe(struct bcm_device *bdev)
 {
 	device_property_read_u32(bdev->dev, "max-speed", &bdev->oper_speed);
-	bdev->sco_over_pcm = device_property_read_bool(bdev->dev, "brcm,sco-pcm");
+	if (device_property_read_u32(bdev->dev, "sco-routing", &bdev->sco_routing))
+		bdev->sco_routing = -1;
 	return 0;
 }
 

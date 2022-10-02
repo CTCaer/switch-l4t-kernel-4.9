@@ -95,7 +95,7 @@ struct hci_uart {
 
 	unsigned int		init_speed;
 	unsigned int		oper_speed;
-	bool			sco_over_pcm;
+	unsigned int		sco_routing;
 
 	u8			alignment;
 	u8			padding;
