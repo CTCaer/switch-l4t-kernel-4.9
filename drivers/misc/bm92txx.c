@@ -2452,7 +2452,7 @@ static int __init bm92t_init(void)
 {
 	return i2c_add_driver(&bm92t_i2c_driver);
 }
-device_initcall(bm92t_init);
+subsys_initcall_sync(bm92t_init);
 
 static void __exit bm92t_exit(void)
 {
