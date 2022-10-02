@@ -576,6 +576,8 @@ static int bq2419x_soc_regulation_control(struct bq2419x_chip *bq2419x)
 	 *  Reached min    | Enabled
 	 */
 	battery_soc = battery_gauge_get_battery_soc(bq2419x->bc_dev);
+	if (battery_soc < 0)
+		return -ENODEV;
 
 	if (!bq2419x->soc_reg_limit ||
 	    (battery_soc > 0 && battery_soc <= limit_min)) {
@@ -624,15 +626,15 @@ static void bq2419x_soc_regulation_work_handler(struct work_struct *work)
 		mutex_lock(&bq2419x->mutex);
 		res = bq2419x_soc_regulation_control(bq2419x);
 		if (res < 0)
-			dev_err(bq2419x->dev,
-				"PWR_ON_REG update failed %d", res);
+			dev_warn(bq2419x->dev,
+				"soc regulation failed %d", res);
 		mutex_unlock(&bq2419x->mutex);
 	} else if (bq2419x->is_otg_connected)
 		res = 0;
 	mutex_unlock(&bq2419x->otg_mutex);
 
 out:
-	/* If failed to set or active regulation */
+	/* If failed to set or in active regulation, re-schedule. */
 	if (res < 0 || bq2419x->soc_reg_limit)
 		schedule_delayed_work(&bq2419x->soc_regulation_work,
 				msecs_to_jiffies(60 * 1000));
@@ -2231,9 +2233,6 @@ static int bq2419x_probe(struct i2c_client *client,
 	struct device_node *vbus_np = NULL;
 	int ret = 0;
 	int val = 0;
-
-	if (!battery_gauge_present())
-		return -EPROBE_DEFER;
 
 	if (client->dev.platform_data)
 		pdata = client->dev.platform_data;
