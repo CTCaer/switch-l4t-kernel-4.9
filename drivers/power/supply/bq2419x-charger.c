@@ -2695,7 +2695,7 @@ static int __init bq2419x_module_init(void)
 {
 	return i2c_add_driver(&bq2419x_i2c_driver);
 }
-rootfs_initcall(bq2419x_module_init);
+subsys_initcall(bq2419x_module_init);
 
 static void __exit bq2419x_cleanup(void)
 {
