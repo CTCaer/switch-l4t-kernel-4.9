@@ -2850,6 +2850,58 @@ static void tegra_xusb_host_vbus_power_off(struct tegra_xusb *tegra)
 	}
 }
 
+static void tegra_xusb_deinit_extcon(struct tegra_xusb *tegra)
+{
+	int i;
+	struct xusb_otg_port *otg_port;
+
+	for (i = 0; i < tegra->otg_port_num; i++) {
+		otg_port = &tegra->otg_ports[i];
+		if (!IS_ERR(otg_port->edev)) {
+			extcon_unregister_notifier(otg_port->edev,
+					EXTCON_USB_HOST, &tegra->id_extcons_nb);
+			otg_port->edev = NULL;
+		}
+	}
+}
+
+static int tegra_xusb_init_extcon(struct tegra_xusb *tegra)
+{
+	int err = 0, i;
+	char edev_name[] = "idx";
+	struct xusb_otg_port *port;
+
+	INIT_WORK(&tegra->id_extcons_work, tegra_xhci_id_extcon_work);
+	tegra->id_extcons_nb.notifier_call = tegra_xhci_id_notifier;
+
+	for (i = 0; i < tegra->otg_port_num; i++) {
+		struct extcon_dev *edev;
+
+		port = &tegra->otg_ports[i];
+		edev_name[2] = (i == 0) ? 0 : '0' + i;
+		edev = extcon_get_extcon_dev_by_cable(tegra->dev, edev_name);
+		if (!IS_ERR(edev)) {
+			dev_info(tegra->dev, "extcon %d: %p %s\n", i,
+				edev, edev_name);
+			extcon_register_notifier(edev, EXTCON_USB_HOST,
+					&tegra->id_extcons_nb);
+			port->edev = edev;
+		} else if (PTR_ERR(edev) == -EPROBE_DEFER) {
+			err = -EPROBE_DEFER;
+			goto exit;
+		} else {
+			dev_info(tegra->dev, "no USB ID extcon found: %s\n",
+				edev_name);
+			goto exit;
+		}
+	}
+exit:
+	if (err)
+		tegra_xusb_deinit_extcon(tegra);
+
+	return err;
+}
+
 static void tegra_xusb_probe_finish(const struct firmware *fw, void *context)
 {
 	struct tegra_xusb *tegra = context;
@@ -2998,6 +3050,12 @@ static void tegra_xusb_probe_finish(const struct firmware *fw, void *context)
 		}
 	}
 
+	if (tegra_platform_is_silicon() && tegra->otg_port_num) {
+		ret = tegra_xusb_init_extcon(tegra);
+		if (ret)
+			goto remove_padctl_irq;
+	}
+
 	tegra_xhci_update_otg_role(tegra, true);
 
 	if (tegra->hsic_set_idle) {
@@ -3016,7 +3074,7 @@ static void tegra_xusb_probe_finish(const struct firmware *fw, void *context)
 	if (ret) {
 		dev_err(dev,
 			"Can't register reload_hcd attribute\n");
-		goto remove_padctl_irq;
+		goto unregister_extcon;
 	}
 
 	if (IS_ERR(devm_tegrafw_register(dev, NULL,
@@ -3035,6 +3093,11 @@ static void tegra_xusb_probe_finish(const struct firmware *fw, void *context)
 	return;
 
 	/* Free up as much as we can and wait to be unbound. */
+unregister_extcon:
+	if (tegra_platform_is_silicon() && tegra->otg_port_num) {
+		cancel_work_sync(&tegra->id_extcons_work);
+		tegra_xusb_deinit_extcon(tegra);
+	}
 remove_padctl_irq:
 	if (!tegra->soc->is_xhci_vf) {
 		devm_free_irq(dev, tegra->padctl_irq, tegra);
@@ -3313,58 +3376,6 @@ static struct attribute_group tegra_xhci_attr_group = {
 	.attrs = tegra_xhci_attrs,
 };
 
-static void tegra_xusb_deinit_extcon(struct tegra_xusb *tegra)
-{
-	int i;
-	struct xusb_otg_port *otg_port;
-
-	for (i = 0; i < tegra->otg_port_num; i++) {
-		otg_port = &tegra->otg_ports[i];
-		if (!IS_ERR(otg_port->edev)) {
-			extcon_unregister_notifier(otg_port->edev,
-					EXTCON_USB_HOST, &tegra->id_extcons_nb);
-			otg_port->edev = NULL;
-		}
-	}
-}
-
-static int tegra_xusb_init_extcon(struct tegra_xusb *tegra)
-{
-	int err = 0, i;
-	char edev_name[] = "idx";
-	struct xusb_otg_port *port;
-
-	INIT_WORK(&tegra->id_extcons_work, tegra_xhci_id_extcon_work);
-	tegra->id_extcons_nb.notifier_call = tegra_xhci_id_notifier;
-
-	for (i = 0; i < tegra->otg_port_num; i++) {
-		struct extcon_dev *edev;
-
-		port = &tegra->otg_ports[i];
-		edev_name[2] = (i == 0) ? 0 : '0' + i;
-		edev = extcon_get_extcon_dev_by_cable(tegra->dev, edev_name);
-		if (!IS_ERR(edev)) {
-			dev_info(tegra->dev, "extcon %d: %p %s\n", i,
-				edev, edev_name);
-			extcon_register_notifier(edev, EXTCON_USB_HOST,
-					&tegra->id_extcons_nb);
-			port->edev = edev;
-		} else if (PTR_ERR(edev) == -EPROBE_DEFER) {
-			err = -EPROBE_DEFER;
-			goto exit;
-		} else {
-			dev_info(tegra->dev, "no USB ID extcon found: %s\n",
-				edev_name);
-			goto exit;
-		}
-	}
-exit:
-	if (err)
-		tegra_xusb_deinit_extcon(tegra);
-
-	return err;
-}
-
 static int tegra_xusb_probe(struct platform_device *pdev)
 {
 	struct resource *res, *regs;
@@ -3635,17 +3646,11 @@ static int tegra_xusb_probe(struct platform_device *pdev)
 	if (tegra->soc->disable_hsic_wake)
 		tegra_xusb_disable_hsic_wake(tegra);
 
-	if (tegra_platform_is_silicon() && tegra->otg_port_num) {
-		err = tegra_xusb_init_extcon(tegra);
-		if (err)
-			goto powergate_partitions;
-	}
-
 	err = sysfs_create_file(&pdev->dev.kobj, &dev_attr_downgrade_usb3.attr);
 	if (err) {
 		dev_err(&pdev->dev,
 			"failed to create tegra sysfs file downgrade_usb3\n");
-		goto unregister_extcon;
+		goto powergate_partitions;
 	}
 
 	if (tegra->soc->is_xhci_vf) {
@@ -3685,11 +3690,6 @@ static int tegra_xusb_probe(struct platform_device *pdev)
 
 err_create_sysfs:
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_downgrade_usb3.attr);
-unregister_extcon:
-	if (tegra_platform_is_silicon() && tegra->otg_port_num) {
-		cancel_work_sync(&tegra->id_extcons_work);
-		tegra_xusb_deinit_extcon(tegra);
-	}
 powergate_partitions:
 	if (tegra->xhci_err_init && tegra->dev != NULL) {
 		sysfs_remove_group(&tegra->dev->kobj,
