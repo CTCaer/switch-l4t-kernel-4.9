@@ -797,6 +797,9 @@ static int joycon_read_stick_calibration(struct joycon_ctlr *ctlr, u16 cal_addr,
 static const u16 DFLT_STICK_CAL_CEN = 2000;
 static const u16 DFLT_STICK_CAL_MAX = 3500;
 static const u16 DFLT_STICK_CAL_MIN = 500;
+static const u16 DFLT_HORI_STICK_CAL_CEN = 2048;
+static const u16 DFLT_HORI_STICK_CAL_MAX = 4095;
+static const u16 DFLT_HORI_STICK_CAL_MIN = 0;
 static int joycon_request_calibration(struct joycon_ctlr *ctlr)
 {
 	u16 stick_addr = JC_CAL_FCT_DATA_LEFT_ADDR;
@@ -2068,13 +2071,13 @@ static int joycon_handshake(struct joycon_ctlr *ctlr)
 		dev_info(dev, "completed handshake\n");
 		goto exit;
 	} else {
-		ctlr->stick_cal_x.center = DFLT_STICK_CAL_CEN;
-		ctlr->stick_cal_x.max = DFLT_STICK_CAL_MAX;
-		ctlr->stick_cal_x.min = DFLT_STICK_CAL_MIN;
+		ctlr->stick_cal_x.center = DFLT_HORI_STICK_CAL_CEN;
+		ctlr->stick_cal_x.max = DFLT_HORI_STICK_CAL_MAX;
+		ctlr->stick_cal_x.min = DFLT_HORI_STICK_CAL_MIN;
 
-		ctlr->stick_cal_y.center = DFLT_STICK_CAL_CEN;
-		ctlr->stick_cal_y.max = DFLT_STICK_CAL_MAX;
-		ctlr->stick_cal_y.min = DFLT_STICK_CAL_MIN;
+		ctlr->stick_cal_y.center = DFLT_HORI_STICK_CAL_CEN;
+		ctlr->stick_cal_y.max = DFLT_HORI_STICK_CAL_MAX;
+		ctlr->stick_cal_y.min = DFLT_HORI_STICK_CAL_MIN;
 		dev_info(dev, "completed handshake - HORI\n");
 		goto exit;
 	}
