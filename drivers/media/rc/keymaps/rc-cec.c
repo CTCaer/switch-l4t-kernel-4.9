@@ -175,7 +175,7 @@ static void __exit exit_rc_map_cec(void)
 	rc_map_unregister(&cec_map);
 }
 
-module_init(init_rc_map_cec);
+subsys_initcall_sync(init_rc_map_cec);
 module_exit(exit_rc_map_cec);
 
 MODULE_LICENSE("GPL");
