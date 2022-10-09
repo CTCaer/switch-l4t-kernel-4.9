@@ -159,6 +159,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #endif
 
 #if defined(CONFIG_TEGRA_NVMAP)
+	show_val_kb(m, "NvMapCIramUsed: ", nvmap_carveout_iram_get_used_pages());
+	show_val_kb(m, "NvMapCVprUsed:  ", nvmap_carveout_vpr_get_used_pages());
+	show_val_kb(m, "NvMapCVidMUsed: ", nvmap_carveout_vidmem_get_used_pages());
+	show_val_kb(m, "NvMapCGenUsed:  ", nvmap_carveout_gen_get_used_pages());
+	show_val_kb(m, "NvMapCrvTotal:  ", nvmap_carveout_total_get_used_pages());
 	show_val_kb(m, "NvMapMemFree:   ", nvmap_page_pool_get_unused_pages());
 	show_val_kb(m, "NvMapMemUsed:   ", nvmap_iovmm_get_used_pages());
 #endif
