@@ -525,7 +525,7 @@ static char **realloc_argv(unsigned *array_size, char **old_argv)
 		gfp = GFP_NOIO;
 	}
 	argv = kmalloc(new_size * sizeof(*argv), gfp);
-	if (argv) {
+	if (argv && old_argv) {
 		memcpy(argv, old_argv, *array_size * sizeof(*argv));
 		*array_size = new_size;
 	}
