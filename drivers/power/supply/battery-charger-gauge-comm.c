@@ -758,11 +758,12 @@ struct battery_gauge_dev *battery_gauge_register(struct device *dev,
 		bg_dev->tz_name = kstrdup(bgi->tz_name, GFP_KERNEL);
 		bg_dev->battery_tz = thermal_zone_get_zone_by_name(
 			bg_dev->tz_name);
-		if (IS_ERR(bg_dev->battery_tz))
+		if (IS_ERR(bg_dev->battery_tz)) {
 			dev_info(dev,
 			"Battery thermal zone %s is not registered yet\n",
 			bg_dev->tz_name);
 			bg_dev->battery_tz = NULL;
+		}	
 	}
 #endif
 
