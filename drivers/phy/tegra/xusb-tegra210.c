@@ -395,6 +395,26 @@ to_tegra210_xusb_padctl(struct tegra_xusb_padctl *padctl)
 	return container_of(padctl, struct tegra210_xusb_padctl, base);
 }
 
+/*
+ * HW workaround for board with a single usb port and usb3 forcibly disabled.
+ * In such cases, at least one port must be mapped. For t210b01 it's handled
+ * by initializing the missing port.
+ */
+static int usb3_no_port_mapping_war(struct tegra_xusb_padctl *padctl)
+{
+	struct device_node *np;
+	u32 value;
+	int err;
+
+	np = padctl->dev->of_node;
+	err = of_property_read_u32(np, "usb3-no-mapping-war", &value);
+
+	if (err || !value)
+		return 0;
+
+	return 1;
+}
+
 static int t210b01_compatible(struct tegra_xusb_padctl *padctl)
 {
 	struct device_node *np;
@@ -1013,7 +1033,7 @@ static int tegra210_uphy_init(struct tegra_xusb_padctl *padctl)
 		tegra210_xusb_padctl_disable_pad_protection(padctl);
 
 	/* Initialize Unused USB3 port on T210b01 for power saving */
-	if (t210b01_compatible(padctl) == 1)
+	if (t210b01_compatible(padctl) == 1  || usb3_no_port_mapping_war(padctl))
 		tegra210b01_xusb_padctl_init_ss_port_3(padctl);
 
 	/* bring all PCIE PADs out of IDDQ */
@@ -3586,7 +3606,7 @@ static int tegra210_xusb_padctl_resume_noirq(struct tegra_xusb_padctl *padctl)
 		tegra210_xusb_padctl_disable_pad_protection(padctl);
 
 	/* Initialize Unused USB3 port on T210b01 for power saving */
-	if (t210b01_compatible(padctl) == 1)
+	if (t210b01_compatible(padctl) == 1  || usb3_no_port_mapping_war(padctl))
 		tegra210b01_xusb_padctl_init_ss_port_3(padctl);
 
 	tegra210_xusb_padctl_restore(padctl);
