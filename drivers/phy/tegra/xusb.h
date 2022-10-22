@@ -307,6 +307,7 @@ struct tegra_xusb_usb2_port {
 	struct tegra_xusb_port base;
 
 	struct regulator *supply;
+	bool supply_enabled;
 	bool internal;
 	enum tegra_xusb_usb_port_cap port_cap;
 	int oc_pin;

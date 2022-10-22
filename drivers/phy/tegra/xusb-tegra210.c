@@ -3740,7 +3740,6 @@ static int tegra210_xusb_padctl_vbus_power_on(struct tegra_xusb_padctl *padctl,
 					unsigned int index)
 {
 	int rc = 0;
-	int status;
 	struct tegra_xusb_usb2_port *port;
 
 	port = tegra_xusb_find_usb2_port(padctl, index);
@@ -3765,8 +3764,7 @@ static int tegra210_xusb_padctl_vbus_power_on(struct tegra_xusb_padctl *padctl,
 						port->oc_pin, true);
 		tegra210_enable_vbus_oc(padctl->usb2->lanes[index]);
 	} else {
-		status = regulator_is_enabled(port->supply);
-		if (!status) {
+		if (!port->supply_enabled) {
 			rc = regulator_enable(port->supply);
 			if (rc)
 				dev_err(padctl->dev,
@@ -3774,8 +3772,11 @@ static int tegra210_xusb_padctl_vbus_power_on(struct tegra_xusb_padctl *padctl,
 		}
 
 		dev_dbg(padctl->dev, "%s: usb2-%d vbus status: %d->%d\n",
-			__func__, index, status,
+			__func__, index, port->supply_enabled,
 			regulator_is_enabled(port->supply));
+
+		if (!rc)
+			port->supply_enabled = true;
 	}
 	mutex_unlock(&padctl->lock);
 	return rc;
@@ -3785,7 +3786,6 @@ static int tegra210_xusb_padctl_vbus_power_off(struct tegra_xusb_padctl *padctl,
 					unsigned int index)
 {
 	int rc = 0;
-	int status;
 	struct tegra_xusb_usb2_port *port;
 
 	port = tegra_xusb_find_usb2_port(padctl, index);
@@ -3816,8 +3816,7 @@ static int tegra210_xusb_padctl_vbus_power_off(struct tegra_xusb_padctl *padctl,
 						port->oc_pin, false);
 		tegra210_disable_vbus_oc(padctl->usb2->lanes[index]);
 	} else {
-		status = regulator_is_enabled(port->supply);
-		if (status) {
+		if (port->supply_enabled) {
 			rc = regulator_disable(port->supply);
 			if (rc)
 				dev_err(padctl->dev,
@@ -3826,8 +3825,11 @@ static int tegra210_xusb_padctl_vbus_power_off(struct tegra_xusb_padctl *padctl,
 		}
 
 		dev_dbg(padctl->dev, "%s: usb2-%d vbus status: %d->%d\n",
-			__func__, index, status,
+			__func__, index, port->supply_enabled,
 			regulator_is_enabled(port->supply));
+
+		if (!rc)
+			port->supply_enabled = false;
 	}
 	mutex_unlock(&padctl->lock);
 	return rc;
