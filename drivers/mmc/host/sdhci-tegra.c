@@ -1388,23 +1388,23 @@ static unsigned int tegra_sdhci_get_max_clock(struct sdhci_host *host)
 
 static unsigned int tegra210_sdhci_get_max_clock(struct sdhci_host *host)
 {
-    u32 reg;
-    struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-    
-    /* 
-     * Tegra 210 does not report max current limits for SDMMC.
-     * Additionally, MAX77620 does not have regulator current limits.
-     * Override SDHCI_MAX_CURRENT register values here.
-    */
-    reg = sdhci_readl(host, SDHCI_TEGRA_VENDOR_MISC_CTRL_1);
-    if (!reg)
-        sdhci_writel(host, 0xC8C8C8, SDHCI_TEGRA_VENDOR_MISC_CTRL_1);
+	u32 reg;
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 
-    /*
-     * DDR modes require the host to run at double the card frequency, so
-     * the maximum rate we can support is half of the module input clock.
-     */
-    return clk_round_rate(pltfm_host->clk, UINT_MAX) / 2;
+	/* 
+	 * Tegra 210 does not report max current limits for SDMMC.
+	 * Additionally, MAX77620 does not have regulator current limits.
+	 * Override SDHCI_MAX_CURRENT register values here.
+	 */
+	reg = sdhci_readl(host, SDHCI_TEGRA_VENDOR_MISC_CTRL_1);
+	if (!reg)
+		sdhci_writel(host, 0xC8C8C8, SDHCI_TEGRA_VENDOR_MISC_CTRL_1);
+
+	/*
+	 * DDR modes require the host to run at double the card frequency, so
+	 * the maximum rate we can support is half of the module input clock.
+	 */
+	return clk_round_rate(pltfm_host->clk, UINT_MAX) / 2;
 }
 
 static unsigned int tegra_sdhci_get_timeout_clock(struct sdhci_host *host)
@@ -2127,6 +2127,15 @@ static int sdhci_tegra_parse_dt(struct platform_device *pdev)
 
 	if (!np)
 		return -EINVAL;
+
+	/* if bus-width is set and forced to 1 bit adhere to that */
+	if (!of_property_read_u32(np, "bus-width", &val)) {
+		if (val == 1) {
+			host->quirks |= SDHCI_QUIRK_FORCE_1_BIT_DATA;
+			host->caps &= ~(MMC_CAP_8_BIT_DATA | MMC_CAP_4_BIT_DATA);
+			dev_warn(&pdev->dev, "bus width forced to 1 bit\n");
+		}
+	}
 
 	of_property_read_u32(np, "max-clk-limit", (u32 *)&tegra_host->max_clk_limit);
 	of_property_read_u32(np, "ddr-clk-limit",
