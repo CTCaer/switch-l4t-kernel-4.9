@@ -1011,7 +1011,8 @@ static void joycon_input_report_parse_imu_data(struct joycon_ctlr *ctlr,
 static void joycon_parse_imu_report(struct joycon_ctlr *ctlr,
 				    struct joycon_input_report *rep)
 {
-	struct joycon_imu_data imu_data[3] = {0}; /* 3 reports per packet */
+    /* double struct braces counteracts a kernel compile error in aosp tree */
+	struct joycon_imu_data imu_data[3] = {{0}}; /* 3 reports per packet */
 	struct input_dev *idev = ctlr->imu_input;
 	unsigned int msecs = jiffies_to_msecs(jiffies);
 	unsigned int last_msecs = ctlr->imu_last_pkt_ms;
