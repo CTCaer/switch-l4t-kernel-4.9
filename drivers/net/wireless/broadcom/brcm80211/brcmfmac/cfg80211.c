@@ -6805,8 +6805,16 @@ static void brcmf_cfg80211_reg_notifier(struct wiphy *wiphy,
 	struct brcmf_cfg80211_info *cfg = wiphy_priv(wiphy);
 	struct brcmf_if *ifp = netdev_priv(cfg_to_ndev(cfg));
 	struct brcmf_fil_country_le ccreq;
+	bool reset;
 	s32 err;
 	int i;
+
+	reset = req->alpha2[0] == '0' && req->alpha2[1] == '0';
+	if (reset) {
+		brcmf_dbg(TRACE, "Country code reset\n");
+		memset(&ccreq, 0, sizeof(struct brcmf_fil_country_le));
+		goto set;
+	}
 
 	/* ignore non-ISO3166 country codes */
 	for (i = 0; i < 2; i++)
@@ -6829,8 +6837,9 @@ static void brcmf_cfg80211_reg_notifier(struct wiphy *wiphy,
 	if (err)
 		return;
 
+set:
 	err = brcmf_fil_iovar_data_set(ifp, "country", &ccreq, sizeof(ccreq));
-	if (err) {
+	if (err && !reset) {
 		brcmf_err("Firmware rejected country setting\n");
 		return;
 	}
