@@ -60,7 +60,7 @@ void brcmf_pcie_of_probe(struct device *dev, struct brcmfmac_pcie_pd *pcie)
 		return;
 
 	if (of_property_read_bool(np, "brcm,reset_on_wake")) {
-		brcmf_err("Enabling pcie reset on wake quirk\n");
+		brcmf_info("Enabling pcie reset on wake quirk\n");
 		pcie->reset_on_wake = true;
 	}
 }

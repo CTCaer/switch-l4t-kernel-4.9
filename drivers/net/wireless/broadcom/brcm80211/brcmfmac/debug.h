@@ -51,8 +51,14 @@
  */
 #ifndef CONFIG_BRCM_TRACING
 #ifdef CONFIG_BRCMDBG
+#define brcmf_info(fmt, ...)	pr_info("%s: " fmt, __func__, ##__VA_ARGS__)
 #define brcmf_err(fmt, ...)	pr_err("%s: " fmt, __func__, ##__VA_ARGS__)
 #else
+#define brcmf_info(fmt, ...)						\
+	do {								\
+		if (net_ratelimit())					\
+			pr_info("%s: " fmt, __func__, ##__VA_ARGS__);	\
+	} while (0)
 #define brcmf_err(fmt, ...)						\
 	do {								\
 		if (net_ratelimit())					\

@@ -925,7 +925,7 @@ static int brcmf_chip_recognition(struct brcmf_chip_priv *ci)
 	socitype = (regdata & CID_TYPE_MASK) >> CID_TYPE_SHIFT;
 
 	brcmf_chip_name(ci->pub.chip, ci->pub.name, sizeof(ci->pub.name));
-	pr_info("brcmfmac: found %s chip BCM%s, rev=%d\n",
+	brcmf_info("found %s chip BCM%s, rev=%d\n",
 		  socitype == SOCI_SB ? "SB" : "AXI", ci->pub.name,
 		  ci->pub.chiprev);
 
