@@ -116,6 +116,7 @@ static void brcmf_feat_iovar_int_get(struct brcmf_if *ifp,
 static void brcmf_feat_firmware_capabilities(struct brcmf_if *ifp)
 {
 	char caps[256];
+	char *off;
 	enum brcmf_feat_id id;
 	int i;
 
@@ -123,7 +124,9 @@ static void brcmf_feat_firmware_capabilities(struct brcmf_if *ifp)
 	brcmf_dbg(INFO, "[ %s]\n", caps);
 
 	for (i = 0; i < ARRAY_SIZE(brcmf_fwcap_map); i++) {
-		if (strnstr(caps, brcmf_fwcap_map[i].fwcap_id, sizeof(caps))) {
+		off = strnstr(caps, brcmf_fwcap_map[i].fwcap_id, sizeof(caps));
+		if (off && strncmp(off, brcmf_fwcap_map[i].fwcap_id,
+		    strlen(brcmf_fwcap_map[i].fwcap_id))) {
 			id = brcmf_fwcap_map[i].feature;
 			brcmf_dbg(INFO, "enabling feature: %s\n",
 				  brcmf_feat_names[id]);
