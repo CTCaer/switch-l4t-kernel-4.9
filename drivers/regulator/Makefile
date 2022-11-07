@@ -63,6 +63,7 @@ obj-$(CONFIG_REGULATOR_MAX8997) += max8997-regulator.o
 obj-$(CONFIG_REGULATOR_MAX8998) += max8998.o
 obj-$(CONFIG_REGULATOR_MAX77686) += max77686-regulator.o
 obj-$(CONFIG_REGULATOR_MAX77693) += max77693-regulator.o
+obj-$(CONFIG_REGULATOR_MAX77801) += max77801-regulator.o
 obj-$(CONFIG_REGULATOR_MAX77802) += max77802-regulator.o
 obj-$(CONFIG_REGULATOR_MAX77812) += max77812-regulator.o
 obj-$(CONFIG_REGULATOR_MC13783) += mc13783-regulator.o
