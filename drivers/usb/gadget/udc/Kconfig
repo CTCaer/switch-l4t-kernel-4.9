@@ -436,11 +436,4 @@ config USB_TEGRA_CD
 	help
 	  Say y to enable tegra charger detection driver.
 
-config USB_TEGRA_CD_NO_USERSPACE
-	bool "TEGRA USB charger no userspace support"
-	depends on USB_TEGRA_CD
-	default y
-	help
-	  Say n if userspace configures current limits.
-
 endmenu

@@ -40,6 +40,7 @@ static const unsigned int tegra_usb_cd_extcon_cable[] = {
 	EXTCON_USB_APPLE_500mA, /* Apple 500mA-charger */
 	EXTCON_USB_APPLE_1A, /* Apple 1A-charger */
 	EXTCON_USB_APPLE_2A, /* Apple 2A-charger */
+	EXTCON_USB_PD, /* USB-PD */
 	EXTCON_NONE,
 };
 
@@ -74,21 +75,13 @@ static void tegra_usb_cd_update_charging_extcon_state(struct tegra_usb_cd *ucd)
 static int tegra_usb_cd_set_current_limit(struct tegra_usb_cd *ucd, int max_ua)
 {
 	int ret = 0;
-	bool pd_charging = false;
 
 	if (max_ua > 0 && ucd->hw_ops->vbus_pad_protection)
 		ucd->hw_ops->vbus_pad_protection(ucd, true);
 
-	if (ucd->vbus_reg != NULL) {
-		if (ucd->pd_ucd)
-			pd_charging = extcon_get_state(ucd->pd_ucd, EXTCON_USB_PD);
-
-		if (!pd_charging) {
-			dev_info(ucd->dev, "set current %dma\n", max_ua/1000);
-			ret = regulator_set_current_limit(ucd->vbus_reg, 0, max_ua);
-		} else {
-			dev_info(ucd->dev, "External PD charging enabled. Non-PD disallowed\n");
-		}
+	if (ucd->vbus_reg != NULL && ucd->connect_type != EXTCON_USB_PD) {
+		dev_info(ucd->dev, "set current %d ma\n", max_ua/1000);
+		ret = regulator_set_current_limit(ucd->vbus_reg, 0, max_ua);
 	}
 
 	if (max_ua == 0 && ucd->hw_ops->vbus_pad_protection)
@@ -100,10 +93,6 @@ static int tegra_usb_cd_set_current_limit(struct tegra_usb_cd *ucd, int max_ua)
 static int tegra_usb_cd_update_charging_current(struct tegra_usb_cd *ucd)
 {
 	int max_ua = 0, ret = 0;
-
-#if IS_ENABLED(CONFIG_USB_TEGRA_CD_NO_USERSPACE)
-	ucd->sdp_cdp_current_limit_ma = USB_CHARGING_SDP_CURRENT_LIMIT_UA;
-#endif
 
 	switch (ucd->connect_type) {
 	case EXTCON_NONE:
@@ -122,42 +111,51 @@ static int tegra_usb_cd_update_charging_current(struct tegra_usb_cd *ucd)
 				USB_CHARGING_DCP_CURRENT_LIMIT_UA);
 		break;
 	case EXTCON_USB_QC2:
-		dev_info(ucd->dev, "connected to QuickCharge 2(wall charger)\n");
+		dev_info(ucd->dev, "connected to Quick Charge 2 charger\n");
 		max_ua = ucd->qc2_current_limit_ma * 1000;
 		break;
 	case EXTCON_USB_MAXIM:
-		dev_info(ucd->dev, "connected to Maxim(wall charger)\n");
+		dev_info(ucd->dev, "connected to Maxim charger\n");
 		max_ua = ucd->dcp_current_limit_ma * 1000;
 		break;
 	case EXTCON_CHG_USB_CDP:
 		dev_info(ucd->dev, "connected to CDP\n");
-		if (ucd->sdp_cdp_current_limit_ma > 2)
+		if (ucd->cdp_current_limit_ma)
 			max_ua = ucd->cdp_current_limit_ma * 1000;
 		else
 			max_ua = ucd->sdp_cdp_current_limit_ma * 1000;
+		max_ua = min((u32)max_ua, USB_CHARGING_CDP_CURRENT_LIMIT_UA);
 		break;
 	case EXTCON_CHG_USB_SLOW:
 		dev_info(ucd->dev, "connected to non-standard charger\n");
 		max_ua = USB_CHARGING_NON_STANDARD_CHARGER_CURRENT_LIMIT_UA;
 		break;
 	case EXTCON_USB_APPLE_500mA:
-		dev_info(ucd->dev, "connected to Apple/Other 0.5A custom charger\n");
+		dev_info(ucd->dev, "connected to Apple/Other 0.5A charger\n");
 		max_ua = USB_CHARGING_APPLE_CHARGER_500mA_CURRENT_LIMIT_UA;
 		break;
 	case EXTCON_USB_APPLE_1A:
-		dev_info(ucd->dev, "connected to Apple/Other 1A custom charger\n");
+		dev_info(ucd->dev, "connected to Apple/Other 1A charger\n");
 		max_ua = USB_CHARGING_APPLE_CHARGER_1000mA_CURRENT_LIMIT_UA;
 		break;
 	case EXTCON_USB_APPLE_2A:
-		dev_info(ucd->dev, "connected to Apple/Other/NV 2A custom charger\n");
+		dev_info(ucd->dev, "connected to Apple/Other/NV 2A charger\n");
 		max_ua = USB_CHARGING_APPLE_CHARGER_2000mA_CURRENT_LIMIT_UA;
+		break;
+	case EXTCON_USB_PD:
+		dev_info(ucd->dev, "connected to USB-PD charger\n");
+		/* Already set, so get it from vbus regulator */
+		if (ucd->vbus_reg != NULL)
+			max_ua = regulator_get_current_limit(ucd->vbus_reg);
+		else
+			max_ua = USB_CHARGING_UPD_CHARGER_CURRENT_LIMIT_UA;
 		break;
 	default:
 		dev_info(ucd->dev, "connected to unknown USB port\n");
 		max_ua = 1;
 	}
 
-	ucd->current_limit_ma = max_ua/1000;
+	ucd->current_limit_ma = max_ua / 1000;
 	ret = tegra_usb_cd_set_current_limit(ucd, max_ua);
 
 	return ret;
@@ -170,6 +168,11 @@ static unsigned int
 
 	if (ucd->hw_ops == NULL)
 		return ucd->connect_type;
+
+	if (ucd->pd_ucd && extcon_get_state(ucd->pd_ucd, EXTCON_USB_PD)) {
+		ucd->connect_type = EXTCON_USB_PD;
+		goto set_state;
+	}
 
 	ucd->hw_ops->power_on(ucd);
 
@@ -219,6 +222,7 @@ static unsigned int
 power_off:
 	ucd->hw_ops->power_off(ucd);
 
+set_state:
 	tegra_usb_cd_update_charging_extcon_state(ucd);
 	tegra_usb_cd_update_charging_current(ucd);
 
@@ -340,10 +344,7 @@ static int tegra_usb_cd_parse_dt(struct platform_device *pdev,
 		goto out;
 
 	of_property_read_u32(np, "nvidia,cdp-current-limit-ua", &current_ua);
-	if (current_ua)
-		ucd->cdp_current_limit_ma = current_ua / 1000;
-	else
-		ucd->cdp_current_limit_ma = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
+	ucd->cdp_current_limit_ma = current_ua / 1000;
 	of_property_read_u32(np, "nvidia,dcp-current-limit-ua", &current_ua);
 	ucd->dcp_current_limit_ma = current_ua / 1000;
 	of_property_read_u32(np, "nvidia,qc2-current-limit-ua", &current_ua);
@@ -438,7 +439,7 @@ static int tegra_usb_cd_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "USB charging enabled\n");
 		ucd->vbus_reg = vbus_reg;
 	} else if (PTR_ERR(vbus_reg) == -EPROBE_DEFER) {
-		dev_info(&pdev->dev, "USB charger not ready\n");
+		dev_dbg(&pdev->dev, "USB charger not ready\n");
 		return PTR_ERR(vbus_reg);
 	}
 
