@@ -1196,31 +1196,24 @@ static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 	int ret;
 
-	/*! TODO: EQ should be dt controlled */
-
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		dev_dbg(codec->dev, "EQ Speakers enabled\n");
-		/* Set Class D to stereo and enable auto over-current protection. */
-		regmap_update_bits(rt5640->regmap, RT5640_CLS_D_OUT,
-			RT5640_CLSD_OM_MASK, RT5640_CLSD_OM_STO);
-		regmap_update_bits(rt5640->regmap, RT5640_CLS_D_OVCD,
-			RT5640_AUTO_PD_MASK, RT5640_AUTO_PD_EN);
 		/* Set Speakers EQ */
 		switch (rt5640->eq_config) {
 		case 1:
-			ret = regmap_register_patch(rt5640->regmap,
+			ret = regmap_multi_reg_write(rt5640->regmap,
 					eq_speakers_list_vali,
 					ARRAY_SIZE(eq_speakers_list_vali));
 			break;
 		case 2:
-			ret = regmap_register_patch(rt5640->regmap,
+			ret = regmap_multi_reg_write(rt5640->regmap,
 					eq_speakers_list_frig,
 					ARRAY_SIZE(eq_speakers_list_frig));
 			break;
 		case 0:
 		default:
-			ret = regmap_register_patch(rt5640->regmap,
+			ret = regmap_multi_reg_write(rt5640->regmap,
 					eq_speakers_list_odin,
 					ARRAY_SIZE(eq_speakers_list_odin));
 			break;
@@ -1233,14 +1226,14 @@ static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
 	case SND_SOC_DAPM_PRE_PMD:
 		/* Disable Speakers EQ. */
 		dev_dbg(codec->dev, "EQ Speakers disabled\n");
-		ret = regmap_register_patch(rt5640->regmap, eq_normal_list_nx,
+		ret = regmap_multi_reg_write(rt5640->regmap, eq_normal_list_nx,
 						ARRAY_SIZE(eq_normal_list_nx));
 		if (ret != 0)
 			dev_warn(codec->dev, "Failed to apply regmap patch: %d\n", ret);
 
 		/* Set Microphone EQ. */
 		dev_dbg(codec->dev, "EQ Mic enabled\n");
-		ret = regmap_register_patch(rt5640->regmap, eq_microphone_list_nx,
+		ret = regmap_multi_reg_write(rt5640->regmap, eq_microphone_list_nx,
 						ARRAY_SIZE(eq_microphone_list_nx));
 		if (ret != 0)
 			dev_warn(codec->dev, "Failed to apply regmap patch: %d\n", ret);
