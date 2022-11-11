@@ -6,7 +6,7 @@
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  * Author: Syed Rafiuddin <srafiuddin@nvidia.com>
  *
- * Copyright (c) 2020-2021, CTCaer <ctcaer@gmail.com>
+ * Copyright (c) 2020-2022, CTCaer <ctcaer@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -101,6 +101,7 @@ struct bq2419x_chip {
 	struct power_supply		*charger;
 	int				irq;
 	int				gpio_otg_iusb;
+	int				gpio_chg_disable;
 	int				auto_rechg_power_on_time;
 	bool				emulate_input_disconnected;
 
@@ -560,8 +561,7 @@ static int bq2419x_soc_regulation_control(struct bq2419x_chip *bq2419x)
 {
 	int limit_min = bq2419x->soc_reg_limit - 5;
 	int limit_max = bq2419x->soc_reg_limit + 5;
-	int res, val, battery_soc;
-	unsigned int charge_val;
+	int res, val, charge_val, battery_soc;
 	bool set_value = false;
 
 	/*
@@ -597,18 +597,26 @@ static int bq2419x_soc_regulation_control(struct bq2419x_chip *bq2419x)
 	if (!set_value)
 		return 0;
 
-	res = regmap_read(bq2419x->regmap, BQ2419X_PWR_ON_REG, &val);
-	if (res < 0)
-		return res;
+	if (gpio_is_valid(bq2419x->gpio_chg_disable)) {
+		charge_val = charge_val ? 0 : 1;
+		val = gpio_get_value(bq2419x->gpio_chg_disable);
+		if (val != charge_val)
+			gpio_set_value(bq2419x->gpio_chg_disable, charge_val);
+		return 0;
+	} else {
+		res = regmap_read(bq2419x->regmap, BQ2419X_PWR_ON_REG, &val);
+		if (res < 0)
+			return res;
 
-	val &= BQ2419X_ENABLE_CHARGE_MASK;
-	if (val != charge_val) {
-		res = regmap_update_bits(bq2419x->regmap,
-			BQ2419X_PWR_ON_REG,
-			BQ2419X_ENABLE_CHARGE_MASK,
-			charge_val);
+		val &= BQ2419X_ENABLE_CHARGE_MASK;
+		if (val != charge_val) {
+			res = regmap_update_bits(bq2419x->regmap,
+						 BQ2419X_PWR_ON_REG,
+						 BQ2419X_ENABLE_CHARGE_MASK,
+						 charge_val);
+		}
+		return res;
 	}
-	return res;
 }
 
 static void bq2419x_soc_regulation_work_handler(struct work_struct *work)
@@ -1281,6 +1289,15 @@ static int bq2419x_init_vbus_regulator(struct bq2419x_chip *bq2419x,
 		}
 	}
 
+	if (gpio_is_valid(bq2419x->gpio_chg_disable)) {
+		ret = gpio_request_one(bq2419x->gpio_chg_disable,
+				GPIOF_OUT_INIT_LOW, dev_name(bq2419x->dev));
+		if (ret < 0) {
+			dev_err(bq2419x->dev, "gpio request failed  %d\n", ret);
+			return ret;
+		}
+	}
+
 	/* Register the regulators */
 	rconfig.dev = bq2419x->dev;
 	rconfig.of_node =  bq2419x->vbus_np;
@@ -1306,6 +1323,8 @@ static int bq2419x_init_vbus_regulator(struct bq2419x_chip *bq2419x,
 scrub:
 	if (gpio_is_valid(bq2419x->gpio_otg_iusb))
 		gpio_free(bq2419x->gpio_otg_iusb);
+	if (gpio_is_valid(bq2419x->gpio_chg_disable))
+		gpio_free(bq2419x->gpio_chg_disable);
 	return ret;
 }
 
@@ -2360,6 +2379,7 @@ static int bq2419x_probe(struct i2c_client *client,
 			pdata->bcharger_pdata->auto_rechg_power_on_time;
 	bq2419x->wdt_time_sec = pdata->bcharger_pdata->wdt_timeout;
 	bq2419x->no_otg_wdt = pdata->bcharger_pdata->no_otg_wdt;
+	bq2419x->gpio_chg_disable = pdata->bcharger_pdata->gpio_chg_disable;
 
 	bq2419x_process_charger_plat_data(bq2419x, pdata->bcharger_pdata);
 
@@ -2554,9 +2574,14 @@ static int bq2419x_suspend(struct device *dev)
 	mutex_unlock(&bq2419x->mutex);
 
 	if (bq2419x->soc_reg_limit && !bq2419x->is_otg_connected) {
-		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
-				BQ2419X_ENABLE_CHARGE_MASK,
-				BQ2419X_DISABLE_CHARGE);
+		if (gpio_is_valid(bq2419x->gpio_chg_disable)) {
+			gpio_set_value(bq2419x->gpio_chg_disable, 1);
+		} else {
+			ret = regmap_update_bits(bq2419x->regmap,
+						 BQ2419X_PWR_ON_REG,
+						 BQ2419X_ENABLE_CHARGE_MASK,
+						 BQ2419X_DISABLE_CHARGE);
+		}
 		if (ret < 0)
 			dev_err(bq2419x->dev,
 				"REG update failed: err %d\n", ret);
@@ -2568,11 +2593,17 @@ static int bq2419x_suspend(struct device *dev)
 
 	battery_soc = battery_gauge_get_battery_soc(bq2419x->bc_dev);
 	if (battery_soc > BQ2419X_PC_USB_LP0_THRESHOLD &&
-			(bq2419x->in_current_limit <= 500) &&
-			!bq2419x->is_otg_connected) {
-		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
-				BQ2419X_ENABLE_CHARGE_MASK,
-				BQ2419X_DISABLE_CHARGE);
+	    (bq2419x->in_current_limit <= 500) &&
+	    !bq2419x->is_otg_connected) {
+		if (gpio_is_valid(bq2419x->gpio_chg_disable)) {
+			gpio_set_value(bq2419x->gpio_chg_disable, 1);
+		} else {
+			ret = regmap_update_bits(bq2419x->regmap,
+						 BQ2419X_PWR_ON_REG,
+						 BQ2419X_ENABLE_CHARGE_MASK,
+						 BQ2419X_DISABLE_CHARGE);
+		}
+		
 		if (ret < 0)
 			dev_err(bq2419x->dev,
 				"REG update failed: err %d\n", ret);
@@ -2595,10 +2626,16 @@ static int bq2419x_suspend(struct device *dev)
 			dev_err(bq2419x->dev,
 			"Config of charging failed: %d\n", ret);
 		if (battery_soc > BQ2419X_PC_USB_LP0_THRESHOLD &&
-					!bq2419x->is_otg_connected) {
-			ret = regmap_update_bits(bq2419x->regmap,
-				BQ2419X_PWR_ON_REG, BQ2419X_ENABLE_CHARGE_MASK,
-				BQ2419X_DISABLE_CHARGE);
+		    !bq2419x->is_otg_connected) {
+			if (gpio_is_valid(bq2419x->gpio_chg_disable)) {
+				gpio_set_value(bq2419x->gpio_chg_disable, 1);
+			} else {
+				ret = regmap_update_bits(bq2419x->regmap,
+						BQ2419X_PWR_ON_REG,
+						BQ2419X_ENABLE_CHARGE_MASK,
+						BQ2419X_DISABLE_CHARGE);
+			}
+			
 			if (ret < 0)
 				dev_err(bq2419x->dev,
 					"REG update failed: err %d\n", ret);
@@ -2623,6 +2660,8 @@ static int bq2419x_resume(struct device *dev)
 
 	if (bq2419x->charging_disabled_on_suspend) {
 		bq2419x->charging_disabled_on_suspend = false;
+		if (gpio_is_valid(bq2419x->gpio_chg_disable))
+			gpio_set_value(bq2419x->gpio_chg_disable, 0);
 		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_PWR_ON_REG,
 				BQ2419X_ENABLE_CHARGE_MASK,
 				BQ2419X_ENABLE_CHARGE);

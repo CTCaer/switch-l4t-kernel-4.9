@@ -177,6 +177,7 @@ struct bq2419x_charger_platform_data {
 	u32 auto_recharge_time_supend;
 	u32 auto_rechg_power_on_time;
 	int n_soc_profile;
+	int gpio_chg_disable;
 };
 
 /*
