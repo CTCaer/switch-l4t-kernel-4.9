@@ -2000,6 +2000,10 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client,
 		if (!chg_pdata->ridata)
 			return ERR_PTR(-EINVAL);
 
+		bcharger_pdata->gpio_chg_disable =
+					of_get_named_gpio(batt_reg_node,
+							  "ti,chg-dis-gpio", 0);
+
 		ret = of_property_read_u32(batt_reg_node,
 				"ti,sys-input-voltage-limit-millivolt", &pval);
 		if (ret < 0)
@@ -2067,6 +2071,10 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client,
 				"ti,charge-voltage-limit-mv", &pval);
 		if (!ret)
 			pdata->bcharger_pdata->charge_voltage_limit_mV = pval;
+
+		bcharger_pdata->no_battery =
+				of_property_read_bool(batt_reg_node,
+				"ti,no-battery");
 
 		pdata->bcharger_pdata->disable_suspend_during_charging =
 				of_property_read_bool(batt_reg_node,
@@ -2372,7 +2380,7 @@ static int bq2419x_probe(struct i2c_client *client,
 		goto skip_bcharger_init;
 	}
 
-	bq2419x->battery_presense = true;
+	bq2419x->battery_presense = !pdata->bcharger_pdata->no_battery;
 	bq2419x->disable_suspend_during_charging =
 			pdata->bcharger_pdata->disable_suspend_during_charging;
 	bq2419x->auto_rechg_power_on_time =
