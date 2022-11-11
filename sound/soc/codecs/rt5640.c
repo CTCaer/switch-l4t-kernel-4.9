@@ -2607,52 +2607,50 @@ static bool rt5640_jack_inserted(struct snd_soc_codec *codec)
 
 /* Jack detect timings */
 #define JACK_SETTLE_TIME	100 /* milli seconds */
-#define JACK_DETECT_COUNT	5
-#define JACK_DETECT_MAXCOUNT	20  /* Aprox. 2 seconds worth of tries */
+#define JACK_DETECT_COUNT	10
 
 static int rt5640_detect_headset(struct snd_soc_codec *codec)
 {
-	int i, headset_count = 0, headphone_count = 0;
+	int i;
 
 	/*
 	 * We get the insertion event before the jack is fully inserted at which
 	 * point the second ring on a TRRS connector may short the 2nd ring and
 	 * sleeve contacts, also the overcurrent detection is not entirely
 	 * reliable. So we try several times with a wait in between until we
-	 * detect the same type JACK_DETECT_COUNT times in a row.
+	 * detect plugged-in status JACK_DETECT_COUNT times in a row.
 	 */
-	for (i = 0; i < JACK_DETECT_MAXCOUNT; i++) {
-		/* Clear any previous over-current status flag */
-		rt5640_clear_micbias1_ovcd(codec);
-
+	for (i = 0; i < JACK_DETECT_COUNT; i++) {
 		msleep(JACK_SETTLE_TIME);
 
-		/* Check the jack is still connected before checking ovcd */
+		/* Check the jack is still connected */
 		if (!rt5640_jack_inserted(codec))
 			return 0;
-
-		if (rt5640_micbias1_ovcd(codec)) {
-			/*
-			 * Over current detected, there is a short between the
-			 * 2nd ring contact and the ground, so a TRS connector
-			 * without a mic contact and thus plain headphones.
-			 */
-			dev_dbg(codec->dev, "jack mic-gnd shorted\n");
-			headset_count = 0;
-			headphone_count++;
-			if (headphone_count == JACK_DETECT_COUNT)
-				return SND_JACK_HEADPHONE;
-		} else {
-			dev_dbg(codec->dev, "jack mic-gnd open\n");
-			headphone_count = 0;
-			headset_count++;
-			if (headset_count == JACK_DETECT_COUNT)
-				return SND_JACK_HEADSET;
-		}
 	}
 
-	dev_err(codec->dev, "Error detecting headset vs headphones, bad contact?, assuming headphones\n");
-	return SND_JACK_HEADPHONE;
+	rt5640_enable_micbias1_for_ovcd(codec);
+
+	/* Clear any previous over-current status flag */
+	rt5640_clear_micbias1_ovcd(codec);
+
+	msleep(JACK_SETTLE_TIME);
+
+	/* Check the jack is still connected before checking ovcd */
+	if (!rt5640_jack_inserted(codec))
+		return 0;
+
+	if (rt5640_micbias1_ovcd(codec)) {
+		/*
+		 * Over current detected, there is a short between the
+		 * 2nd ring contact and the ground, so a TRS connector
+		 * without a mic contact and thus plain headphones.
+		 */
+		dev_info(codec->dev, "Headphones plugged-in\n");
+		return SND_JACK_HEADPHONE;
+	} else {
+		dev_info(codec->dev, "Headset plugged-in\n");
+		return SND_JACK_HEADSET;
+	}
 }
 
 static void rt5640_jack_work(struct work_struct *work)
@@ -2688,7 +2686,6 @@ jack_removed:
 		}
 	} else if (!(rt5640->jack->status & SND_JACK_HEADPHONE)) {
 		/* Jack inserted */
-		rt5640_enable_micbias1_for_ovcd(codec);
 		status = rt5640_detect_headset(codec);
 
 		/* Keep MICBIAS1 if headset and enable sticky bit */
@@ -2700,8 +2697,10 @@ jack_removed:
 			/* Enable IRQ for micbias over-current-detect for buttons */
 			snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
 				RT5640_IRQ_MB1_OC_MASK, RT5640_IRQ_MB1_OC_NOR);
-		} else
+		} else {
+			/* Headphones or nothing detected. Disable MICBIAS1 */
 			rt5640_disable_micbias1_for_ovcd(codec);
+		}
 
 		dev_dbg(codec->dev, "detect status %#02x\n", status);
 		snd_soc_jack_report(rt5640->jack, status, SND_JACK_HEADSET);
