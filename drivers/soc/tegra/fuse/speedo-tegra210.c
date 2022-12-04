@@ -17,6 +17,7 @@
 #include <linux/device.h>
 #include <linux/kernel.h>
 #include <linux/bug.h>
+#include <linux/moduleparam.h>
 
 #include <soc/tegra/fuse.h>
 
@@ -45,9 +46,9 @@ enum {
 };
 
 static const u32 __initconst cpu_process_speedos[][CPU_PROCESS_CORNERS] = {
-	{ 2119, UINT_MAX },
-	{ 2119, UINT_MAX },
-	{ 1650, UINT_MAX },
+	{ 2119, UINT_MAX }, /* T210 */
+	{ 2119, UINT_MAX }, /* T210 SKU 0x17/0x57 */
+	{ 1650, UINT_MAX }, /* T210B01 */
 };
 
 static const u32 __initconst gpu_process_speedos[][GPU_PROCESS_CORNERS] = {
@@ -57,10 +58,20 @@ static const u32 __initconst gpu_process_speedos[][GPU_PROCESS_CORNERS] = {
 };
 
 static const u32 __initconst soc_process_speedos[][SOC_PROCESS_CORNERS] = {
-	{ 1950,     2073,     UINT_MAX },
-	{ UINT_MAX, UINT_MAX, UINT_MAX },
-	{ 1598,     1709,     UINT_MAX },
+	{ 1950,     2073,     UINT_MAX }, /* T210 */
+	{ UINT_MAX, UINT_MAX, UINT_MAX }, /* T210 SKU 0x17/0x57 */
+	{ 1598,     1709,     UINT_MAX }, /* T210B01 */
 };
+
+static int sku_id = -1;
+static int cspd_id = -1;
+static int sspd_id = -1;
+static int gspd_id = -1;
+
+module_param(sku_id, int, 0400);
+module_param(cspd_id, int, 0400);
+module_param(sspd_id, int, 0400);
+module_param(gspd_id, int, 0400);
 
 static u8 __init get_speedo_revision(void)
 {
@@ -212,6 +223,25 @@ static void __init rev_sku_to_speedo_ids(struct tegra_sku_info *sku_info,
 		rev_t210b01sku_to_speedo_ids(sku_info, speedo_rev, threshold);
 	else
 		rev_t210sku_to_speedo_ids(sku_info, speedo_rev, threshold);
+
+	/* Override speedo ids */
+	if (sku_id == sku_info->sku_id) {
+		if (cspd_id != -1) {
+			pr_warn("Tegra210b01: Overriding CPU Speedo ID: %d -> %d\n",
+			    sku_info->cpu_speedo_id, cspd_id);
+			sku_info->cpu_speedo_id = cspd_id;
+		}
+		if (sspd_id != -1) {
+			pr_warn("Tegra210b01: Overriding SOC Speedo ID: %d -> %d\n",
+			    sku_info->soc_speedo_id, sspd_id);
+			sku_info->soc_speedo_id = sspd_id;
+		}
+		if (gspd_id != -1) {
+			pr_warn("Tegra210b01: Overriding GPU Speedo ID: %d -> %d\n",
+			    sku_info->gpu_speedo_id, gspd_id);
+			sku_info->gpu_speedo_id = gspd_id;
+		}
+	}
 }
 
 static int get_process_id(int value, const u32 *speedos, unsigned int num)
