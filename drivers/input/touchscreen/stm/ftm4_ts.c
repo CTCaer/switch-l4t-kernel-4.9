@@ -570,7 +570,7 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 			break;
 
 		case EVENTID_HOVER_LEAVE_POINTER:
-			input_mt_slot(info->input_dev, 0);
+			input_mt_slot(info->input_dev, TouchID);
 			input_mt_report_slot_state(info->input_dev,
 						   MT_TOOL_FINGER, 0);
 			input_mt_sync(info->input_dev);
