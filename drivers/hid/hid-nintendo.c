@@ -3,6 +3,7 @@
  * HID driver for Nintendo Switch Joy-Cons and Pro Controllers
  *
  * Copyright (c) 2019-2020 Daniel J. Ogorchock <djogorchock@gmail.com>
+ * Copyright (c) 2021-2022 CTCaer <ctcaer@gmail.com>
  *
  * The following resources/projects were referenced for this driver:
  *   https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering
@@ -44,106 +45,101 @@
  */
 
 /* Output Reports */
-static const u8 JC_OUTPUT_RUMBLE_AND_SUBCMD	= 0x01;
-static const u8 JC_OUTPUT_FW_UPDATE_PKT		= 0x03;
-static const u8 JC_OUTPUT_RUMBLE_ONLY		= 0x10;
-static const u8 JC_OUTPUT_MCU_DATA		= 0x11;
-static const u8 JC_OUTPUT_USB_CMD		= 0x80;
+#define JC_OUTPUT_RUMBLE_AND_SUBCMD	0x01
+#define JC_OUTPUT_FW_UPDATE_PKT		0x03
+#define JC_OUTPUT_RUMBLE_ONLY		0x10
+#define JC_OUTPUT_MCU_DATA		0x11
+#define JC_OUTPUT_USB_CMD		0x80
 
 /* Subcommand IDs */
-static const u8 JC_SUBCMD_STATE			/*= 0x00*/;
-static const u8 JC_SUBCMD_MANUAL_BT_PAIRING	= 0x01;
-static const u8 JC_SUBCMD_REQ_DEV_INFO		= 0x02;
-static const u8 JC_SUBCMD_SET_REPORT_MODE	= 0x03;
-static const u8 JC_SUBCMD_TRIGGERS_ELAPSED	= 0x04;
-static const u8 JC_SUBCMD_GET_PAGE_LIST_STATE	= 0x05;
-static const u8 JC_SUBCMD_SET_HCI_STATE		= 0x06;
-static const u8 JC_SUBCMD_RESET_PAIRING_INFO	= 0x07;
-static const u8 JC_SUBCMD_LOW_POWER_MODE	= 0x08;
-static const u8 JC_SUBCMD_SPI_FLASH_READ	= 0x10;
-static const u8 JC_SUBCMD_SPI_FLASH_WRITE	= 0x11;
-static const u8 JC_SUBCMD_RESET_MCU		= 0x20;
-static const u8 JC_SUBCMD_SET_MCU_CONFIG	= 0x21;
-static const u8 JC_SUBCMD_SET_MCU_STATE		= 0x22;
-static const u8 JC_SUBCMD_SET_PLAYER_LIGHTS	= 0x30;
-static const u8 JC_SUBCMD_GET_PLAYER_LIGHTS	= 0x31;
-static const u8 JC_SUBCMD_SET_HOME_LIGHT	= 0x38;
-static const u8 JC_SUBCMD_ENABLE_IMU		= 0x40;
-static const u8 JC_SUBCMD_SET_IMU_SENSITIVITY	= 0x41;
-static const u8 JC_SUBCMD_WRITE_IMU_REG		= 0x42;
-static const u8 JC_SUBCMD_READ_IMU_REG		= 0x43;
-static const u8 JC_SUBCMD_ENABLE_VIBRATION	= 0x48;
-static const u8 JC_SUBCMD_GET_REGULATED_VOLTAGE	= 0x50;
+#define JC_SUBCMD_STATE			0x00
+#define JC_SUBCMD_MANUAL_BT_PAIRING	0x01
+#define JC_SUBCMD_REQ_DEV_INFO		0x02
+#define JC_SUBCMD_SET_REPORT_MODE	0x03
+#define JC_SUBCMD_TRIGGERS_ELAPSED	0x04
+#define JC_SUBCMD_GET_PAGE_LIST_STATE	0x05
+#define JC_SUBCMD_SET_HCI_STATE		0x06
+#define JC_SUBCMD_RESET_PAIRING_INFO	0x07
+#define JC_SUBCMD_LOW_POWER_MODE	0x08
+#define JC_SUBCMD_SPI_FLASH_READ	0x10
+#define JC_SUBCMD_SPI_FLASH_WRITE	0x11
+#define JC_SUBCMD_RESET_MCU		0x20
+#define JC_SUBCMD_SET_MCU_CONFIG	0x21
+#define JC_SUBCMD_SET_MCU_STATE		0x22
+#define JC_SUBCMD_SET_PLAYER_LIGHTS	0x30
+#define JC_SUBCMD_GET_PLAYER_LIGHTS	0x31
+#define JC_SUBCMD_SET_HOME_LIGHT	0x38
+#define JC_SUBCMD_ENABLE_IMU		0x40
+#define JC_SUBCMD_SET_IMU_SENSITIVITY	0x41
+#define JC_SUBCMD_WRITE_IMU_REG		0x42
+#define JC_SUBCMD_READ_IMU_REG		0x43
+#define JC_SUBCMD_ENABLE_VIBRATION	0x48
+#define JC_SUBCMD_GET_REGULATED_VOLTAGE	0x50
 
 /* Input Reports */
-static const u8 JC_INPUT_BUTTON_EVENT		= 0x3F;
-static const u8 JC_INPUT_SUBCMD_REPLY		= 0x21;
-static const u8 JC_INPUT_IMU_DATA		= 0x30;
-static const u8 JC_INPUT_MCU_DATA		= 0x31;
-static const u8 JC_INPUT_USB_RESPONSE		= 0x81;
+#define JC_INPUT_BUTTON_EVENT		0x3F
+#define JC_INPUT_SUBCMD_REPLY		0x21
+#define JC_INPUT_IMU_DATA		0x30
+#define JC_INPUT_MCU_DATA		0x31
+#define JC_INPUT_USB_RESPONSE		0x81
 
 /* Feature Reports */
-static const u8 JC_FEATURE_LAST_SUBCMD		= 0x02;
-static const u8 JC_FEATURE_OTA_FW_UPGRADE	= 0x70;
-static const u8 JC_FEATURE_SETUP_MEM_READ	= 0x71;
-static const u8 JC_FEATURE_MEM_READ		= 0x72;
-static const u8 JC_FEATURE_ERASE_MEM_SECTOR	= 0x73;
-static const u8 JC_FEATURE_MEM_WRITE		= 0x74;
-static const u8 JC_FEATURE_LAUNCH		= 0x75;
+#define JC_FEATURE_LAST_SUBCMD		0x02
+#define JC_FEATURE_OTA_FW_UPGRADE	0x70
+#define JC_FEATURE_SETUP_MEM_READ	0x71
+#define JC_FEATURE_MEM_READ		0x72
+#define JC_FEATURE_ERASE_MEM_SECTOR	0x73
+#define JC_FEATURE_MEM_WRITE		0x74
+#define JC_FEATURE_LAUNCH		0x75
 
 /* USB Commands */
-static const u8 JC_USB_CMD_CONN_STATUS		= 0x01;
-static const u8 JC_USB_CMD_HANDSHAKE		= 0x02;
-static const u8 JC_USB_CMD_BAUDRATE_3M		= 0x03;
-static const u8 JC_USB_CMD_NO_TIMEOUT		= 0x04;
-static const u8 JC_USB_CMD_EN_TIMEOUT		= 0x05;
-static const u8 JC_USB_RESET			= 0x06;
-static const u8 JC_USB_PRE_HANDSHAKE		= 0x91;
-static const u8 JC_USB_SEND_UART		= 0x92;
+#define JC_USB_CMD_CONN_STATUS		0x01
+#define JC_USB_CMD_HANDSHAKE		0x02
+#define JC_USB_CMD_BAUDRATE_3M		0x03
+#define JC_USB_CMD_NO_TIMEOUT		0x04
+#define JC_USB_CMD_EN_TIMEOUT		0x05
+#define JC_USB_RESET			0x06
+#define JC_USB_PRE_HANDSHAKE		0x91
+#define JC_USB_SEND_UART		0x92
 
 /* Magic value denoting presence of user calibration */
-static const u16 JC_CAL_USR_MAGIC_0		= 0xB2;
-static const u16 JC_CAL_USR_MAGIC_1		= 0xA1;
-static const u8 JC_CAL_USR_MAGIC_SIZE		= 2;
+#define JC_CAL_USR_MAGIC_0		0xB2
+#define JC_CAL_USR_MAGIC_1		0xA1
+#define JC_CAL_USR_MAGIC_SIZE		 2
 
 /* SPI storage addresses of user calibration data */
-static const u16 JC_CAL_USR_LEFT_MAGIC_ADDR	= 0x8010;
-static const u16 JC_CAL_USR_LEFT_DATA_ADDR	= 0x8012;
-static const u16 JC_CAL_USR_LEFT_DATA_END	= 0x801A;
-static const u16 JC_CAL_USR_RIGHT_MAGIC_ADDR	= 0x801B;
-static const u16 JC_CAL_USR_RIGHT_DATA_ADDR	= 0x801D;
+#define JC_CAL_USR_LEFT_MAGIC_ADDR	0x8010
+#define JC_CAL_USR_LEFT_DATA_ADDR	0x8012
+#define JC_CAL_USR_LEFT_DATA_END	0x801A
+#define JC_CAL_USR_RIGHT_MAGIC_ADDR	0x801B
+#define JC_CAL_USR_RIGHT_DATA_ADDR	0x801D
 #define JC_CAL_STICK_DATA_SIZE \
 	(JC_CAL_USR_LEFT_DATA_END - JC_CAL_USR_LEFT_DATA_ADDR + 1)
 
 /* SPI storage addresses of factory calibration data */
-static const u16 JC_CAL_FCT_DATA_LEFT_ADDR	= 0x603d;
-static const u16 JC_CAL_FCT_DATA_RIGHT_ADDR	= 0x6046;
+#define JC_CAL_FCT_DATA_LEFT_ADDR	0x603d
+#define JC_CAL_FCT_DATA_RIGHT_ADDR	0x6046
 
 /* SPI storage addresses of IMU factory calibration data */
-static const u16 JC_IMU_CAL_FCT_DATA_ADDR	= 0x6020;
-static const u16 JC_IMU_CAL_FCT_DATA_END	= 0x6037;
+#define JC_IMU_CAL_FCT_DATA_ADDR	0x6020
+#define JC_IMU_CAL_FCT_DATA_END		0x6037
 #define JC_IMU_CAL_DATA_SIZE \
 	(JC_IMU_CAL_FCT_DATA_END - JC_IMU_CAL_FCT_DATA_ADDR + 1)
 /* SPI storage addresses of IMU user calibration data */
-static const u16 JC_IMU_CAL_USR_MAGIC_ADDR	= 0x8026;
-static const u16 JC_IMU_CAL_USR_DATA_ADDR	= 0x8028;
+#define JC_IMU_CAL_USR_MAGIC_ADDR	0x8026
+#define JC_IMU_CAL_USR_DATA_ADDR	0x8028
 
 /* The raw analog joystick values will be mapped in terms of this magnitude */
-static const u16 JC_MAX_STICK_MAG		= 32767;
-static const u16 JC_STICK_FUZZ			= 250;
-static const u16 JC_STICK_FLAT			= 500;
-
-/* Hat values for pro controller's d-pad */
-static const u16 JC_MAX_DPAD_MAG		= 1;
-static const u16 JC_DPAD_FUZZ			/*= 0*/;
-static const u16 JC_DPAD_FLAT			/*= 0*/;
+#define JC_MAX_STICK_MAG		 32767
+#define JC_STICK_FUZZ			 250
+#define JC_STICK_FLAT			 500
 
 /* Under most circumstances IMU reports are pushed every 15ms; use as default */
-static const u16 JC_IMU_DFLT_AVG_DELTA_MS	= 15;
+#define JC_IMU_DFLT_AVG_DELTA_MS	15
 /* How many samples to sum before calculating average IMU report delta */
-static const u16 JC_IMU_SAMPLES_PER_DELTA_AVG	= 300;
+#define JC_IMU_SAMPLES_PER_DELTA_AVG	300
 /* Controls how many dropped IMU packets at once trigger a warning message */
-static const u16 JC_IMU_DROPPED_PKT_WARNING	= 3;
+#define JC_IMU_DROPPED_PKT_WARNING	3
 
 /*
  * The controller's accelerometer has a sensor resolution of 16bits and is
@@ -152,10 +148,10 @@ static const u16 JC_IMU_DROPPED_PKT_WARNING	= 3;
  * Resolution per G (rather than per millliG): 4.096 * 1000 = 4096 digits per G
  * Alternatively: 1/4096 = .0002441 Gs per digit
  */
-static const s32 JC_IMU_MAX_ACCEL_MAG		= 32767;
-static const u16 JC_IMU_ACCEL_RES_PER_G		= 4096;
-static const u16 JC_IMU_ACCEL_FUZZ		= 10;
-static const u16 JC_IMU_ACCEL_FLAT		/*= 0*/;
+#define JC_IMU_MAX_ACCEL_MAG		32767
+#define JC_IMU_ACCEL_RES_PER_G		4096
+#define JC_IMU_ACCEL_FUZZ		10
+#define JC_IMU_ACCEL_FLAT		0
 
 /*
  * The controller's gyroscope has a sensor resolution of 16bits and is
@@ -172,16 +168,19 @@ static const u16 JC_IMU_ACCEL_FLAT		/*= 0*/;
  * Now, 14.247 truncating to 14 loses a lot of precision, so we rescale the
  * min/max range by 1000.
  */
-static const s32 JC_IMU_PREC_RANGE_SCALE	= 1000;
+#define JC_IMU_PREC_RANGE_SCALE	1000
 /* Note: change mag and res_per_dps if prec_range_scale is ever altered */
-static const s32 JC_IMU_MAX_GYRO_MAG		= 32767000; /* (2^16-1)*1000 */
-static const u16 JC_IMU_GYRO_RES_PER_DPS	= 14247; /* (14.247*1000) */
-static const u16 JC_IMU_GYRO_FUZZ		= 10;
-static const u16 JC_IMU_GYRO_FLAT		/*= 0*/;
+#define JC_IMU_MAX_GYRO_MAG		32767000 /* (2^16-1)*1000 */
+#define JC_IMU_GYRO_RES_PER_DPS		14247 /* (14.247*1000) */
+#define JC_IMU_GYRO_FUZZ		10
+#define JC_IMU_GYRO_FLAT		0
 
 /* frequency/amplitude defines and tables for rumble */
 static const u32 JC_RUMBLE_MASK			= 0xFF80FE00;
 static const u32 JC_RUMBLE_ZERO_AMP		= 0x40000000;
+
+#define JC_VIB_RPT_GET_BUF_STS_RIGHT(val)	((val) & 7)
+#define JC_VIB_RPT_GET_BUF_STS_LEFT(val)	(((val) >> 4) & 7)
 
 struct joycon_rumble_freq_data {
 	u16 high;
@@ -369,13 +368,22 @@ struct joycon_subcmd_request {
 	u8 packet_num; /* incremented every send */
 	u8 rumble_data[8];
 	u8 subcmd_id;
-	u8 data[0]; /* length depends on the subcommand */
+	u8 data[]; /* length depends on the subcommand */
 } __packed;
 
 struct joycon_subcmd_reply {
 	u8 ack; /* MSB 1 for ACK, 0 for NACK */
 	u8 id; /* id of requested subcmd */
-	u8 data[0]; /* will be at most 35 bytes */
+	u8 data[]; /* will be at most 35 bytes */
+} __packed;
+
+struct joycon_dev_info_data {
+	u8 fw_ver[2];
+	u8 dev_type;
+	u8 unk;
+	u8 mac[6];
+	u8 unk1;
+	u8 color_available;
 } __packed;
 
 struct joycon_imu_data {
@@ -394,7 +402,7 @@ struct joycon_input_report {
 	u8 button_status[3];
 	u8 left_stick[3];
 	u8 right_stick[3];
-	u8 sixaxis_report;
+	u8 vibrator_report;
 
 	union {
 		struct joycon_subcmd_reply subcmd_reply;
@@ -408,15 +416,15 @@ struct joycon_led_queue_item {
 	enum led_brightness brightness;
 };
 
-#define JC_MAX_RESP_SIZE	(sizeof(struct joycon_input_report) + 35)
-#define JC_NUM_LEDS		4
-#define JC_RUMBLE_DATA_SIZE	8
-#define JC_RUMBLE_QUEUE_SIZE	8
-#define JC_LED_QUEUE_SIZE	20
+#define JC_MAX_RESP_SIZE		(sizeof(struct joycon_input_report) + 35)
+#define JC_NUM_LEDS			4
+#define JC_RUMBLE_DATA_SIZE		8
+#define JC_RUMBLE_QUEUE_SIZE		8
+#define JC_LED_QUEUE_SIZE		20
 
-static const u16 JC_RUMBLE_DFLT_LOW_FREQ = 160;
-static const u16 JC_RUMBLE_DFLT_HIGH_FREQ = 320;
-static const u16 JC_RUMBLE_PERIOD_MS = 50;
+#define JC_RUMBLE_DFLT_LOW_FREQ		160
+#define JC_RUMBLE_DFLT_HIGH_FREQ	320
+#define JC_RUMBLE_PERIOD_MS		50
 
 /* Each physical controller is associated with a joycon_ctlr struct */
 struct joycon_ctlr {
@@ -479,6 +487,7 @@ struct joycon_ctlr {
 	u16 rumble_lh_freq;
 	u16 rumble_rl_freq;
 	u16 rumble_rh_freq;
+	u32 rumble_buf_avail;
 	bool rumble_keep_alive;
 
 	/* imu */
@@ -755,12 +764,17 @@ static int joycon_read_stick_calibration(struct joycon_ctlr *ctlr, u16 cal_addr,
 	cal_y->max = cal_y->center + y_max_above;
 	cal_y->min = cal_y->center - y_min_below;
 
+	/* check if calibration values are plausible */
+	if (cal_x->min >= cal_x->center || cal_x->center >= cal_x->max ||
+	    cal_y->min >= cal_y->center || cal_y->center >= cal_y->max)
+		return -EINVAL;
+
 	return 0;
 }
 
-static const u16 DFLT_STICK_CAL_CEN = 2000;
-static const u16 DFLT_STICK_CAL_MAX = 3500;
-static const u16 DFLT_STICK_CAL_MIN = 500;
+#define DFLT_STICK_CAL_CEN		2000
+#define DFLT_STICK_CAL_MAX		3500
+#define DFLT_STICK_CAL_MIN		500
 static int joycon_request_calibration(struct joycon_ctlr *ctlr)
 {
 	u16 left_stick_addr = JC_CAL_FCT_DATA_LEFT_ADDR;
@@ -1117,7 +1131,7 @@ static void joycon_parse_imu_report(struct joycon_ctlr *ctlr,
 	ctlr->imu_last_pkt_ms = msecs;
 
 	/* Each IMU input report contains three samples */
-	for (i = 0; i < rep->sixaxis_report; i++) {
+	for (i = 0; i < 3; i++) {
 		input_event(idev, EV_MSC, MSC_TIMESTAMP,
 			    ctlr->imu_timestamp_us);
 
@@ -1201,8 +1215,7 @@ static void joycon_parse_imu_report(struct joycon_ctlr *ctlr,
 		input_report_abs(idev, ABS_Z, value[5]);
 		input_sync(idev);
 		/* convert to micros and divide by 3 (3 samples per report). */
-		ctlr->imu_timestamp_us += ctlr->imu_avg_delta_ms * 1000 /
-					  rep->sixaxis_report;
+		ctlr->imu_timestamp_us += ctlr->imu_avg_delta_ms * 1000 / 3;
 	}
 }
 
@@ -1216,7 +1229,24 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 	unsigned long msecs = jiffies_to_msecs(jiffies);
 
 	spin_lock_irqsave(&ctlr->lock, flags);
+
+	switch (ctlr->ctlr_type) {
+	case JOYCON_CTLR_TYPE_JCL:
+		ctlr->rumble_buf_avail =
+			JC_VIB_RPT_GET_BUF_STS_LEFT(rep->vibrator_report);
+		break;
+	case JOYCON_CTLR_TYPE_JCR:
+	case JOYCON_CTLR_TYPE_PRO:
+		ctlr->rumble_buf_avail =
+			JC_VIB_RPT_GET_BUF_STS_RIGHT(rep->vibrator_report);
+		break;
+	default:
+		ctlr->rumble_buf_avail = 0;
+		break;
+	}
+
 	if (IS_ENABLED(CONFIG_NINTENDO_FF) &&
+	    ctlr->ctlr_state != JOYCON_CTLR_STATE_REMOVED &&
 	    (msecs - ctlr->rumble_msecs) >= JC_RUMBLE_PERIOD_MS &&
 	    (ctlr->rumble_queue_head != ctlr->rumble_queue_tail ||
 	     ctlr->rumble_keep_alive))
@@ -1281,33 +1311,13 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 			/* Report the S buttons as the non-existent triggers */
 			input_report_key(dev, BTN_TR, btns & JC_BTN_SL_L);
 			input_report_key(dev, BTN_TR2, btns & JC_BTN_SR_L);
-
-			/* Report d-pad as digital buttons for the joy-cons */
-			input_report_key(dev, BTN_DPAD_DOWN,
-					 btns & JC_BTN_DOWN);
-			input_report_key(dev, BTN_DPAD_UP, btns & JC_BTN_UP);
-			input_report_key(dev, BTN_DPAD_RIGHT,
-					 btns & JC_BTN_RIGHT);
-			input_report_key(dev, BTN_DPAD_LEFT,
-					 btns & JC_BTN_LEFT);
-		} else {
-			int hatx = 0;
-			int haty = 0;
-
-			/* d-pad x */
-			if (btns & JC_BTN_LEFT)
-				hatx = -1;
-			else if (btns & JC_BTN_RIGHT)
-				hatx = 1;
-			input_report_abs(dev, ABS_HAT0X, hatx);
-
-			/* d-pad y */
-			if (btns & JC_BTN_UP)
-				haty = -1;
-			else if (btns & JC_BTN_DOWN)
-				haty = 1;
-			input_report_abs(dev, ABS_HAT0Y, haty);
 		}
+
+		/* Report d-pad */
+		input_report_key(dev, BTN_DPAD_DOWN, btns & JC_BTN_DOWN);
+		input_report_key(dev, BTN_DPAD_UP, btns & JC_BTN_UP);
+		input_report_key(dev, BTN_DPAD_RIGHT, btns & JC_BTN_RIGHT);
+		input_report_key(dev, BTN_DPAD_LEFT, btns & JC_BTN_LEFT);
 	}
 	if (jc_type_has_right(ctlr)) {
 		u16 raw_x;
@@ -1378,6 +1388,15 @@ static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
 		spin_unlock_irqrestore(&ctlr->lock, flags);
 		return -ENODEV;
 	}
+
+	/* Check if device has available buffers */
+	/*! TODO: find out how it works.
+	if (!ctlr->rumble_buf_avail) {
+		spin_unlock_irqrestore(&ctlr->lock, flags);
+		return -EBUSY;
+	}
+	*/
+
 	memcpy(rumble_output.rumble_data,
 	       ctlr->rumble_data[ctlr->rumble_queue_tail],
 	       JC_RUMBLE_DATA_SIZE);
@@ -1412,11 +1431,11 @@ static void joycon_rumble_worker(struct work_struct *work)
 	int ret;
 
 	while (again) {
-		mutex_lock(&ctlr->output_mutex);
 		ret = joycon_send_rumble_data(ctlr);
-		mutex_unlock(&ctlr->output_mutex);
-		/* -ENODEV means the controller was just unplugged */
-		if (ret == -ENODEV)
+		/* -ENODEV means the controller was just unplugged
+		 * -EBUSY  means the controller has no buffer available
+		 */
+		if (ret == -ENODEV || ret == -EBUSY)
 			break;
 
 		spin_lock_irqsave(&ctlr->lock, flags);
@@ -1499,10 +1518,10 @@ static void joycon_encode_rumble(u8 *data,
 	data[3] = amp_data_l.low & 0xFF;
 }
 
-static const u16 JOYCON_MAX_RUMBLE_HIGH_FREQ	= 1253;
-static const u16 JOYCON_MIN_RUMBLE_HIGH_FREQ	= 82;
-static const u16 JOYCON_MAX_RUMBLE_LOW_FREQ	= 626;
-static const u16 JOYCON_MIN_RUMBLE_LOW_FREQ	= 41;
+#define JOYCON_MAX_RUMBLE_HIGH_FREQ	1253
+#define JOYCON_MIN_RUMBLE_HIGH_FREQ	82
+#define JOYCON_MAX_RUMBLE_LOW_FREQ	626
+#define JOYCON_MIN_RUMBLE_LOW_FREQ	41
 
 static void joycon_clamp_rumble_freqs(struct joycon_ctlr *ctlr)
 {
@@ -1510,17 +1529,17 @@ static void joycon_clamp_rumble_freqs(struct joycon_ctlr *ctlr)
 
 	spin_lock_irqsave(&ctlr->lock, flags);
 	ctlr->rumble_ll_freq = clamp(ctlr->rumble_ll_freq,
-				     JOYCON_MIN_RUMBLE_LOW_FREQ,
-				     JOYCON_MAX_RUMBLE_LOW_FREQ);
+				     (u16)JOYCON_MIN_RUMBLE_LOW_FREQ,
+				     (u16)JOYCON_MAX_RUMBLE_LOW_FREQ);
 	ctlr->rumble_lh_freq = clamp(ctlr->rumble_lh_freq,
-				     JOYCON_MIN_RUMBLE_HIGH_FREQ,
-				     JOYCON_MAX_RUMBLE_HIGH_FREQ);
+				     (u16)JOYCON_MIN_RUMBLE_HIGH_FREQ,
+				     (u16)JOYCON_MAX_RUMBLE_HIGH_FREQ);
 	ctlr->rumble_rl_freq = clamp(ctlr->rumble_rl_freq,
-				     JOYCON_MIN_RUMBLE_LOW_FREQ,
-				     JOYCON_MAX_RUMBLE_LOW_FREQ);
+				     (u16)JOYCON_MIN_RUMBLE_LOW_FREQ,
+				     (u16)JOYCON_MAX_RUMBLE_LOW_FREQ);
 	ctlr->rumble_rh_freq = clamp(ctlr->rumble_rh_freq,
-				     JOYCON_MIN_RUMBLE_HIGH_FREQ,
-				     JOYCON_MAX_RUMBLE_HIGH_FREQ);
+				     (u16)JOYCON_MIN_RUMBLE_HIGH_FREQ,
+				     (u16)JOYCON_MAX_RUMBLE_HIGH_FREQ);
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 }
 
@@ -1594,9 +1613,9 @@ static const unsigned int joycon_button_inputs_r[] = {
 	0 /* 0 signals end of array */
 };
 
-/* We report joy-con d-pad inputs as buttons and pro controller as a hat. */
-static const unsigned int joycon_dpad_inputs_jc[] = {
+static const unsigned int joycon_dpad_inputs[] = {
 	BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT,
+	0 /* 0 signals end of array */
 };
 
 static int joycon_input_create(struct joycon_ctlr *ctlr)
@@ -1643,6 +1662,7 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
 	ctlr->input->id.vendor = hdev->vendor;
 	ctlr->input->id.product = hdev->product;
 	ctlr->input->id.version = hdev->version;
+	ctlr->input->phys = hdev->phys;
 	ctlr->input->uniq = ctlr->mac_addr_str;
 	ctlr->input->name = name;
 	input_set_drvdata(ctlr->input, ctlr);
@@ -1660,19 +1680,9 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
 			input_set_capability(ctlr->input, EV_KEY,
 					     joycon_button_inputs_l[i]);
 
-		/* configure d-pad differently for joy-con vs pro controller */
-		if (hdev->product != USB_DEVICE_ID_NINTENDO_PROCON) {
-			for (i = 0; joycon_dpad_inputs_jc[i] > 0; i++)
-				input_set_capability(ctlr->input, EV_KEY,
-						     joycon_dpad_inputs_jc[i]);
-		} else {
-			input_set_abs_params(ctlr->input, ABS_HAT0X,
-					     -JC_MAX_DPAD_MAG, JC_MAX_DPAD_MAG,
-					     JC_DPAD_FUZZ, JC_DPAD_FLAT);
-			input_set_abs_params(ctlr->input, ABS_HAT0Y,
-					     -JC_MAX_DPAD_MAG, JC_MAX_DPAD_MAG,
-					     JC_DPAD_FUZZ, JC_DPAD_FLAT);
-		}
+		for (i = 0; joycon_dpad_inputs[i] > 0; i++)
+			input_set_capability(ctlr->input, EV_KEY,
+					     joycon_dpad_inputs[i]);
 	}
 	if (jc_type_has_right(ctlr)) {
 		input_set_abs_params(ctlr->input, ABS_RX,
@@ -1718,10 +1728,12 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
 	if (!ctlr->imu_input)
 		return -ENOMEM;
 
+	ctlr->imu_input->dev.parent = &hdev->dev;
 	ctlr->imu_input->id.bustype = hdev->bus;
 	ctlr->imu_input->id.vendor = hdev->vendor;
 	ctlr->imu_input->id.product = hdev->product;
 	ctlr->imu_input->id.version = hdev->version;
+	ctlr->imu_input->phys = hdev->phys;
 	ctlr->imu_input->uniq = ctlr->mac_addr_str;
 	ctlr->imu_input->name = imu_name;
 	input_set_drvdata(ctlr->imu_input, ctlr);
@@ -1927,8 +1939,10 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
 	for (i = 0; i < JC_NUM_LEDS; i++) {
 		name = devm_kasprintf(dev, GFP_KERNEL, "%s:%s", d_name,
 				      joycon_player_led_names[i]);
-		if (!name)
+		if (!name) {
+			mutex_unlock(&joycon_input_num_mutex);
 			return -ENOMEM;
+		}
 
 		led = &ctlr->leds[i];
 		led->name = name;
@@ -1940,6 +1954,7 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
 		ret = devm_led_classdev_register(&hdev->dev, led);
 		if (ret) {
 			hid_err(hdev, "Failed registering %s LED\n", led->name);
+			mutex_unlock(&joycon_input_num_mutex);
 			return ret;
 		}
 	}
@@ -1952,7 +1967,7 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
 	if (jc_type_has_right(ctlr)) {
 		name = devm_kasprintf(dev, GFP_KERNEL, "%s:%s", d_name, "home");
 		if (!name)
-			return ret;
+			return -ENOMEM;
 
 		led = &ctlr->home_led;
 		led->name = name;
@@ -1968,9 +1983,9 @@ static int joycon_leds_create(struct joycon_ctlr *ctlr)
 		/* Set the home LED to 0 as default state */
 		ret = joycon_home_led_brightness_set(led, 0);
 		if (ret) {
-			hid_err(hdev, "Failed to set home LED dflt; ret=%d\n",
-									ret);
-			return ret;
+			hid_warn(hdev, "Failed to set home LED default,"
+				 "unregistering home LED");
+			devm_led_classdev_unregister(&hdev->dev, led);
 		}
 	}
 
@@ -2065,10 +2080,8 @@ static int joycon_power_supply_create(struct joycon_ctlr *ctlr)
 static int joycon_read_info(struct joycon_ctlr *ctlr)
 {
 	int ret;
-	int i;
-	int j;
 	struct joycon_subcmd_request req = { 0 };
-	struct joycon_input_report *report;
+	struct joycon_dev_info_data *info;
 
 	req.subcmd_id = JC_SUBCMD_REQ_DEV_INFO;
 	ret = joycon_send_subcmd(ctlr, &req, 0, HZ);
@@ -2077,10 +2090,13 @@ static int joycon_read_info(struct joycon_ctlr *ctlr)
 		return ret;
 	}
 
-	report = (struct joycon_input_report *)ctlr->input_buf;
+	info = (struct joycon_dev_info_data *)(((struct joycon_input_report *)
+					   ctlr->input_buf)->subcmd_reply.data);
 
-	for (i = 4, j = 0; j < 6; i++, j++)
-		ctlr->mac_addr[j] = report->subcmd_reply.data[i];
+	/* Retrieve the type so we can distinguish for charging grip */
+	ctlr->ctlr_type = info->dev_type;
+
+	memcpy(ctlr->mac_addr, info->mac, sizeof(ctlr->mac_addr));
 
 	ctlr->mac_addr_str = devm_kasprintf(&ctlr->hdev->dev, GFP_KERNEL,
 					    "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -2092,10 +2108,9 @@ static int joycon_read_info(struct joycon_ctlr *ctlr)
 					    ctlr->mac_addr[5]);
 	if (!ctlr->mac_addr_str)
 		return -ENOMEM;
-	hid_info(ctlr->hdev, "controller MAC = %s\n", ctlr->mac_addr_str);
-
-	/* Retrieve the type so we can distinguish for charging grip */
-	ctlr->ctlr_type = report->subcmd_reply.data[2];
+	hid_info(ctlr->hdev, "Controller Type: %02X, FW: %X.%02X, MAC = %s\n",
+		 ctlr->ctlr_type, info->fw_ver[0], info->fw_ver[1],
+		 ctlr->mac_addr_str);
 
 	return 0;
 }
@@ -2104,8 +2119,6 @@ static int joycon_read_info(struct joycon_ctlr *ctlr)
 static int joycon_ctlr_read_handler(struct joycon_ctlr *ctlr, u8 *data,
 							      int size)
 {
-	int ret = 0;
-
 	if (data[0] == JC_INPUT_SUBCMD_REPLY || data[0] == JC_INPUT_IMU_DATA ||
 	    data[0] == JC_INPUT_MCU_DATA) {
 		if (size >= 12) /* make sure it contains the input report */
@@ -2113,7 +2126,7 @@ static int joycon_ctlr_read_handler(struct joycon_ctlr *ctlr, u8 *data,
 					    (struct joycon_input_report *)data);
 	}
 
-	return ret;
+	return 0;
 }
 
 static int joycon_ctlr_handle_event(struct joycon_ctlr *ctlr, u8 *data,
@@ -2200,9 +2213,17 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 	spin_lock_init(&ctlr->lock);
 	ctlr->rumble_queue = alloc_ordered_workqueue("hid-nintendo-rumble_wq",
 					     WQ_FREEZABLE | WQ_MEM_RECLAIM);
+	if (!ctlr->rumble_queue) {
+		ret = -ENOMEM;
+		goto err;
+	}
 	INIT_WORK(&ctlr->rumble_worker, joycon_rumble_worker);
 	ctlr->led_queue = alloc_ordered_workqueue("hid-nintendo-led_wq",
 						 WQ_MEM_RECLAIM);
+	if (!ctlr->led_queue) {
+		ret = -ENOMEM;
+		goto err;
+	}
 	INIT_WORK(&ctlr->led_worker, joycon_led_worker);
 
 	ret = hid_parse(hdev);
@@ -2263,7 +2284,15 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 		goto err_mutex;
 	}
 
-	/* get controller calibration data, and parse it */
+	/* Get controller info */
+	ret = joycon_read_info(ctlr);
+	if (ret) {
+		hid_err(hdev, "Failed to retrieve controller info; ret=%d\n",
+			ret);
+		goto err_mutex;
+	}
+
+	/* Get controller calibration data, and parse it */
 	ret = joycon_request_calibration(ctlr);
 	if (ret) {
 		/*
@@ -2273,7 +2302,7 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 		hid_warn(hdev, "Analog stick positions may be inaccurate\n");
 	}
 
-	/* get IMU calibration data, and parse it */
+	/* Get IMU calibration data, and parse it */
 	ret = joycon_request_imu_calibration(ctlr);
 	if (ret) {
 		/*
@@ -2281,13 +2310,6 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 		 * inaccurate. Provide a warning, and continue on.
 		 */
 		hid_warn(hdev, "Unable to read IMU calibration data\n");
-	}
-
-	/* Set the reporting mode to 0x30, which is the full report mode */
-	ret = joycon_set_report_mode(ctlr);
-	if (ret) {
-		hid_err(hdev, "Failed to set report mode; ret=%d\n", ret);
-		goto err_mutex;
 	}
 
 	/* Enable rumble */
@@ -2304,11 +2326,11 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 		goto err_mutex;
 	}
 
-	ret = joycon_read_info(ctlr);
+	/* Set the reporting mode to 0x30, which is the full report mode */
+	ret = joycon_set_report_mode(ctlr);
 	if (ret) {
-		hid_err(hdev, "Failed to retrieve controller info; ret=%d\n",
-			ret);
-		goto err_close;
+		hid_err(hdev, "Failed to set report mode; ret=%d\n", ret);
+		goto err_mutex;
 	}
 
 	mutex_unlock(&ctlr->output_mutex);
