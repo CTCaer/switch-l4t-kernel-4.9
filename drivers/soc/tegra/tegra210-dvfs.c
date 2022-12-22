@@ -556,7 +556,11 @@ static struct cpu_dvfs cpu_fv_dvfs_table[] = {
 		{ 1785000000UL, {  1120000,        0,        0 } }, \
 		{ 1887000000UL, {  1120000,        0,        0 } }, \
 		{ 1963500000UL, {  1120000,        0,        0 } }, \
+		{ 2065500000UL, {  1120000,        0,        0 } }, \
 		{ 2091000000UL, {  1120000,        0,        0 } }, \
+		{ 2193000000UL, {  1235000,        0,        0 } }, \
+		{ 2295000000UL, {  1235000,        0,        0 } }, \
+		{ 2397000000UL, {  1235000,        0,        0 } }, \
 		{ 0,	        { } }, \
 	}, \
 	.pll_min_millivolts = 800
@@ -585,6 +589,10 @@ static struct cpu_dvfs cpu_fv_dvfs_table[] = {
 		{ 1887000000UL, {  1120000,        0,        0 } }, \
 		{ 1963500000UL, {  1120000,        0,        0 } }, \
 		{ 2014500000UL, {  1120000,        0,        0 } }, \
+		{ 2091000000UL, {  1235000,        0,        0 } }, \
+		{ 2193000000UL, {  1235000,        0,        0 } }, \
+		{ 2295000000UL, {  1235000,        0,        0 } }, \
+		{ 2397000000UL, {  1235000,        0,        0 } }, \
 		{ 0,	        { } }, \
 	}, \
 	.pll_min_millivolts = 800
@@ -593,13 +601,13 @@ static struct cpu_dvfs cpub01_fv_dvfs_table[] = {
 	{
 		.speedo_id = 2,
 		.process_id = -1,
-		.max_mv = 1120,
+		.max_mv = 1235, /* Allow OC max voltage of 1235 mV from 1120 */
 		CPUB01_PLL_CVB_TABLE_SLT,
 	},
 	{
 		.speedo_id = -1,
 		.process_id = -1,
-		.max_mv = 1120,
+		.max_mv = 1235, /* Allow OC max voltage of 1235 mV from 1120 */
 		CPUB01_PLL_CVB_TABLE,
 	},
 };
