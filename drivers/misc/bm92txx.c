@@ -696,63 +696,57 @@ static inline bool bm92t_is_lastcmd_ok(struct bm92t_info *info,
 
 static int bm92t_handle_dp_config_and_hpd(struct bm92t_info *info)
 {
-	int err;
+	int err, i;
 	int valid_lanes = 0;
 	unsigned char msg[5];
 	unsigned short cmd = DP_CFG_AND_START_HPD_CMD;
 	unsigned char cfg[6] = {OUTGOING_VDM_REG, 0x04,
-		VDO_DP_SUPPORT | VDO_DP_U_UFP_D, 0x00, 0x00, 0x00};
+				VDO_DP_SUPPORT | VDO_DP_U_UFP_D,
+				0x00, 0x00, 0x00};
 	union extcon_property_value prop;
 
-	/* Set primary and secondary pin assignments by lanes supported */
-	unsigned char pri_pin_cfg = (info->pdata->dp_lanes == 4) ?
-				    VDO_DP_PIN_C : VDO_DP_PIN_D;
-	unsigned char sec_pin_cfg = (info->pdata->dp_lanes == 4) ?
-				    VDO_DP_PIN_D : VDO_DP_PIN_C;
+	/* Set primary pin assignment by lanes supported */
+	unsigned char pin_cfg = (info->pdata->dp_lanes == 4) ?
+				VDO_DP_PIN_C : VDO_DP_PIN_D;
 
 	/* Read DisplayPort Capabilities */
-	err = bm92t_read_reg(info, INCOMING_VDM_REG,
-			     msg, sizeof(msg));
+	err = bm92t_read_reg(info, INCOMING_VDM_REG, msg, sizeof(msg));
 	dev_info(&info->i2c_client->dev,
 		 "DP Pin assignments: %02X %02X\n", msg[2], msg[3]);
 
-
 	/* Prepare UFP_U as UFP_D configuration */
-	if (info->cable.is_nintendo_dock) {
-		/* Dock reports Plug but uses Receptacle */
-		/* Both plug & receptacle pin assignment work, */
-		/* because dock ignores them. Use the latter though. */
-		if (msg[3] & pri_pin_cfg) {
-			cfg[3] = 0x00;
-			cfg[4] = pri_pin_cfg;
-			valid_lanes = pri_pin_cfg == VDO_DP_PIN_C ? 4 : 2;
-		} else if (msg[2] & sec_pin_cfg) {
-			cfg[3] = 0x00;
-			cfg[4] = sec_pin_cfg;
-			valid_lanes = sec_pin_cfg == VDO_DP_PIN_C ? 4 : 2;
+	for (i = 0; i < 2; i++) {
+		if (info->cable.is_nintendo_dock) {
+			/* Dock reports Plug but uses Receptacle */
+			/* Both plug & receptacle pin assignment work, */
+			/* because dock ignores them. Use the latter though. */
+			if (msg[3] & pin_cfg) {
+				cfg[3] = 0x00;
+				cfg[4] = pin_cfg;
+				valid_lanes = pin_cfg == VDO_DP_PIN_C ? 4 : 2;
+				break;
+			}
+		} else if (!(msg[1] & VDO_DP_RECEPTACLE)) { /* Plug */
+			/* Set Plug pin assignment */
+			if (msg[2] & pin_cfg) {
+				cfg[3] = pin_cfg;
+				cfg[4] = 0x00;
+				valid_lanes = pin_cfg == VDO_DP_PIN_C ? 4 : 2;
+				break;
+			}
+		} else if (msg[1] & VDO_DP_RECEPTACLE) { /* Receptacle */
+			/* Set Receptacle pin assignment */
+			if (msg[3] & pin_cfg) {
+				cfg[3] = pin_cfg;
+				cfg[4] = 0x00;
+				valid_lanes = pin_cfg == VDO_DP_PIN_C ? 4 : 2;
+				break;
+			}
 		}
-	} else if (!(msg[1] & VDO_DP_RECEPTACLE)) { /* Plug */
-		/* Set Plug pin assignment */
-		if (msg[2] & pri_pin_cfg) { /* 2 DP Lanes */
-			cfg[3] = pri_pin_cfg;
-			cfg[4] = 0x00;
-			valid_lanes = pri_pin_cfg == VDO_DP_PIN_C ? 4 : 2;
-		} else if (msg[2] & sec_pin_cfg) {
-			cfg[3] = sec_pin_cfg;
-			cfg[4] = 0x00;
-			valid_lanes = sec_pin_cfg == VDO_DP_PIN_C ? 4 : 2;
-		}
-	} else if (msg[1] & VDO_DP_RECEPTACLE) { /* Receptacle */
-		/* Set Receptacle pin assignment */
-		if (msg[3] & pri_pin_cfg) {
-			cfg[3] = pri_pin_cfg;
-			cfg[4] = 0x00;
-			valid_lanes = pri_pin_cfg == VDO_DP_PIN_C ? 4 : 2;
-		} else if (msg[3] & sec_pin_cfg) {
-			cfg[3] = sec_pin_cfg;
-			cfg[4] = 0x00;
-			valid_lanes = sec_pin_cfg == VDO_DP_PIN_C ? 4 : 2;
-		}
+
+		/* Try secondary pin assignment */
+		pin_cfg = (info->pdata->dp_lanes == 4) ?
+			  VDO_DP_PIN_D : VDO_DP_PIN_C;
 	}
 
 	/* Check that UFP_U/UFP_D Pin D assignment is supported */
