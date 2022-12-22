@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, Ezekiel Bethel <zek@9net.org>
+ * Copyright (c) 2021-2022, CTCaer <ctcaer@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -22,28 +23,45 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/moduleparam.h>
+#include <soc/tegra/chip-id.h>
 #include <soc/tegra/pmc.h>
 
-#define TEGRA_SIP_R2P_COPY_TO_IRAM 0xC2FFFE02
+#define TEGRA_SIP_R2P_COPY_TO_IRAM 0xC2FFFE02u
 #define  R2P_WRITE_IRAM            (0U << 0)
 #define  R2P_READ_IRAM             (1U << 0)
-#define TEGRA_SIP_R2P_DO_REBOOT    0xC2FFFE03
+#define TEGRA_SIP_R2P_DO_REBOOT    0xC2FFFE03u
+#define TEGRA_SIP_R2P_SET_BIN_CFG  0xC2FFFE04u
 
 #define IRAM_PAYLOAD_BASE    0x40010000u
 #define IRAM_CHUNK_SIZE      0x4000
 
+#define RTC_REBOOT_REASON_MAGIC 0x77
+
 /* hekate/Nyx */
 #define BOOT_CFG_AUTOBOOT_EN BIT(0)
-#define BOOT_CFG_FROM_LAUNCH BIT(1)
 #define BOOT_CFG_FROM_ID     BIT(2)
-#define BOOT_CFG_TO_EMUMMC   BIT(3)
 
-#define EXTRA_CFG_KEYS       BIT(0)
-#define EXTRA_CFG_PAYLOAD    BIT(1)
-#define EXTRA_CFG_MODULE     BIT(2)
-
+#define EXTRA_CFG_NYX_UMS    BIT(5)
 #define EXTRA_CFG_NYX_RELOAD BIT(6)
-#define EXTRA_CFG_NYX_DUMP   BIT(7)
+
+enum {
+	NYX_UMS_SD_CARD = 0,
+	NYX_UMS_EMMC_BOOT0,
+	NYX_UMS_EMMC_BOOT1,
+	NYX_UMS_EMMC_GPP,
+	NYX_UMS_EMUMMC_BOOT0,
+	NYX_UMS_EMUMMC_BOOT1,
+	NYX_UMS_EMUMMC_GPP
+};
+
+enum {
+	REBOOT_REASON_NOP   = 0, /* Use [config]. */
+	REBOOT_REASON_SELF  = 1, /* Use autoboot_idx/autoboot_list. */
+	REBOOT_REASON_MENU  = 2, /* Force menu. */
+	REBOOT_REASON_UMS   = 3, /* Force selected UMS partition. */
+	REBOOT_REASON_REC   = 4, /* Set PMC_SCRATCH0_MODE_RECOVERY and reboot to self. */
+	REBOOT_REASON_PANIC = 5  /* Inform bootloader that panic occured if T210B01. */
+};
 
 struct __attribute__((__packed__)) hekate_boot_cfg
 {
@@ -56,196 +74,313 @@ struct __attribute__((__packed__)) hekate_boot_cfg
 			char id[8];
 			char emummc_path[0x78];
 		};
+		u8 ums;
 		u8 xt_str[0x80];
 	};
 };
 
-static int enabled = 0;
-static char* reboot_action = NULL;
-static char* default_payload = NULL;
-static char* hekate_config_id = NULL;
+struct rtc_rr_dec
+{
+	u16 reason:4;
+	u16 autoboot_idx:4;
+	u16 autoboot_list:1;
+	u16 ums_idx:3;
+};
 
-module_param(enabled, int, 0660);
-module_param(reboot_action, charp, 0660);
-module_param(default_payload, charp, 0660);
-module_param(hekate_config_id, charp, 0660);
+struct rtc_rr_enc
+{
+	u16 val1:6; /* 6-bit reg. */
+	u16 val2:6; /* 6-bit reg. */
+};
+
+struct rtc_reboot_reason
+{
+	union {
+		struct rtc_rr_dec dec;
+		struct rtc_rr_enc enc;
+	};
+};
 
 struct reboot_driver_state
 {
-	const char *reboot_action;
-	const char *default_reboot_payload_name;
-	char hekate_id[8];
-	char default_payload_storage[192 * 1024];
-	size_t default_payload_length;
-	char custom_payload_storage[192 * 1024];
-	size_t custom_payload_length;
+	char action[16];
+	int  param1;
+	int  param2;
+	char entry_id[8];
 };
+
+static int enabled = 0;
+static int param1 = 0;
+static int param2 = 0;
+static char* action = NULL;
+static char* entry_id = NULL;
+
+module_param(enabled, int, 0664);
+module_param(action, charp, 0664);
+module_param(param1, int, 0664);
+module_param(param2, int, 0664);
+module_param(entry_id, charp, 0664);
+
+MODULE_PARM_DESC(enabled, "Enable Reboot 2 Payload function");
+MODULE_PARM_DESC(action, "Reboot action to take");
+MODULE_PARM_DESC(param1, "Autoboot entry or UMS device index");
+MODULE_PARM_DESC(param2, "Autooboot entry is ini list");
+MODULE_PARM_DESC(entry_id, "Autoboot entry id");
 
 struct platform_device *r2p_device = NULL;
 
-u8 iram_copy_buf[IRAM_CHUNK_SIZE];
-
-static u32 r2p_iram_copy(void *dram_addr, uint64_t iram_addr, uint32_t size, uint32_t flag)
+static u32 tegra_pmc_r2p_set_cfg(struct hekate_boot_cfg *hekate_bcfg)
 {
 	struct pmc_smc_regs regs;
-	regs.args[0] = virt_to_phys(dram_addr);
-	regs.args[1] = iram_addr;
-	regs.args[2] = size;
-	regs.args[3] = flag;
+	u64 hekate_boot_smc_cfg[4];
+
+	memcpy(hekate_boot_smc_cfg, hekate_bcfg, sizeof(hekate_boot_smc_cfg));
+
+	regs.args[0] = hekate_boot_smc_cfg[0];
+	regs.args[1] = hekate_boot_smc_cfg[1];
+	regs.args[2] = hekate_boot_smc_cfg[2];
+	regs.args[3] = hekate_boot_smc_cfg[3];
 	regs.args[4] = 0;
 	regs.args[5] = 0;
-	pmc_send_smc(TEGRA_SIP_R2P_COPY_TO_IRAM, &regs);
+	pmc_send_smc(TEGRA_SIP_R2P_SET_BIN_CFG, &regs);
 	return (u32)regs.args[0];
 }
 
-static void copy_payload_to_iram(const char *payload, size_t size)
+void tegra_pmc_r2p_setup(const char *cmd, bool panic_occurred)
 {
-	size_t i;
-	size_t copy_size;
-	size_t size_remaining = size;
-
-	for (i = 0; i < size; i += IRAM_CHUNK_SIZE, size_remaining -= IRAM_CHUNK_SIZE)
-	{
-		copy_size = size_remaining > IRAM_CHUNK_SIZE ? IRAM_CHUNK_SIZE : size_remaining;
-		memcpy(iram_copy_buf, payload + i, copy_size);
-		r2p_iram_copy(iram_copy_buf, IRAM_PAYLOAD_BASE + i, IRAM_CHUNK_SIZE, R2P_WRITE_IRAM);
-	}
-}
-
-static int load_payload(struct device *dev, const char *payload_fw_name, bool custom)
-{
-	struct reboot_driver_state *state = dev_get_drvdata(dev);
-	const struct firmware *reboot_payload_fw;
-	int ret;
-
-
-	ret = request_firmware(&reboot_payload_fw, payload_fw_name, dev);
-	if (ret != 0) {
-		dev_err(dev, "requesting firmware failed for %s: %d\n", payload_fw_name, ret);
-		return ret;
-	}
-
-	if (custom) {
-		memcpy(state->custom_payload_storage, reboot_payload_fw->data,
-		       reboot_payload_fw->size);
-		state->custom_payload_length = reboot_payload_fw->size;
-	} else {
-		memcpy(state->default_payload_storage, reboot_payload_fw->data,
-		       reboot_payload_fw->size);
-		state->default_payload_length = reboot_payload_fw->size;
-	}
-
-	release_firmware(reboot_payload_fw);
-	return 0;
-}
-
-void r2p_setup(const char *cmd)
-{
-	uint32_t empty_payload = 0;
-	bool load_default_payload = true;
-	bool do_hekate_config = true;
+	struct rtc_reboot_reason rr = {};
+	struct hekate_boot_cfg hekate_bcfg = {};
 	struct reboot_driver_state *state;
-	struct hekate_boot_cfg hekate_config;
+
+	uint32_t reboot_reason = REBOOT_REASON_NOP;
+	uint32_t hid, chipid, major;
+	bool tegra210b01;
 
 	if (r2p_device == NULL)
 		return;
 
+	hid = tegra_read_chipid();
+	chipid = tegra_hidrev_get_chipid(hid);
+	major = tegra_hidrev_get_majorrev(hid);
+	tegra210b01 = chipid == TEGRA210B01 && major >= 2;
+
 	state = dev_get_drvdata(&r2p_device->dev);
-	memset(&hekate_config, 0, sizeof(struct hekate_boot_cfg));
 
+	/* Linux reboot reason */
 	if (cmd) {
-		if (strcmp(cmd, "payload") == 0) { /* Custom payload */
-			/* If custom payload is present boot that */
-			if (state->custom_payload_length != 0)
-				load_default_payload = false;
-			do_hekate_config = false;
-		} else if (strcmp(cmd, "recovery") == 0) { /* Recovery mode */
-			load_default_payload = true;
-			do_hekate_config = true;
-		} else if (strcmp(cmd, "bootloader") == 0) { /* Default payload */
-			load_default_payload = true;
-			do_hekate_config = false;
+		if (!strcmp(cmd, "recovery")) {
+			reboot_reason = REBOOT_REASON_REC;
+		} else if (!strcmp(cmd, "bootloader")) {
+			reboot_reason = REBOOT_REASON_MENU;
+		} else if (!strcmp(cmd, "forced-recovery")) { /* RCM */
+			if (tegra210b01) return;
+		} else {
+			dev_err(&r2p_device->dev,
+				"Command '%s' not recognized\n", cmd);
 		}
-	} else if (state->reboot_action) { /* Normal reboot or string not matching */
-		if (strcmp(state->reboot_action, "via-payload") == 0) {
-			load_default_payload = true;
-			do_hekate_config = true;
-		} else if (strcmp(state->reboot_action, "bootloader") == 0) {
-			load_default_payload = true;
-			do_hekate_config = false;
-		}
-	} else {
-		/* Notify TZ to use its preloaded payload */
-		r2p_iram_copy(&empty_payload, IRAM_PAYLOAD_BASE, sizeof(uint32_t), R2P_WRITE_IRAM);
-		return;
 	}
 
-	if (load_default_payload) {
-		// Write default payload.
-		copy_payload_to_iram(state->default_payload_storage,
-				     state->default_payload_length);
-
-		if (do_hekate_config) {
-			if (strlen(state->hekate_id) != 0) {
-				hekate_config.boot_cfg = BOOT_CFG_FROM_ID | BOOT_CFG_AUTOBOOT_EN;
-				memcpy(hekate_config.id, state->hekate_id, 8);
-
-				// Write Hekate config.
-				r2p_iram_copy(&hekate_config, IRAM_PAYLOAD_BASE + 0x94,
-					      sizeof(struct hekate_boot_cfg), R2P_WRITE_IRAM);
-			}
+	/* Missing reboot reason or not matching, use r2p action. */
+	if (reboot_reason == REBOOT_REASON_NOP && strlen(state->action)) {
+		if (!strcmp(state->action, "self") ||
+		    !strcmp(state->action, "via-payload")) { /* Deprecated */
+			reboot_reason = REBOOT_REASON_SELF;
+		} else if (!strcmp(state->action, "bootloader")) {
+			reboot_reason = REBOOT_REASON_MENU;
+		} else if (!strcmp(state->action, "ums")) {
+			reboot_reason = REBOOT_REASON_UMS;
+		} else if (!strcmp(state->action, "normal")) {
+			reboot_reason = REBOOT_REASON_NOP;
+		} else {
+			dev_err(&r2p_device->dev,
+				"Action '%s' not recognized\n", state->action);
 		}
-	} else {
-		copy_payload_to_iram(state->custom_payload_storage,
-				     state->custom_payload_length);
 	}
 
-	return;
+	/* If T210B01 and panic happened override reboot reason */
+	if (tegra210b01 && panic_occurred) {
+		reboot_reason = REBOOT_REASON_PANIC;
+	}
+
+	/* Prepare boot config data */
+	switch (reboot_reason) {
+	case REBOOT_REASON_NOP:
+		if (tegra210b01) return;
+		break;
+	case REBOOT_REASON_REC:
+	case REBOOT_REASON_SELF:
+		hekate_bcfg.boot_cfg = BOOT_CFG_AUTOBOOT_EN;
+		if (strlen(state->entry_id) != 0) {
+			hekate_bcfg.boot_cfg |= BOOT_CFG_FROM_ID;
+			strcpy(hekate_bcfg.id, state->entry_id);
+		}
+		hekate_bcfg.autoboot = state->param1;
+		hekate_bcfg.autoboot_list = state->param2;
+
+		rr.dec.reason = reboot_reason;
+		rr.dec.autoboot_idx = state->param1;
+		rr.dec.autoboot_list = state->param2;
+		break;
+	case REBOOT_REASON_MENU:
+		hekate_bcfg.boot_cfg = BOOT_CFG_AUTOBOOT_EN;
+
+		rr.dec.reason = reboot_reason;
+		break;
+	case REBOOT_REASON_UMS:
+		hekate_bcfg.boot_cfg = BOOT_CFG_AUTOBOOT_EN;
+		hekate_bcfg.extra_cfg = EXTRA_CFG_NYX_UMS;
+		hekate_bcfg.ums = state->param1;
+
+		rr.dec.reason = reboot_reason;
+		rr.dec.ums_idx = state->param1;
+		break;
+	case REBOOT_REASON_PANIC:
+		rr.dec.reason = reboot_reason;
+		break;
+	}
+
+	/* Notify TZ to use its preloaded payload */
+	if (!tegra210b01) {
+		/* Set hekate boot config. */
+		tegra_pmc_r2p_set_cfg(&hekate_bcfg);
+	} else {
+		struct tegra_br_cmd_cfg bcfg[4] = {
+			{ 0, 0, rr.enc.val1 },
+			{ 0, 1, rr.enc.val2 },
+			{ 0, 2, RTC_REBOOT_REASON_MAGIC },
+			{ 0, 3, RTC_REBOOT_REASON_MAGIC }
+		};
+		tegra_pmc_edit_bootrom_scratch_reset(bcfg, 4);
+	}
 }
 
-static ssize_t default_payload_ready_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t action_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
 {
-	struct reboot_driver_state *state = dev_get_drvdata(dev);
+	struct reboot_driver_state *state = dev_get_drvdata(&r2p_device->dev);
+	int res;
 
-	if (load_payload(dev, state->default_reboot_payload_name, false) != 0)
-		return -EINVAL;
+	if (strlen(state->action))
+		res = sprintf(buf, "%s\n", state->action);
+	else
+		res = sprintf(buf, "Not-set\n");
 
-	return count;
+	return res;
 }
 
-static ssize_t custom_payload_store(struct device *dev,
+static ssize_t action_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
-	char payload_name[128];
+	struct reboot_driver_state *state = dev_get_drvdata(&r2p_device->dev);
 
-	if (count > sizeof(payload_name)-1)
+	if (count > sizeof(state->action) - 1)
 		return -EINVAL;
 
-	strncpy(payload_name, buf, 127);
-	payload_name[count] = 0;
+	strncpy(state->action, buf, sizeof(state->action) - 1);
+	state->action[sizeof(state->action) - 1] = 0;
 
 	/* Strip newline if it exists */
-	if (payload_name[count-1] == '\n')
-		payload_name[count-1] = 0;
-
-	if (load_payload(dev, payload_name, true) != 0)
-		return -EINVAL;
+	if (state->action[count - 1] == '\n')
+		state->action[count - 1] = 0;
 
 	return count;
 }
 
-static DEVICE_ATTR_WO(default_payload_ready);
-static DEVICE_ATTR_WO(custom_payload);
+static ssize_t entry_id_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	struct reboot_driver_state *state = dev_get_drvdata(&r2p_device->dev);
+	int res;
 
-static struct attribute *reboot_sysfs_attrs[] = {
-	&dev_attr_default_payload_ready.attr,
-	&dev_attr_custom_payload.attr,
+	if (strlen(state->entry_id))
+		res = sprintf(buf, "%s\n", state->entry_id);
+	else
+		res = sprintf(buf, "Not-set\n");
+
+	return res;
+}
+
+static ssize_t entry_id_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct reboot_driver_state *state = dev_get_drvdata(&r2p_device->dev);
+
+	if (count > sizeof(state->entry_id) - 1)
+		return -EINVAL;
+
+	strncpy(state->entry_id, buf, sizeof(state->entry_id) - 1);
+	state->entry_id[sizeof(state->entry_id) - 1] = 0;
+
+	/* Strip newline if it exists */
+	if (state->entry_id[count - 1] == '\n')
+		state->entry_id[count - 1] = 0;
+
+	return count;
+}
+
+static ssize_t param1_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	struct reboot_driver_state *state = dev_get_drvdata(&r2p_device->dev);
+
+	return sprintf(buf, "%d\n", (int)state->param1);
+}
+
+static ssize_t param1_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct reboot_driver_state *state = dev_get_drvdata(&r2p_device->dev);
+	ssize_t res;
+	long value;
+
+	res = kstrtol(buf, 0, &value);
+	if (!res)
+		state->param1 = value;
+
+	return res ? res : count;
+}
+
+static ssize_t param2_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	struct reboot_driver_state *state = dev_get_drvdata(&r2p_device->dev);
+
+	return sprintf(buf, "%d\n", (int)state->param2);
+}
+
+static ssize_t param2_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct reboot_driver_state *state = dev_get_drvdata(&r2p_device->dev);
+	ssize_t res;
+	long value;
+
+	res = kstrtol(buf, 0, &value);
+	if (!res)
+		state->param2 = value;
+
+	return res ? res : count;
+}
+
+static DEVICE_ATTR_RW(action);
+static DEVICE_ATTR_RW(entry_id);
+static DEVICE_ATTR_RW(param1);
+static DEVICE_ATTR_RW(param2);
+
+static struct attribute *r2p_sysfs_attrs[] = {
+	&dev_attr_action.attr,
+	&dev_attr_entry_id.attr,
+	&dev_attr_param1.attr,
+	&dev_attr_param2.attr,
 	NULL,
 };
-ATTRIBUTE_GROUPS(reboot_sysfs);
+ATTRIBUTE_GROUPS(r2p_sysfs);
 
-static int reboot_to_payload_driver_probe(struct platform_device *pdev)
+static int tegra_pmc_r2p_driver_probe(struct platform_device *pdev)
 {
 	struct reboot_driver_state *state;
 
@@ -256,33 +391,42 @@ static int reboot_to_payload_driver_probe(struct platform_device *pdev)
 
 	state = devm_kzalloc(&pdev->dev, sizeof(struct reboot_driver_state), GFP_KERNEL);
 
-	state->default_reboot_payload_name = default_payload;
-	state->reboot_action = reboot_action;
+	/* Copy reboot action if valid */
+	if (action) {
+		strncpy(state->action, action, sizeof(state->action) - 1);
+		state->action[sizeof(state->action) - 1] = 0;
+	}
 
-	/* Copy 7 char hekate id */
-	strncpy(state->hekate_id, hekate_config_id, 7);
-	state->hekate_id[7] = 0;
+	/* Copy entry ID if valid */
+	if (entry_id) {
+		strncpy(state->entry_id, entry_id, sizeof(state->entry_id) - 1);
+		state->entry_id[sizeof(state->entry_id) - 1] = 0;
+	}
+
+	/* Set reboot reason parameters. */
+	state->param1 = param1;
+	state->param2 = param2;
 
 	dev_set_drvdata(&pdev->dev, state);
 
-	if (sysfs_create_groups(&pdev->dev.kobj, reboot_sysfs_groups))
-		dev_err(&pdev->dev, "sysfs creation failed?\n");
+	if (sysfs_create_groups(&pdev->dev.kobj, r2p_sysfs_groups))
+		dev_err(&pdev->dev, "sysfs creation failed\n");
 
 	return 0;
 }
 
-static const struct of_device_id tegra_reboot_to_payload_match[] = {
-	{ .compatible = "tegra-reboot2payload", },
+static const struct of_device_id tegra_pmc_r2p_match[] = {
+	{ .compatible = "tegra-r2p", },
 	{ }
 };
 
-static struct platform_driver tegra_reboot_to_payload_driver = {
-	.probe   = reboot_to_payload_driver_probe,
+static struct platform_driver tegra_pmc_r2p_driver = {
+	.probe   = tegra_pmc_r2p_driver_probe,
 	.driver  = {
-		.name  = "tegra-reboot2payload",
+		.name  = "tegra-r2p",
 		.owner = THIS_MODULE,
-		.of_match_table = tegra_reboot_to_payload_match
+		.of_match_table = tegra_pmc_r2p_match
 	},
 };
 
-builtin_platform_driver(tegra_reboot_to_payload_driver);
+builtin_platform_driver(tegra_pmc_r2p_driver);

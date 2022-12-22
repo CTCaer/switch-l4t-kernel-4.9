@@ -980,11 +980,10 @@ enum tegra_system_reset_level tegra_pmc_get_system_reset_level(void)
 	return tegra_rst_lvl_sts;
 }
 
-extern void r2p_setup(const char *cmd);
-
 static void tegra_pmc_program_reboot_reason(const char *cmd)
 {
 	u32 value;
+	u32 panic_code = tegra_pmc_reg_readl(TEGRA_PMC_SCRATCH37);
 
 	value = tegra_pmc_reg_readl(TEGRA_PMC_SCRATCH0);
 	value &= ~PMC_SCRATCH0_MODE_MASK;
@@ -1000,7 +999,7 @@ static void tegra_pmc_program_reboot_reason(const char *cmd)
 
 	/* Setup R2P for T124/T210/T210B01 */
 	if (pmc->soc->supports_r2p) {
-		r2p_setup(cmd);
+		tegra_pmc_r2p_setup(cmd, panic_code == KERNEL_PANIC_MAGIC);
 
 		/* Deprecated: Old TZ support. */
 		value |= PMC_SCRATCH0_MODE_PAYLOAD;
