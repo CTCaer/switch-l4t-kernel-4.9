@@ -986,7 +986,7 @@ static int fts_parse_dt(struct i2c_client *client)
 				"%s: Failed to get %s regulator: %ld\n",
 				__func__, regulator_avdd,
 				PTR_ERR(pdata->regulator_avdd));
-			return -EPROBE_DEFER;
+			return PTR_ERR(pdata->regulator_avdd);
 		}
 	} else {
 		tsp_debug_info(dev,
@@ -1004,7 +1004,7 @@ static int fts_parse_dt(struct i2c_client *client)
 				"%s: Failed to get %s regulator: %ld\n",
 				__func__, regulator_dvdd,
 				PTR_ERR(pdata->regulator_dvdd));
-			return -EPROBE_DEFER;
+			return PTR_ERR(pdata->regulator_dvdd);
 		}
 	} else {
 		tsp_debug_info(dev,
@@ -1095,11 +1095,10 @@ error:
 	if (gpio_is_valid(pdata->vio_gpio))
 		gpio_free(pdata->vio_gpio);
 
-	kfree(info);
 	if (client->dev.of_node) {
-		kfree(pdata);
 		client->dev.platform_data = NULL;
 	}
+
 	return retval;
 }
 
