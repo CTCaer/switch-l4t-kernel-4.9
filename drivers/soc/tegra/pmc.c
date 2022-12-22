@@ -552,6 +552,7 @@ struct tegra_pmc_soc {
 	bool skip_arm_pm_restart;
 	bool has_misc_base_address;
 	bool sata_power_gate_in_misc;
+	bool supports_r2p;
 };
 
 struct tegra_io_pad_regulator {
@@ -997,10 +998,13 @@ static void tegra_pmc_program_reboot_reason(const char *cmd)
 			value |= PMC_SCRATCH0_MODE_RCM;
 	}
 
-	r2p_setup(cmd);
+	/* Setup R2P for T124/T210/T210B01 */
+	if (pmc->soc->supports_r2p) {
+		r2p_setup(cmd);
 
-	/* Deprecated: Support old TZ. */
-	value |= PMC_SCRATCH0_MODE_PAYLOAD;
+		/* Deprecated: Old TZ support. */
+		value |= PMC_SCRATCH0_MODE_PAYLOAD;
+	}
 
 	tegra_pmc_reg_writel(value, TEGRA_PMC_SCRATCH0);
 }
@@ -4092,6 +4096,9 @@ static const struct tegra_pmc_soc tegra124_pmc_soc = {
 	.has_tsense_reset = true,
 	.has_gpu_clamps = true,
 	.has_bootrom_command = false,
+#ifdef CONFIG_TEGRA_124_R2P
+	.supports_r2p = true,
+#endif
 };
 
 static const unsigned long tegra210_register_map[TEGRA_PMC_MAX_REG] = {
@@ -4314,6 +4321,9 @@ static const struct tegra_pmc_soc tegra210_pmc_soc = {
 	.rmap = tegra210_register_map,
 	.has_misc_base_address = false,
 	.sata_power_gate_in_misc = false,
+#ifdef CONFIG_TEGRA_210_R2P
+	.supports_r2p = true,
+#endif
 };
 
 #define TEGRA210B01_IO_PAD_LP_N_PV(_pin, _name, _dpd, _vbit, _io, _reg, _bds) \
@@ -4397,6 +4407,9 @@ static const struct tegra_pmc_soc tegra210b01_pmc_soc = {
 	.num_descs = ARRAY_SIZE(tegra210b01_io_pads_pinctrl_desc),
 	.descs = tegra210b01_io_pads_pinctrl_desc,
 	.rmap = tegra210_register_map,
+#ifdef CONFIG_TEGRA_210_R2P
+	.supports_r2p = true,
+#endif
 };
 
 /* Tegra 186 register map */

@@ -101,3 +101,25 @@ config TEGRA_210_DVFS
 	  specific initialization code to be invoked by probe function
 	  defined in generic Tegra DVFS driver, so while enabled it
 	  needs the config TEGRA_DVFS to be enabled as well.
+
+config TEGRA_124_R2P
+	bool "Tegra124 Reboot 2 Payload support"
+	depends on ARCH_TEGRA_124_SOC
+	select TEGRA_R2P
+	default n
+	help
+	  This enables a special reboot path which allows the board to reboot
+	  to a specified bootloader other than the one in boot storage.
+
+	  If in doubt, say N.
+
+config TEGRA_210_R2P
+	bool "Tegra210 Reboot 2 Payload support"
+	depends on ARCH_TEGRA_210_SOC
+	select TEGRA_R2P
+	default n
+	help
+	  This enables a special reboot path which allows the board to reboot
+	  to a specified bootloader other than the one in boot storage.
+
+	  If in doubt, say N.
