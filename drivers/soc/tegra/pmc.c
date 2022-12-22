@@ -380,7 +380,7 @@
 /*** Tegra210b01 led soft blink **/
 #define PMC_LED_BREATHING_EN		BIT(0)
 #define PMC_SHORT_LOW_PERIOD_EN	BIT(1)
-#define PMC_LED_SOFT_BLINK_1CYCLE_NS	32000000
+#define PMC_LED_SOFT_BLINK_1CYCLE_NS	30518
 
 #define PMC_READ		0xaa
 #define PMC_WRITE		0xbb
@@ -3235,7 +3235,7 @@ int tegra_pmc_soft_led_blink_configure(int duty_cycle_ns, int ll_period_ns,
 		tegra_pmc_reg_writel(period, TEGRA_PMC_LED_BREATHING_COUNTER3);
 	}
 
-	return 0;
+	return tegra_pmc_soft_led_blink_set_ramptime(ramp_time_ns);
 }
 EXPORT_SYMBOL(tegra_pmc_soft_led_blink_configure);
 
