@@ -2199,7 +2199,7 @@ static int tegra_pmc_parse_bootrom_cmd(struct device *dev,
 	int nblocks;
 	u32 reg, data, pval;
 	u32 *wr_commands;
-	int count, nblock, ncommands, i, reg_shift;
+	int count, nblock, ncommands, i, data_shift;
 	int ret;
 	int sz_bcommand, sz_blocks;
 
@@ -2270,7 +2270,7 @@ static int tegra_pmc_parse_bootrom_cmd(struct device *dev,
 		block->commands = command_ptr;
 		command_ptr += ncommands;
 		wr_commands = block->commands;
-		reg_shift = (block->data_8bits) ? 8 : 16;
+		data_shift = (block->data_8bits) ? 8 : 16;
 		for (i = 0; i < ncommands; ++i) {
 			of_property_read_u32_index(child,
 						   "nvidia,write-commands",
@@ -2279,7 +2279,7 @@ static int tegra_pmc_parse_bootrom_cmd(struct device *dev,
 						   "nvidia,write-commands",
 						   i * 2 + 1, &data);
 
-			wr_commands[i] = (data << reg_shift) | reg;
+			wr_commands[i] = (data << data_shift) | reg;
 		}
 		block->ncommands = ncommands;
 		nblock++;
@@ -2329,14 +2329,16 @@ static int tegra_pmc_read_bootrom_cmd(struct device *dev,
 	return 0;
 }
 
-static int tegra_pmc_configure_bootrom_scratch(struct device *dev,
-		struct tegra_bootrom_commands *br_commands)
+static int tegra_pmc_configure_bootrom_scratch(
+		struct tegra_bootrom_commands *br_commands,
+		struct tegra_br_cmd_cfg *bcfg, u32 bcfg_size)
 {
 	struct tegra_bootrom_block *block;
 	int i, j, k;
-	u32 cmd;
+	u32 cmd, tmp_cmd;
 	int reg_offset = 1;
-	u32 reg_data_mask;
+	int bcfg_idx = 0;
+	u32 reg_data_mask, edit_data_mask;
 	int cmd_pw;
 	u32 block_add, block_val, csum;
 
@@ -2361,17 +2363,38 @@ static int tegra_pmc_configure_bootrom_scratch(struct device *dev,
 		reg_offset++;
 
 		cmd_pw = (block->reg_8bits && block->data_8bits) ? 2 : 1;
-		reg_data_mask = (cmd_pw == 1) ? 0xFFFF : 0xFFFFFFFFUL;
+		reg_data_mask = (cmd_pw == 2) ? 0xFFFF : 0xFFFFFFFFUL;
 		csum = 0;
 
 		for (j = 0; j < block->ncommands; j++) {
-			cmd = block->commands[j] & reg_data_mask;
+			tmp_cmd = block->commands[j] & reg_data_mask;
+			if (bcfg_idx < bcfg_size &&
+			    bcfg[bcfg_idx].dev == i &&
+			    bcfg[bcfg_idx].idx == j) {
+			    	edit_data_mask = (cmd_pw == 2) ?
+						 0xFF00UL : 0xFFFF0000UL;
+				tmp_cmd &= ~edit_data_mask;
+				tmp_cmd |= (bcfg[bcfg_idx].val <<
+					   (cmd_pw == 2 ? 8 : 16)) & edit_data_mask;
+				bcfg_idx++;
+			}
+			cmd = tmp_cmd;
 			if (cmd_pw == 2) {
 				j++;
 				if (j == block->ncommands)
 					goto reg_update;
-				cmd |= (block->commands[j] & reg_data_mask) <<
-					16;
+
+				tmp_cmd = (block->commands[j] & reg_data_mask) << 16;
+				if (bcfg_idx < bcfg_size &&
+				    bcfg[bcfg_idx].dev == i &&
+				    bcfg[bcfg_idx].idx == j) {
+					edit_data_mask = 0xFF000000UL;
+					tmp_cmd &= ~edit_data_mask;
+					tmp_cmd |= (bcfg[bcfg_idx].val << 24) &
+						   edit_data_mask;
+					bcfg_idx++;
+				}
+				cmd |= tmp_cmd;
 			}
 reg_update:
 			tegra_pmc_write_bootrom_command(reg_offset * 4, cmd);
@@ -2395,6 +2418,30 @@ reg_update:
 	return 0;
 }
 
+int tegra_pmc_edit_bootrom_scratch_poff(struct tegra_br_cmd_cfg *bcfg,
+					u32 bcfg_size)
+{
+	if (br_off_commands) {
+		tegra_pmc_configure_bootrom_scratch(br_off_commands,
+						    bcfg, bcfg_size);
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+int tegra_pmc_edit_bootrom_scratch_reset(struct tegra_br_cmd_cfg *bcfg,
+					u32 bcfg_size)
+{
+	if (br_rst_commands) {
+		tegra_pmc_configure_bootrom_scratch(br_rst_commands,
+						    bcfg, bcfg_size);
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
 static int tegra_pmc_init_bootrom_power_off_cmd(struct device *dev)
 {
 	int ret;
@@ -2404,7 +2451,7 @@ static int tegra_pmc_init_bootrom_power_off_cmd(struct device *dev)
 		return 0;
 	}
 
-	ret = tegra_pmc_configure_bootrom_scratch(NULL, br_off_commands);
+	ret = tegra_pmc_configure_bootrom_scratch(br_off_commands, NULL, 0);
 	if (ret < 0) {
 		dev_err(dev, "PMC: Failed to configure power-off command: %d\n",
 			ret);
@@ -2441,7 +2488,7 @@ static int tegra_pmc_init_boorom_cmds(struct device *dev)
 	if (br_off_commands)
 		set_soc_specific_power_off(tegra_pmc_soc_power_off);
 
-	ret = tegra_pmc_configure_bootrom_scratch(dev, br_rst_commands);
+	ret = tegra_pmc_configure_bootrom_scratch(br_rst_commands, NULL, 0);
 	if (ret < 0) {
 		dev_info(dev, "PMC: Failed to write bootrom scratch register: %d\n",
 			 ret);
