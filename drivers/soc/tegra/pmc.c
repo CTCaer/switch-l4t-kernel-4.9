@@ -1017,6 +1017,10 @@ static int tegra_pmc_restart_notify(struct notifier_block *this,
 
 	tegra_pmc_program_reboot_reason(cmd);
 
+	/* Check if board doesn't handle normal reset properly */
+	if (psci_power_reset)
+		psci_power_reset();
+
 	value = tegra_pmc_reg_readl(TEGRA_PMC_CNTRL);
 	value |= 0x10;
 	tegra_pmc_reg_writel(value, TEGRA_PMC_CNTRL);
