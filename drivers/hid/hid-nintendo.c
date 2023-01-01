@@ -481,7 +481,7 @@ struct joycon_ctlr {
 	int rumble_queue_head;
 	int rumble_queue_tail;
 	struct workqueue_struct *rumble_queue;
-	struct work_struct rumble_worker;
+	struct delayed_work rumble_worker;
 	unsigned int rumble_msecs;
 	u16 rumble_ll_freq;
 	u16 rumble_lh_freq;
@@ -1250,7 +1250,7 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 	    (msecs - ctlr->rumble_msecs) >= JC_RUMBLE_PERIOD_MS &&
 	    (ctlr->rumble_queue_head != ctlr->rumble_queue_tail ||
 	     ctlr->rumble_keep_alive))
-		queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
+		queue_delayed_work(ctlr->rumble_queue, &ctlr->rumble_worker, 0);
 
 	/* Parse the battery status */
 	tmp = rep->bat_con;
@@ -1424,32 +1424,42 @@ static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
 
 static void joycon_rumble_worker(struct work_struct *work)
 {
-	struct joycon_ctlr *ctlr = container_of(work, struct joycon_ctlr,
-							rumble_worker);
+	struct delayed_work *dwork = container_of(work, struct delayed_work,
+						  work);
+	struct joycon_ctlr *ctlr = container_of(dwork, struct joycon_ctlr,
+						rumble_worker);
 	unsigned long flags;
 	bool again = true;
 	int ret;
 
-	while (again) {
-		ret = joycon_send_rumble_data(ctlr);
-		/* -ENODEV means the controller was just unplugged
-		 * -EBUSY  means the controller has no buffer available
-		 */
-		if (ret == -ENODEV || ret == -EBUSY)
-			break;
+	ret = joycon_send_rumble_data(ctlr);
+	/* -ENODEV means the controller was just unplugged
+	 * -EBUSY  means the controller has no buffer available
+	 */
+	if (ret == -ENODEV)
+		return;
 
-		spin_lock_irqsave(&ctlr->lock, flags);
-		if (ret < 0)
-			hid_warn(ctlr->hdev, "Failed to set rumble; e=%d", ret);
+	if (ret == -EBUSY)
+		goto reschedule;
 
-		ctlr->rumble_msecs = jiffies_to_msecs(jiffies);
-		if (ctlr->rumble_queue_tail != ctlr->rumble_queue_head) {
-			if (++ctlr->rumble_queue_tail >= JC_RUMBLE_QUEUE_SIZE)
-				ctlr->rumble_queue_tail = 0;
-		} else {
-			again = false;
-		}
-		spin_unlock_irqrestore(&ctlr->lock, flags);
+	spin_lock_irqsave(&ctlr->lock, flags);
+	if (ret < 0)
+		hid_warn(ctlr->hdev, "Failed to set rumble; e=%d", ret);
+
+	ctlr->rumble_msecs = jiffies_to_msecs(jiffies);
+	if (ctlr->rumble_queue_tail != ctlr->rumble_queue_head) {
+		if (++ctlr->rumble_queue_tail >= JC_RUMBLE_QUEUE_SIZE)
+			ctlr->rumble_queue_tail = 0;
+	} else {
+		again = false;
+	}
+	spin_unlock_irqrestore(&ctlr->lock, flags);
+
+reschedule:
+	/* Max 1 rumble command per 5 ms. */
+	if (again) {
+		queue_delayed_work(ctlr->rumble_queue, &ctlr->rumble_worker,
+				   msecs_to_jiffies(5));
 	}
 }
 
@@ -1580,7 +1590,7 @@ static int joycon_set_rumble(struct joycon_ctlr *ctlr, u16 amp_weak, u16 amp_str
 
 	/* don't wait for the periodic send (reduces latency) */
 	if (schedule_now && !removed)
-		queue_work(ctlr->rumble_queue, &ctlr->rumble_worker);
+		queue_delayed_work(ctlr->rumble_queue, &ctlr->rumble_worker, 0);
 
 	return 0;
 }
@@ -2217,7 +2227,7 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 		ret = -ENOMEM;
 		goto err;
 	}
-	INIT_WORK(&ctlr->rumble_worker, joycon_rumble_worker);
+	INIT_DELAYED_WORK(&ctlr->rumble_worker, joycon_rumble_worker);
 	ctlr->led_queue = alloc_ordered_workqueue("hid-nintendo-led_wq",
 						 WQ_MEM_RECLAIM);
 	if (!ctlr->led_queue) {
