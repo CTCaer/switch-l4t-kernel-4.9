@@ -1442,13 +1442,9 @@ src_fault:
 		}
 
 		if ((alert_data & ALERT_CONTRACT) || info->first_init) {
-			/* Enable USB if first init and plugged */
+			/* Exit if unplugged */
 			if (!bm92t_is_plugged(status1_data))
 				goto init_contract_out;
-			else if (info->first_init) {
-				bm92t_extcon_cable_update(info,
-							  EXTCON_USB, true);
-			}
 
 			/* Check if sink mode is enabled for first init */
 			/* If not, exit and wait for next alert */
