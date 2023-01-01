@@ -169,7 +169,7 @@ static unsigned int
 	if (ucd->hw_ops == NULL)
 		return ucd->connect_type;
 
-	if (ucd->pd_ucd && extcon_get_state(ucd->pd_ucd, EXTCON_USB_PD)) {
+	if (ucd->pd_ucd && extcon_get_state(ucd->pd_ucd, EXTCON_USB_PD) > 0) {
 		ucd->connect_type = EXTCON_USB_PD;
 		goto set_state;
 	}
