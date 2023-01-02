@@ -481,9 +481,6 @@ struct joycon_ctlr {
 	char *mac_addr_str;
 	bool suspending;
 
-	int detect_en_gpio;
-	int detect_gpio;
-
 	/* Lite gamepad */
 	bool is_sio;
 	int sio_home_gpio;
@@ -522,6 +519,11 @@ struct joycon_ctlr {
 	/* Joy-con detection */
 	struct workqueue_struct *detection_queue;
 	struct delayed_work detection_worker;
+	int detection_irq_retries;
+	int detect_en_gpio;
+	bool detect_en_req;
+	int detect_gpio;
+	int detect_irq;
 
 	/* Joy-con input polling */
 	struct workqueue_struct *input_queue;
@@ -1708,14 +1710,41 @@ static int joycon_set_baudrate(struct joycon_ctlr *ctlr, unsigned int speed)
 	return ret;
 }
 
+static irqreturn_t joycon_detection_irq(int irq, void *dev_id)
+{
+	struct joycon_ctlr *ctlr = (struct joycon_ctlr *)dev_id;
+
+	if (ctlr->ctlr_state != JOYCON_CTLR_STATE_INIT)
+		return IRQ_HANDLED;
+
+	/* Check if interrupt was caused by detection enable pin in SPIO */
+	if (gpio_get_value(ctlr->detect_gpio))
+		return IRQ_HANDLED;
+
+	/* Disable interrupt */
+	disable_irq_nosync(ctlr->detect_irq);
+
+	/* Restore UART TX pin to SPIO */
+	gpio_free(ctlr->detect_en_gpio);
+	ctlr->detect_en_req = false;
+
+	queue_delayed_work(ctlr->detection_queue,
+			   &ctlr->detection_worker, 0);
+	return IRQ_HANDLED;
+}
+
+/* Approx. 3 seconds which is the time it takes for Joy-Con to reboot */
+#define JOYCON_IRQ_DETECTION_RETRIES 6
+
 static int joycon_enter_detection(struct joycon_ctlr *ctlr)
 {
 	int ret;
+	struct device *dev = &ctlr->sdev->dev;
 
 	ret = joycon_set_baudrate(ctlr, JC_UART_BAUD_LOW);
 	if (ret != JC_UART_BAUD_LOW) {
-		dev_err(&ctlr->sdev->dev,
-			"Failed to set initial serial baudrate; ret=%d\n", ret);
+		dev_err(dev, "Failed to set initial serial baudrate; ret=%d\n",
+			ret);
 		return -EINVAL;
 	}
 	ctlr->ctlr_state = JOYCON_CTLR_STATE_INIT;
@@ -1724,9 +1753,47 @@ static int joycon_enter_detection(struct joycon_ctlr *ctlr)
 	if (!IS_ERR_OR_NULL(ctlr->charger_reg) &&
 	    !regulator_is_enabled(ctlr->charger_reg) &&
 	    regulator_enable(ctlr->charger_reg))
-		dev_err(&ctlr->sdev->dev, "Failed to enable charger\n");
+		dev_err(dev, "Failed to enable charger\n");
 
+	/* Enter interrupt based detection */
+	if (gpio_is_valid(ctlr->detect_en_gpio)) {
+		ret = gpio_request(ctlr->detect_en_gpio, "jc-detect-en");
+		if (ret < 0) {
+			dev_err(dev, "Failed to enable detect pin; ret=%d\n",
+				ret);
+			return ret;
+		}
+
+		ret = gpio_direction_input(ctlr->detect_en_gpio);
+		if (ret < 0) {
+			gpio_free(ctlr->detect_en_gpio);
+			dev_err(dev, "Failed to set gpio en direction; ret=%d\n",
+				ret);
+			return ret;
+		}
+
+		/* Wait 5 ms for detection pin to settle */
+		msleep(5);
+
+		ctlr->detection_irq_retries = JOYCON_IRQ_DETECTION_RETRIES;
+
+		/* Check if already plugged-in */
+		if (!gpio_get_value(ctlr->detect_gpio)) {
+			gpio_free(ctlr->detect_en_gpio);
+			goto queue_detection;
+		}
+
+		/* IRQ based detection */
+		ctlr->detect_en_req = true;
+		enable_irq(ctlr->detect_irq);
+
+		return 0;
+	}
+
+queue_detection:
+	/* Always queue if no detection pin or Sio */
 	queue_delayed_work(ctlr->detection_queue, &ctlr->detection_worker, 0);
+
 	return 0;
 }
 
@@ -2945,8 +3012,15 @@ static void joycon_detection_poller(struct work_struct *work)
 	return;
 
 retry:
+	/* If irq based detection, decrease retries */
+	if (ctlr->detection_irq_retries && !(--ctlr->detection_irq_retries)) {
+		/* Stop trying and re-enter irq-based detection */
+		joycon_enter_detection(ctlr);
+		return;
+	}
+
 	queue_delayed_work(ctlr->detection_queue, &ctlr->detection_worker,
-			   msecs_to_jiffies(100));
+			   msecs_to_jiffies(500));
 }
 
 static int joycon_serdev_receive_buf(struct serdev_device *serdev,
@@ -3331,15 +3405,34 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 		gpio_direction_output(ctlr->sio_por_gpio, 0);
 	}
 
-	if (gpio_is_valid(ctlr->detect_gpio)) {
-		// devm_gpio_request(dev, ctlr->detect_gpio, "jc-detect");
-		// if (request_irq(ctlr->detect_gpio, handler,
-		// 		IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-		// 		"jc-detect", dev)) {
-		// 	gpio_free(ctlr->detect_gpio);
-		// 	dev_err(dev, "Failed to open serdev device; ret=%d\n", ret);
-		// 	goto err_sdev_close;
-		// }
+	if (gpio_is_valid(ctlr->detect_gpio) &&
+	    gpio_is_valid(ctlr->detect_en_gpio)) {
+		if (devm_gpio_request(dev, ctlr->detect_gpio, "jc-detect") < 0) {
+			dev_err(dev, "Failed to request detect gpio\n");
+			goto polling_mode;
+		}
+		if (gpio_direction_input(ctlr->detect_gpio) < 0) {
+			dev_err(dev, "Failed to set detect gpio direction\n");
+			devm_gpio_free(dev, ctlr->detect_gpio);
+			goto polling_mode;
+		}
+		ctlr->detect_irq = gpio_to_irq(ctlr->detect_gpio);
+		if (devm_request_threaded_irq(dev, ctlr->detect_irq,
+					      NULL, joycon_detection_irq,
+					      IRQF_TRIGGER_FALLING |
+					      IRQF_ONESHOT,
+					      "jc-detect", ctlr)) {
+			dev_err(dev, "Failed to request detect irq\n");
+			devm_gpio_free(dev, ctlr->detect_gpio);
+			goto polling_mode;
+		}
+		dev_info(dev, "Interrupt based detection\n");
+		disable_irq(ctlr->detect_irq);
+	} else {
+polling_mode:
+		ctlr->detect_gpio = 0;
+		ctlr->detect_en_gpio = 0;
+		dev_info(dev, "Polling based detection\n");
 	}
 
 	ret = joycon_enter_detection(ctlr);
@@ -3393,6 +3486,12 @@ static void joycon_serdev_remove(struct serdev_device *serdev)
 
 	dev_info(&serdev->dev, "Remove\n");
 
+	if (ctlr->detect_en_req) {
+		disable_irq(ctlr->detect_irq);
+		gpio_free(ctlr->detect_en_gpio);
+		ctlr->detect_en_req = false;
+	}
+
 	serdev_device_close(serdev);
 	if (ctlr->ctlr_state == JOYCON_CTLR_STATE_READ)
 		joycon_disconnect(ctlr);
@@ -3415,6 +3514,12 @@ static int __maybe_unused joycon_serdev_suspend(struct device *dev)
 	unsigned long flags;
 
 	dev_info(dev, "Suspend\n");
+
+	if (ctlr->detect_en_req) {
+		disable_irq(ctlr->detect_irq);
+		gpio_free(ctlr->detect_en_gpio);
+		ctlr->detect_en_req = false;
+	}
 
 	spin_lock_irqsave(&ctlr->lock, flags);
 	if (ctlr->suspending) {
