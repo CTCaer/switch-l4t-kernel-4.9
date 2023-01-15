@@ -878,16 +878,16 @@ Driver: brcmfmac: Broadcom 4356A3 PCIE WiFi
 File: brcm/brcmfmac4356A3-pcie.bin
 
 License:
-  Copyright (c) 2017-2021 Cypress Semiconductor Corp.
+  Copyright (c) 2017-2022 Cypress Semiconductor Corp.
 
   This file contains firmware data derived from proprietary unpublished
-  source code, Copyright (c) 2017-2021 Cypress Semiconductor Corp.
+  source code, Copyright (c) 2017-2022 Cypress Semiconductor Corp.
 
   Permission is hereby granted for the distribution of this firmware data
   in hexadecimal or equivalent format, provided this copyright notice is
   accompanying it.
 
-Version: 7.35.252.104 (r728022), Ucode Ver: 1020.228.
+Version: 7.35.252.108 (c216b7c), Ucode Ver: 1020.228. 14.0.0.
 Features: pcie ag msgbuf splitrx pktctx keepalive sr proptxstatus
   ampduhostreorder dlystat rxdesens clm_4356a3_ntd noclminc ntdds3 btcdyn
   trfmgmt pspretend btafh pktfilter wowlpf gtkoe aoe tcpkaoe aloe
