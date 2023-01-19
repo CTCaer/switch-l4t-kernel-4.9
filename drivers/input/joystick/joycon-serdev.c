@@ -3,7 +3,7 @@
  * serial driver for Nintendo Switch Joy-Cons
  *
  * Copyright (c) 2019-2020 Daniel J. Ogorchock <djogorchock@gmail.com>
- * Copyright (c) 2021-2022 CTCaer <ctcaer@gmail.com>
+ * Copyright (c) 2021-2023 CTCaer <ctcaer@gmail.com>
  *
  * The following resources/projects were referenced for this driver:
  *   https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering
