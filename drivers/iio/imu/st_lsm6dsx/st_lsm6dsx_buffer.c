@@ -22,6 +22,8 @@
  * Lorenzo Bianconi <lorenzo.bianconi@st.com>
  * Denis Ciocca <denis.ciocca@st.com>
  *
+ * Copyright 2020-2022, CTCaer
+ *
  * Licensed under the GPL-2.
  */
 #include <linux/module.h>
