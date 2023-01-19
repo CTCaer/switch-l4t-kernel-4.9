@@ -2,6 +2,7 @@
  * tegra_usb_cd.c -- Tegra USB charger detection driver.
  *
  * Copyright (c) 2017-2018, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2020-2022, CTCaer.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
