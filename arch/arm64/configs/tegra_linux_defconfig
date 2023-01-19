@@ -57,6 +57,7 @@ CONFIG_EMBEDDED=y
 #
 # Kernel Performance Events And Counters
 #
+# CONFIG_SLUB_DEBUG is not set
 CONFIG_COMPAT_BRK=y
 CONFIG_PROFILING=y
 CONFIG_JUMP_LABEL=y
@@ -1805,7 +1806,7 @@ CONFIG_NLS_ISO8859_1=y
 #
 CONFIG_PRINTK_TIME=y
 CONFIG_MESSAGE_LOGLEVEL_DEFAULT=4
-CONFIG_DYNAMIC_DEBUG=y
+# CONFIG_DYNAMIC_DEBUG is not set
 
 #
 # Compile-time checks and compiler options
