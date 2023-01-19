@@ -6,7 +6,7 @@
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  * Author: Syed Rafiuddin <srafiuddin@nvidia.com>
  *
- * Copyright (c) 2020-2022, CTCaer <ctcaer@gmail.com>
+ * Copyright (c) 2020-2023, CTCaer <ctcaer@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -68,6 +68,8 @@
 
 #define BQ2419x_SOC_REG_LIMIT_MIN	45
 #define BQ2419x_SOC_REG_LIMIT_MAX	85
+
+#define BQ2419X_NORMAL_OPERATING_TEMP	55000
 
 /* input current limit */
 static const unsigned int iinlim[] = {
@@ -1021,7 +1023,7 @@ static int bq2419x_thermal_read_temp(void *data, int *temp)
 	if (reg_08 & BQ2419x_THERM_STAT)
 		curr_temp += 5000;
 	else
-		curr_temp -= 5000;
+		curr_temp  = BQ2419X_NORMAL_OPERATING_TEMP;
 
 	*temp = curr_temp;
 	return 0;
