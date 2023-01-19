@@ -3,6 +3,7 @@
  *  Bluetooth support for Broadcom devices
  *
  *  Copyright (C) 2015  Intel Corporation
+ *  Copyright (C) 2022  CTCaer
  *
  *
  *  This program is free software; you can redistribute it and/or modify
