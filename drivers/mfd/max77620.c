@@ -2,6 +2,7 @@
  * Maxim MAX77620 MFD Driver
  *
  * Copyright (C) 2016-2019 NVIDIA CORPORATION. All rights reserved.
+ * Copyright (C) 2021, CTCaer
  *
  * Author:
  *	Laxman Dewangan <ldewangan@nvidia.com>
