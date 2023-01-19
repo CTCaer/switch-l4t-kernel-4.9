@@ -2,6 +2,7 @@
  * Tegra124 DFLL FCPU clock source driver
  *
  * Copyright (C) 2012-2014 NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2021-2022, CTCaer
  *
  * Aleksandr Frid <afrid@nvidia.com>
  * Paul Walmsley <pwalmsley@nvidia.com>

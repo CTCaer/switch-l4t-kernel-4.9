@@ -2,6 +2,7 @@
  * clk-dfll.c - Tegra DFLL clock source common code
  *
  * Copyright (C) 2012-2018 NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2021, CTCaer
  *
  * Aleksandr Frid <afrid@nvidia.com>
  * Paul Walmsley <pwalmsley@nvidia.com>
