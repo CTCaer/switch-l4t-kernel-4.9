@@ -1,7 +1,7 @@
 /*
  * bm92txx.c
  *
- * Copyright (c) 2020-2022 CTCaer <ctcaer@gmail.com>
+ * Copyright (c) 2020-2023 CTCaer <ctcaer@gmail.com>
  *
  * Authors:
  *     CTCaer <ctcaer@gmail.com>
