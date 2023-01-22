@@ -1756,7 +1756,8 @@ static int joycon_enter_detection(struct joycon_ctlr *ctlr)
 		dev_err(dev, "Failed to enable charger\n");
 
 	/* Enter interrupt based detection */
-	if (gpio_is_valid(ctlr->detect_en_gpio)) {
+	if (gpio_is_valid(ctlr->detect_gpio) &&
+	    gpio_is_valid(ctlr->detect_en_gpio)) {
 		ret = gpio_request(ctlr->detect_en_gpio, "jc-detect-en");
 		if (ret < 0) {
 			dev_err(dev, "Failed to enable detect pin; ret=%d\n",
@@ -3430,8 +3431,9 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 		disable_irq(ctlr->detect_irq);
 	} else {
 polling_mode:
-		ctlr->detect_gpio = 0;
-		ctlr->detect_en_gpio = 0;
+		/* Invalidate detection gpios */
+		ctlr->detect_gpio = -EINVAL;
+		ctlr->detect_en_gpio = -EINVAL;
 		dev_info(dev, "Polling based detection\n");
 	}
 
