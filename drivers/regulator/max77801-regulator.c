@@ -49,10 +49,12 @@
 #define  MAX77801_VOUT_UV_MAX		4187500
 
 struct max77801_regulator {
+	struct regulator_dev *rdev;
 	struct device *dev;
 	struct regmap *rmap;
-	bool forced_pwm;
-	int  dvs_high_voltage;
+	int suspend_mode;
+	int resume_mode;
+	int dvs_high_voltage;
 };
 
 static int max77801_vsel(struct max77801_regulator *max77801,
@@ -97,46 +99,49 @@ int max77801_set_voltage(struct regulator_dev *rdev, unsigned sel)
 
 static int max77801_set_mode(struct regulator_dev *rdev, unsigned int mode)
 {
-	struct max77801_regulator *max77801 = rdev_get_drvdata(rdev);
-
 	switch (mode) {
 	case REGULATOR_MODE_FAST:
 		regmap_update_bits(rdev->regmap, MAX77801_REG_CONFIG1,
 				   MAX77801_CFG1_FPWM, MAX77801_CFG1_FPWM);
-		max77801->forced_pwm = true;
 		break;
 	case REGULATOR_MODE_NORMAL:
 		regmap_update_bits(rdev->regmap, rdev->desc->vsel_reg,
 				   MAX77801_CFG1_FPWM, 0);
-		max77801->forced_pwm = false;
 		break;
 	default:
 		return -EINVAL;
 	}
+
 	return 0;
 }
 
 static unsigned int max77801_get_mode(struct regulator_dev *rdev)
 {
-	struct max77801_regulator *max77801 = rdev_get_drvdata(rdev);
 	unsigned int val;
 	int ret;
 
 	ret = regmap_read(rdev->regmap, MAX77801_REG_CONFIG1, &val);
 	if (ret != 0)
 		return ret;
-	if (val & MAX77801_CFG1_FPWM) {
-		max77801->forced_pwm = true;
+	if (val & MAX77801_CFG1_FPWM)
 		return REGULATOR_MODE_FAST;
-	}
-	max77801->forced_pwm = false;
-	return REGULATOR_MODE_NORMAL;
+	else
+		return REGULATOR_MODE_NORMAL;
 }
 
 static int max77801_set_pd(struct regulator_dev *rdev)
 {
 	return regmap_update_bits(rdev->regmap, MAX77801_REG_CONFIG2,
 				  MAX77801_CFG2_PD, MAX77801_CFG2_PD);
+}
+
+static int max77801_set_suspend_mode(struct regulator_dev *rdev,
+				     unsigned int mode)
+{
+	struct max77801_regulator *max77801 = rdev_get_drvdata(rdev);
+
+	max77801->suspend_mode = mode;
+	return 0;
 }
 
 static unsigned int max77801_map_mode(unsigned int mode)
@@ -156,7 +161,7 @@ static const struct regulator_ops max77801_reg_ops = {
 	.get_mode	= max77801_get_mode,
 	.set_active_discharge = regulator_set_active_discharge_regmap,
 	.set_pull_down	= max77801_set_pd,
-
+	.set_suspend_mode = max77801_set_suspend_mode,
 };
 
 static struct regulator_desc max77801_reg_desc = {
@@ -209,7 +214,6 @@ static int max77801_probe(struct i2c_client *client,
 	struct device *dev = &client->dev;
 	struct device_node *np = dev->of_node;
 	struct max77801_regulator *max77801;
-	struct regulator_dev *regulator;
 	struct regulator_config config = { };
 	struct regulator_init_data *regulator_data;
 	unsigned int id;
@@ -249,12 +253,12 @@ static int max77801_probe(struct i2c_client *client,
 	config.regmap = max77801->rmap;
 	config.of_node = np;
 
-	regulator = devm_regulator_register(&client->dev, &max77801_reg_desc,
+	max77801->rdev = devm_regulator_register(&client->dev, &max77801_reg_desc,
 					    &config);
-	if (IS_ERR(regulator)) {
+	if (IS_ERR(max77801->rdev)) {
 		dev_err(dev, "failed to register regulator %s\n",
 			max77801_reg_desc.name);
-		return PTR_ERR(regulator);
+		return PTR_ERR(max77801->rdev);
 	}
 
 	return 0;
@@ -264,11 +268,14 @@ static int max77801_probe(struct i2c_client *client,
 static int max77801_pm_suspend(struct device *dev)
 {
 	struct max77801_regulator *max77801 = dev_get_drvdata(dev);
+	int mode = max77801->suspend_mode == REGULATOR_MODE_NORMAL ?
+		   0 : MAX77801_CFG1_FPWM;
 	int ret;
 
-	if (max77801->forced_pwm) {
+	if (max77801->suspend_mode) {
+		max77801->resume_mode = max77801_get_mode(max77801->rdev);
 		ret = regmap_update_bits(max77801->rmap, MAX77801_REG_CONFIG1,
-					 MAX77801_CFG1_FPWM, 0);
+					 MAX77801_CFG1_FPWM, mode);
 		if (ret < 0) {
 			dev_err(max77801->dev,
 				"reg config update failed %d\n", ret);
@@ -282,11 +289,13 @@ static int max77801_pm_suspend(struct device *dev)
 static int max77801_pm_resume(struct device *dev)
 {
 	struct max77801_regulator *max77801 = dev_get_drvdata(dev);
+	int mode = max77801->resume_mode == REGULATOR_MODE_NORMAL ?
+		   0 : MAX77801_CFG1_FPWM;
 	int ret;
 
-	if (max77801->forced_pwm) {
+	if (max77801->resume_mode) {
 		ret = regmap_update_bits(max77801->rmap, MAX77801_REG_CONFIG1,
-					 MAX77801_CFG1_FPWM, MAX77801_CFG1_FPWM);
+					 MAX77801_CFG1_FPWM, mode);
 		if (ret < 0) {
 			dev_err(max77801->dev,
 				"reg config update failed %d\n", ret);
@@ -307,11 +316,13 @@ static const struct dev_pm_ops max77801_pm_ops = {
 static void max77801_shutdown(struct i2c_client *client)
 {
 	struct max77801_regulator *max77801 = i2c_get_clientdata(client);
+	int mode = max77801->suspend_mode == REGULATOR_MODE_NORMAL ?
+		   0 : MAX77801_CFG1_FPWM;
 	int ret;
 
-	if (max77801->forced_pwm) {
+	if (max77801->suspend_mode) {
 		ret = regmap_update_bits(max77801->rmap, MAX77801_REG_CONFIG1,
-					 MAX77801_CFG1_FPWM, 0);
+					 MAX77801_CFG1_FPWM, mode);
 		if (ret < 0)
 			dev_err(max77801->dev,
 				"reg config update failed %d\n", ret);
