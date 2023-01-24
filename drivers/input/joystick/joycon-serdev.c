@@ -1839,7 +1839,7 @@ static void joycon_input_poller(struct work_struct *work)
 		hori_request_input_report(ctlr);
 	}
 	queue_delayed_work(ctlr->input_queue, &ctlr->input_worker,
-			   msecs_to_jiffies(15));
+			   msecs_to_jiffies(!ctlr->is_sio ? 15 : 8));
 }
 
 static int joycon_send_rumble_data(struct joycon_ctlr *ctlr)
