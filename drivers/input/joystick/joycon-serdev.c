@@ -2848,7 +2848,7 @@ static int sio_handshake(struct joycon_ctlr *ctlr)
 
 	mutex_lock(&ctlr->output_mutex);
 
-	/* Set Sio POR low to configure BOOT0 mode. */
+	/* Set Sio POR low to reset. */
 	gpio_set_value(ctlr->sio_por_gpio, 0);
 	usleep_range(300, 300);
 	gpio_set_value(ctlr->sio_por_gpio, 1);
@@ -3283,8 +3283,8 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 {
 	struct joycon_ctlr *ctlr;
 	struct device *dev = &serdev->dev;
-	struct clk *sio_pclk = NULL, *sio_pclk_mux = NULL;
-	int ret = 0;
+	struct clk *sio_pclk_pll = NULL, *sio_pclk = NULL, *sio_pclk_mux = NULL;
+	int ret = 0, pclk_rate = 0;
 
 	dev_info(dev, "joycon_serdev_probe\n");
 	ctlr = devm_kzalloc(dev, sizeof(*ctlr), GFP_KERNEL);
@@ -3308,6 +3308,11 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 			dev_err(dev, "Could not get sio-rst-gpio\n");
 			return ctlr->sio_rst_gpio;
 		}
+		sio_pclk_pll = devm_clk_get(dev, "sio_pclk_pll");
+		if (IS_ERR(sio_pclk_pll)) {
+			dev_err(dev, "Could not get sio parent clock pll\n");
+			return PTR_ERR(sio_pclk);
+		}
 		sio_pclk = devm_clk_get(dev, "sio_pclk");
 		if (IS_ERR(sio_pclk)) {
 			dev_err(dev, "Could not get sio parent clock\n");
@@ -3323,6 +3328,14 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 			dev_err(dev, "Could not get sio clock\n");
 			return PTR_ERR(ctlr->sio_clk);
 		}
+
+		ret = of_property_read_u32(dev->of_node, "sio-clock-rate",
+					   &pclk_rate);
+		if (ret) {
+			dev_err(dev, "Could not get sio clock rate\n");
+			return ret;
+		}
+
 	}
 
 	crc8_populate_msb(ctlr->joycon_crc_table, JC_CRC8_POLY);
@@ -3387,6 +3400,18 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 		ret = devm_gpio_request(dev, ctlr->sio_rst_gpio, "jc-rst-home");
 		if (ret) {
 			dev_err(dev, "Failed to request gpio jc-rst-home\n");
+			goto err_sdev_close;
+		}
+
+		ret = clk_set_parent(sio_pclk, sio_pclk_pll);
+		if (ret) {
+			dev_err(dev, "Failed to set SIO clock parent pll\n");
+			goto err_sdev_close;
+		}
+		devm_clk_put(dev, sio_pclk_pll);
+		ret = clk_set_rate(sio_pclk, pclk_rate);
+		if (ret) {
+			dev_err(dev, "Failed to set SIO clock parent rate\n");
 			goto err_sdev_close;
 		}
 
@@ -3513,6 +3538,9 @@ static void joycon_serdev_remove(struct serdev_device *serdev)
 	if (!IS_ERR_OR_NULL(ctlr->charger_reg) &&
 	    regulator_is_enabled(ctlr->charger_reg) > 0)
 		regulator_disable(ctlr->charger_reg);
+
+	if (ctlr->is_sio)
+		gpio_direction_output(ctlr->sio_rst_gpio, 0);
 }
 
 static int __maybe_unused joycon_serdev_suspend(struct device *dev)
@@ -3546,6 +3574,9 @@ static int __maybe_unused joycon_serdev_suspend(struct device *dev)
 		if (!ctlr->is_sio)
 			joycon_set_hci_state(ctlr, 0);
 		joycon_disconnect(ctlr);
+
+		if (ctlr->is_sio)
+			gpio_direction_output(ctlr->sio_rst_gpio, 0);
 	}
 
 	joycon_stop_queues(ctlr);
@@ -3562,6 +3593,10 @@ static int __maybe_unused joycon_serdev_resume(struct device *dev)
 	spin_lock_irqsave(&ctlr->lock, flags);
 	ctlr->suspending = false;
 	spin_unlock_irqrestore(&ctlr->lock, flags);
+
+	if (ctlr->is_sio)
+		gpio_direction_input(ctlr->sio_rst_gpio);
+
 	return joycon_enter_detection(ctlr);
 }
 
