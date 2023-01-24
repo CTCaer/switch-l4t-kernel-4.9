@@ -2424,6 +2424,7 @@ static void nintendo_hid_remove(struct hid_device *hdev)
 	destroy_workqueue(ctlr->rumble_queue);
 	destroy_workqueue(ctlr->led_queue);
 
+	input_unregister_device(ctlr->imu_input);
 	input_unregister_device(ctlr->input);
 	nintendo_hid_leds_remove(hdev, ctlr);
 
