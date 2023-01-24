@@ -1628,6 +1628,11 @@ static void joycon_disconnect(struct joycon_ctlr *ctlr)
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
 	dev_info(dev, "Removing input device\n");
+	/* Remove input imu device */
+	if (ctlr->imu_input) {
+		input_unregister_device(ctlr->imu_input);
+		ctlr->imu_input = NULL;
+	}
 	/* Remove input device */
 	if (ctlr->input) {
 		input_unregister_device(ctlr->input);
