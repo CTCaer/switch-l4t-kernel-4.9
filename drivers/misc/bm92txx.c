@@ -431,6 +431,8 @@ struct bm92t_device {
 };
 
 struct bm92t_platform_data {
+	int vconn_en_gpio;
+
 	bool dp_disable;
 	bool dp_alerts_enable;
 	bool dp_signal_toggle_on_resume;
@@ -463,7 +465,9 @@ struct bm92t_info {
 	struct dentry *debugfs_root;
 #endif
 	struct regulator *batt_chg_reg;
+	struct regulator *vbus_src_reg;
 	struct regulator *vbus_reg;
+	bool vbus_suspended;
 	bool pd_charging_enabled;
 	unsigned int fw_type;
 	unsigned int fw_revision;
@@ -792,6 +796,16 @@ static int bm92t_set_current_limit(struct bm92t_info *info, int max_ua)
 	return ret;
 }
 
+static bool bm92t_get_vbus_enabled(struct bm92t_info *info)
+{
+	bool enabled = false;
+
+	if (info->vbus_reg != NULL)
+		enabled = regulator_is_enabled(info->vbus_reg);
+
+	return enabled;
+}
+
 static int bm92t_set_vbus_enable(struct bm92t_info *info, bool enable)
 {
 	int ret = 0;
@@ -804,7 +818,7 @@ static int bm92t_set_vbus_enable(struct bm92t_info *info, bool enable)
 		is_enabled = regulator_is_enabled(info->vbus_reg);
 		if (enable && !is_enabled)
 			ret = regulator_enable(info->vbus_reg);
-		else if (is_enabled)
+		else if (!enable && is_enabled)
 			ret = regulator_disable(info->vbus_reg);
 	}
 
@@ -1899,6 +1913,7 @@ static int bm92t_remove(struct i2c_client *client)
 static void bm92t_shutdown(struct i2c_client *client)
 {
 	struct bm92t_info *info = i2c_get_clientdata(client);
+	int ret;
 
 	dev_info(&info->i2c_client->dev, "%s\n", __func__);
 
@@ -1907,6 +1922,12 @@ static void bm92t_shutdown(struct i2c_client *client)
 
 	/* Disable SPDSRC */
 	bm92t_set_source_mode(info, SPDSRC12_OFF);
+
+	if (gpio_is_valid(info->pdata->vconn_en_gpio))
+		gpio_set_value(info->pdata->vconn_en_gpio, 0);
+
+	if (info->vbus_src_reg && regulator_is_enabled(info->vbus_src_reg))
+		ret = regulator_disable(info->vbus_src_reg);
 
 	/* Disable DisplayPort Alerts */
 	if (info->pdata->dp_alerts_enable)
@@ -2240,6 +2261,8 @@ static struct bm92t_platform_data *bm92t_parse_dt(struct device *dev)
 	if (!pdata)
 		return ERR_PTR(-ENOMEM);
 
+	pdata->vconn_en_gpio = of_get_named_gpio(np, "rohm,vconn-en-gpio", 0);
+
 	pdata->dp_disable = of_property_read_bool(np, "rohm,dp-disable");
 	pdata->dp_alerts_enable = of_property_read_bool(np,
 					"rohm,dp-alerts-enable");
@@ -2294,7 +2317,7 @@ static int bm92t_probe(struct i2c_client *client,
 {
 	struct bm92t_info *info;
 	struct regulator *batt_chg_reg;
-	struct regulator *vbus_reg;
+	struct regulator *vbus_reg, *vbus_src_reg;
 	int err;
 	unsigned short reg_value;
 
@@ -2322,6 +2345,16 @@ static int bm92t_probe(struct i2c_client *client,
 		vbus_reg = NULL;
 	}
 
+	vbus_src_reg = devm_regulator_get(&client->dev, "vbus-source");
+	if (IS_ERR(vbus_src_reg)) {
+		err = PTR_ERR(vbus_src_reg);
+		if (err == -EPROBE_DEFER)
+			return err;
+
+		dev_info(&client->dev, "no vbus source regulator provided\n");
+		vbus_src_reg = NULL;
+	}
+
 	info = devm_kzalloc(&client->dev, sizeof(*info), GFP_KERNEL);
 	if (info == NULL) {
 		dev_err(&client->dev, "%s: kzalloc error\n", __func__);
@@ -2340,11 +2373,24 @@ static int bm92t_probe(struct i2c_client *client,
 		}
 	}
 
+	/* Set VCONN pin config */
+	if (gpio_is_valid(info->pdata->vconn_en_gpio)) {
+		err = devm_gpio_request(&client->dev,
+					info->pdata->vconn_en_gpio,
+					"pd-vconn-en");
+		if (err) {
+			dev_err(&client->dev,
+				"Failed to request gpio pd-vconn-en\n");
+			return err;
+		}
+		gpio_direction_output(info->pdata->vconn_en_gpio, 0);
+	}
+
 	i2c_set_clientdata(client, info);
 
 	info->i2c_client = client;
-	
 	info->batt_chg_reg = batt_chg_reg;
+	info->vbus_src_reg = vbus_src_reg;
 	info->vbus_reg = vbus_reg;
 
 	/* Initialized state */
@@ -2379,10 +2425,11 @@ static int bm92t_probe(struct i2c_client *client,
 			 (unsigned char *) &reg_value, sizeof(reg_value));
 	info->fw_revision = reg_value;
 
-	dev_info(&info->i2c_client->dev, "fw_type: 0x%02X, fw_revision: 0x%02X\n",
+	dev_info(&info->i2c_client->dev, "fw_type: 0x%02X, fw_rev: 0x%02X\n",
 		info->fw_type, info->fw_revision);
 
 	if (info->fw_revision <= 0x644) {
+		dev_err(&client->dev, "fw revision not supported\n");
 		return -EINVAL;
 	}
 
@@ -2416,9 +2463,18 @@ static int bm92t_probe(struct i2c_client *client,
 	bm92t_debug_init(info);
 #endif
 
+	/* Enable VBUS source supply if available */
+	if (info->vbus_src_reg)
+		err = regulator_enable(info->vbus_src_reg);
+
+	/* Enable VCONN */
+	if (gpio_is_valid(info->pdata->vconn_en_gpio))
+		gpio_set_value(info->pdata->vconn_en_gpio, 1);
+
 	schedule_delayed_work(&info->oneshot_work, msecs_to_jiffies(100));
 
 	dev_info(&client->dev, "init done\n");
+
 	return 0;
 }
 
@@ -2427,6 +2483,19 @@ static int bm92t_pm_suspend(struct device *dev)
 {
 	struct bm92t_info *info = dev_get_drvdata(dev);
 	struct i2c_client *client = info->i2c_client;
+	int ret;
+
+	if (!info->vbus_suspended &&
+		!bm92t_get_vbus_enabled(info)) {
+
+		if (gpio_is_valid(info->pdata->vconn_en_gpio))
+			gpio_set_value(info->pdata->vconn_en_gpio, 0);
+
+		if (info->vbus_src_reg)
+			ret = regulator_disable(info->vbus_src_reg);
+
+		info->vbus_suspended = true;
+	}
 
 	/* Dim or breathing Dock LED */
 	if (info->pdata->led_static_on_suspend)
@@ -2447,6 +2516,17 @@ static int bm92t_pm_resume(struct device *dev)
 	struct bm92t_info *info = dev_get_drvdata(dev);
 	struct i2c_client *client = info->i2c_client;
 	bool enable_led = info->state == NINTENDO_CONFIG_HANDLED;
+	int ret;
+
+	if (info->vbus_suspended) {
+		if (info->vbus_src_reg)
+			ret = regulator_enable(info->vbus_src_reg);
+
+		if (gpio_is_valid(info->pdata->vconn_en_gpio))
+			gpio_set_value(info->pdata->vconn_en_gpio, 1);
+
+		info->vbus_suspended = false;
+	}
 
 	if (client->irq > 0) {
 		enable_irq(client->irq);
