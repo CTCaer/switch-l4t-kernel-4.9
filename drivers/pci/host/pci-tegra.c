@@ -4812,6 +4812,10 @@ static int tegra_pcie_probe(struct platform_device *pdev)
 		}
 	}
 
+	INIT_LIST_HEAD(&pcie->buses);
+	INIT_LIST_HEAD(&pcie->ports);
+	INIT_LIST_HEAD(&pcie->sys);
+
 	pcie->pcie_regulators = devm_kzalloc(pcie->dev,
 		pcie->soc_data->num_pcie_regulators
 			* sizeof(struct regulator *), GFP_KERNEL);
@@ -4830,9 +4834,6 @@ static int tegra_pcie_probe(struct platform_device *pdev)
 		}
 	}
 
-	INIT_LIST_HEAD(&pcie->buses);
-	INIT_LIST_HEAD(&pcie->ports);
-	INIT_LIST_HEAD(&pcie->sys);
 	INIT_DELAYED_WORK(&pcie->detect_delay, pcie_delayed_detect);
 
 	ret = tegra_pcie_parse_dt(pcie);
