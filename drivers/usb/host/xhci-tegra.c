@@ -550,6 +550,8 @@ struct tegra_xusb {
 	bool xhci_err_init;
 	struct usb_downgraded_port degraded_port[DEGRADED_PORT_COUNT];
 	unsigned int downgrade_enabled;
+
+	struct device *fwdev;
 };
 
 static struct hc_driver __read_mostly tegra_xhci_hc_driver;
@@ -3086,8 +3088,9 @@ static void tegra_xusb_probe_finish(const struct firmware *fw, void *context)
 		goto unregister_extcon;
 	}
 
-	if (IS_ERR(devm_tegrafw_register(dev, NULL,
-		TFW_NORMAL, fw_version_show, NULL)))
+	tegra->fwdev = devm_tegrafw_register(dev, NULL,
+			TFW_NORMAL, fw_version_show, NULL);
+	if (IS_ERR(tegra->fwdev))
 		dev_warn(dev, "cannot register firmware reader");
 
 	/* Enable EU3S bit of USBCMD */
@@ -3770,6 +3773,9 @@ static int tegra_xusb_remove(struct platform_device *pdev)
 	pm_runtime_get_sync(tegra->dev);
 	device_remove_file(&pdev->dev, &dev_attr_reload_hcd);
 
+	if (!IS_ERR(tegra->fwdev))
+		devm_tegrafw_unregister(dev, tegra->fwdev);
+
 	sysfs_remove_group(&pdev->dev.kobj, &tegra_xhci_attr_group);
 
 	if (tegra->soc->is_xhci_vf && (tegra->ivck != NULL)) {
@@ -3783,6 +3789,10 @@ static int tegra_xusb_remove(struct platform_device *pdev)
 		usb_remove_hcd(xhci->shared_hcd);
 		usb_put_hcd(xhci->shared_hcd);
 		usb_remove_hcd(tegra->hcd);
+
+		disable_irq(tegra->xhci_irq);
+		disable_irq(tegra->padctl_irq);
+		disable_irq(tegra->mbox_irq);
 
 		devm_iounmap(&pdev->dev, tegra->fpci_base);
 		devm_release_mem_region(&pdev->dev, tegra->fpci_start,
@@ -3800,8 +3810,6 @@ static int tegra_xusb_remove(struct platform_device *pdev)
 
 		fw_log_deinit(tegra);
 	}
-
-	tegra_xusb_host_vbus_power_off(tegra);
 
 	tegra_xusb_phy_disable(tegra);
 	if (!tegra->soc->is_xhci_vf) {
@@ -3822,6 +3830,8 @@ static int tegra_xusb_remove(struct platform_device *pdev)
 		devm_free_irq(&pdev->dev, tegra->padctl_irq, tegra);
 		devm_free_irq(&pdev->dev, tegra->mbox_irq, tegra);
 	}
+
+	tegra_xusb_host_vbus_power_off(tegra);
 
 	tegra_xusb_debugfs_deinit(tegra);
 
