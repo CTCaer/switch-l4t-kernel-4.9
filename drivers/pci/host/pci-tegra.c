@@ -1837,6 +1837,7 @@ static int tegra_pcie_save_device(struct device *dev)
 	struct tegra_pcie *pcie = dev_get_drvdata(dev);
 	struct tegra_pcie_port *port;
 	int err = 0;
+	u32 val;
 
 	PR_FUNC_LINE;
 	if (!pcie)
@@ -1850,6 +1851,12 @@ static int tegra_pcie_save_device(struct device *dev)
 		tegra_pcie_prsnt_map_override(port, false);
 	}
 	tegra_pcie_pme_turnoff(pcie);
+
+	/* Finally disable PCIe */
+	val = afi_readl(pcie, AFI_CONFIGURATION);
+	val &= AFI_CONFIGURATION_EN_FPCI;
+	afi_writel(pcie, val, AFI_CONFIGURATION);
+
 	tegra_pcie_free_resources(pcie);
 	tegra_pcie_enable_pads(pcie, false);
 	tegra_pcie_unmap_resources(pcie);
