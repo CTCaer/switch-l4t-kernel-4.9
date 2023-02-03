@@ -5111,15 +5111,16 @@ static int tegra_pcie_resume(struct device *dev)
 static int tegra_pcie_suspend_late(struct device *dev)
 {
 	struct tegra_pcie *pcie = dev_get_drvdata(dev);
-	u32 val = 0;
 
 	PR_FUNC_LINE;
 	if (!pcie)
 		return 0;
-	val = afi_readl(pcie, AFI_INTR_MASK);
-	val &= ~AFI_INTR_MASK_INT_MASK;
-	val &= ~AFI_INTR_MASK_MSI_MASK;
-	afi_writel(pcie, val, AFI_INTR_MASK);
+
+	/* Disable all interrupts */
+	afi_writel(pcie, 0, AFI_AFI_INTR_ENABLE);
+	afi_writel(pcie, 0, AFI_SM_INTR_ENABLE);
+	afi_writel(pcie, 0, AFI_INTR_MASK);
+
 	return 0;
 }
 
@@ -5131,10 +5132,19 @@ static int tegra_pcie_resume_early(struct device *dev)
 	PR_FUNC_LINE;
 	if (!pcie)
 		return 0;
-	val = afi_readl(pcie, AFI_INTR_MASK);
-	val |= AFI_INTR_MASK_INT_MASK;
-	val |= AFI_INTR_MASK_MSI_MASK;
-	afi_writel(pcie, val, AFI_INTR_MASK);
+
+	/* Restore all interrupts */
+	val = (AFI_INTR_EN_INI_SLVERR | AFI_INTR_EN_INI_DECERR |
+	       AFI_INTR_EN_TGT_SLVERR | AFI_INTR_EN_TGT_DECERR |
+	       AFI_INTR_EN_TGT_WRERR  | AFI_INTR_EN_DFPCI_DECERR |
+	       AFI_INTR_EN_AXI_DECERR );
+	afi_writel(pcie, val, AFI_AFI_INTR_ENABLE);
+
+	afi_writel(pcie, 0xffffffff, AFI_SM_INTR_ENABLE);
+
+	afi_writel(pcie, AFI_INTR_MASK_MSI_MASK | AFI_INTR_MASK_INT_MASK,
+		   AFI_INTR_MASK);
+
 	return 0;
 }
 
