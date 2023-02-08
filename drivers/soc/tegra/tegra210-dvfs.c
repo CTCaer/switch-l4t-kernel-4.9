@@ -1892,7 +1892,8 @@ static int init_gpu_rail_thermal_caps(struct device_node *node,
  * must never happen.
  */
 static int set_gpu_dvfs_data(struct device_node *node, unsigned long max_freq,
-	struct cvb_dvfs *d, struct dvfs *gpu_dvfs, int *max_freq_index)
+	unsigned long max_mv, struct cvb_dvfs *d, struct dvfs *gpu_dvfs,
+	int *max_freq_index)
 {
 	int i, j, thermal_ranges, mv, min_mv, err;
 	struct cvb_dvfs_table *table = NULL;
@@ -1902,7 +1903,7 @@ static int set_gpu_dvfs_data(struct device_node *node, unsigned long max_freq,
 
 	rail->nvver = d->cvb_version;
 
-	d->max_mv = tegra_round_voltage(d->max_mv, align, false);
+	d->max_mv = tegra_round_voltage(max_mv, align, false);
 	min_mv = d->pll_min_millivolts;
 	mv = tegra_get_cvb_voltage(
 		speedo, d->speedo_scale, &d->cvb_vmin.cvb_pll_param);
@@ -2041,14 +2042,18 @@ static void init_gpu_dvfs_table(struct device_node *node,
 	for (ret = 0, i = 0; i < table_size; i++) {
 		struct cvb_dvfs *d = &cvb_dvfs_table[i];
 		unsigned long max_freq = d->max_freq;
-		u32 f;
+		unsigned long max_mv = d->max_mv;
+		u32 f, v;
 
 		if (!of_property_read_u32(node, "nvidia,gpu-max-freq-khz", &f))
 			max_freq = min(max_freq, (unsigned long)f);
 
+		if (!of_property_read_u32(node, "nvidia,gpu-max-volt-mv", &v))
+			max_mv = min(max_mv, (unsigned long)v);
+
 		if (match_dvfs_one("gpu cvb", d->speedo_id, d->process_id,
 				   gpu_speedo_id, gpu_process_id)) {
-			ret = set_gpu_dvfs_data(node, max_freq,
+			ret = set_gpu_dvfs_data(node, max_freq, max_mv,
 				d, &gpu_dvfs, gpu_max_freq_index);
 			break;
 		}
