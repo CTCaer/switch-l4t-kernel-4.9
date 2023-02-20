@@ -4217,8 +4217,11 @@ static int tegra_xhci_enter_elpg(struct tegra_xusb *tegra, bool runtime)
 		}
 	}
 
-	if (!tegra->soc->is_xhci_vf)
+	if (!tegra->soc->is_xhci_vf) {
 		tegra_xusb_clk_disable(tegra);
+		regulator_bulk_disable(tegra->soc->num_supplies,
+				tegra->supplies);
+	}
 
 out:
 	if (!ret)
@@ -4250,14 +4253,17 @@ static int tegra_xhci_exit_elpg(struct tegra_xusb *tegra, bool runtime)
 	dev_info(dev, "exiting ELPG\n");
 
 	if (!tegra->soc->is_xhci_vf) {
+		ret = regulator_bulk_enable(tegra->soc->num_supplies,
+				tegra->supplies);
+		if (ret) {
+			dev_warn(dev, "failed to enable regulators: %d\n", ret);
+			goto out;
+		}
 		ret = tegra_xusb_clk_enable(tegra);
 		if (ret) {
 			dev_warn(dev, "failed to enable xhci clocks %d\n", ret);
 			goto out;
 		}
-	}
-
-	if (!tegra->soc->is_xhci_vf) {
 		ret = tegra_xhci_unpowergate_partitions(tegra);
 		if (ret < 0) {
 			dev_warn(dev, "failed to unpowergate partitions %d\n",
