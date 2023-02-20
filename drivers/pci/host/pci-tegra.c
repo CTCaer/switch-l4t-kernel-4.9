@@ -408,7 +408,6 @@ struct tegra_pcie_soc_data {
 	bool			dvfs_mselect;
 	bool			dvfs_afi;
 	bool			update_clamp_threshold;
-	int				check_link_timeout;
 	struct pcie_dvfs	dvfs_tbl[10][2];
 };
 
@@ -517,6 +516,7 @@ struct tegra_pcie_port {
 	struct device_node *np;
 	int n_gpios;
 	int *gpios;
+	bool sw_link_disable;
 };
 
 struct tegra_pcie_bus {
@@ -2165,6 +2165,10 @@ static bool tegra_pcie_port_check_link(struct tegra_pcie_port *port)
 	unsigned int retries = 3;
 	unsigned long value;
 
+	/* if port is software disabled do not detect presence */
+	if (port->sw_link_disable)
+		return false;
+
 	/* override presence detection */
 	value = readl(port->base + NV_PCIE2_RP_PRIV_MISC);
 	value &= ~PCIE2_RP_PRIV_MISC_PRSNT_MAP_EP_ABSNT;
@@ -2172,7 +2176,7 @@ static bool tegra_pcie_port_check_link(struct tegra_pcie_port *port)
 	writel(value, port->base + NV_PCIE2_RP_PRIV_MISC);
 
 	do {
-		unsigned int timeout = port->pcie->soc_data->check_link_timeout;
+		unsigned int timeout = TEGRA_PCIE_LINKUP_TIMEOUT;
 
 		do {
 			value = readl(port->base + RP_VEND_XP);
@@ -3258,8 +3262,6 @@ static void tegra_pcie_read_plat_data(struct tegra_pcie *pcie)
 		of_get_named_gpio(node, "nvidia,wake-gpio", 0);
 	pcie->plat_data->gpio_x1_slot =
 		of_get_named_gpio(node, "nvidia,x1-slot-gpio", 0);
-	pcie->plat_data->has_memtype_lpddr4 =
-		of_property_read_bool(node, "nvidia,has_memtype_lpddr4");
 }
 
 static char *t124_rail_names[] = {"hvdd-pex", "hvdd-pex-pll-e", "dvddio-pex",
@@ -3417,9 +3419,6 @@ static int tegra_pcie_parse_dt(struct tegra_pcie *pcie)
 		pcie->busn.flags = IORESOURCE_BUS;
 	}
 
-	if (of_property_read_u32(np, "nvidia,check-lane-timeout", &pcie->soc_data->check_link_timeout))
-		pcie->soc_data->check_link_timeout = TEGRA_PCIE_LINKUP_TIMEOUT;
-
 	/* parse root ports */
 	for_each_child_of_node(np, port) {
 		struct tegra_pcie_port *rp;
@@ -3569,6 +3568,9 @@ static int tegra_pcie_parse_dt(struct tegra_pcie *pcie)
 				rp->gpios[count] = gpio;
 			}
 		}
+
+		rp->sw_link_disable = of_property_read_bool(port,
+			"nvidia,sw-link-disable");
 
 		list_add_tail(&rp->list, &pcie->ports);
 	}
