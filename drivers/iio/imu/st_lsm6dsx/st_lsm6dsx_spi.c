@@ -63,15 +63,15 @@ static const struct of_device_id st_lsm6dsx_spi_of_match[] = {
 		.data = (void *)ST_LSM6DSM_ID,
 	},
 	{
-		.compatible = "st,lsm6do",
+		.compatible = "st,lsm6dso",
 		.data = (void *)ST_LSM6DSO_ID,
 	},
 	{
-		.compatible = "st,lsm6dox",
+		.compatible = "st,lsm6dsox",
 		.data = (void *)ST_LSM6DSOX_ID,
 	},
 	{
-		.compatible = "st,lsm6dop",
+		.compatible = "st,lsm6dsop",
 		.data = (void *)ST_LSM6DSOP_ID,
 	},
 	{
