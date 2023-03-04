@@ -254,9 +254,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		.wai = 0x6a,
 		.max_fifo_size = 682,
 		.id = {
-			[0] = ST_LSM6DSL_ID,
-			[1] = ST_LSM6DSM_ID,
-			[2] = ST_ISM330DLC_ID,
+			[0] = ST_LSM6DSE_ID,
+			[1] = ST_LSM6DSL_ID,
+			[2] = ST_LSM6DSM_ID,
+			[3] = ST_ISM330DLC_ID,
 		},
 		.decimator = {
 			[ST_LSM6DSX_ID_ACC] = {
