@@ -931,7 +931,7 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id, const char *name,
 	hw->irq = irq;
 	hw->regmap = regmap;
 
-	err = of_iio_read_mount_matrix(dev, "mount-matrix", &hw->orientation);
+	err = of_iio_read_mount_matrix(dev, "st,mount-matrix", &hw->orientation);
 	if (err) {
 		dev_err(dev, "failed to retrieve mounting matrix %d\n", err);
 		return err;
