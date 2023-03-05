@@ -48,21 +48,74 @@ static int inv_icm42600_spi_bus_setup(struct inv_icm42600_state *st)
 				  INV_ICM42600_INTF_CONFIG0_UI_SIFS_CFG_I2C_DIS);
 }
 
+static int inv_icm42600_find_compat(struct spi_device *spi,
+	const struct of_device_id **of_id)
+{
+	const struct of_device_id *id;
+	int hw_id;
+
+	while (true) {
+		id = *of_id;
+		if (!id->compatible || !id->compatible[0]) {
+			dev_err(&spi->dev, "Failed to probe compatible device\n");
+			return -ENODEV;
+		}
+		if (of_device_is_compatible(spi->dev.of_node, id->compatible)) {
+			dev_info(&spi->dev, "Probing %s\n", id->compatible);
+			hw_id = (int)(uintptr_t)id->data;
+			break;
+		}
+		(*of_id)++;
+	}
+	(*of_id)++;
+
+	return hw_id;
+}
+
 static int inv_icm42600_probe(struct spi_device *spi)
 {
+	const struct spi_driver *sdrv = to_spi_driver(spi->dev.driver);
+	const struct of_device_id *of_id = sdrv->driver.of_match_table;
 	const struct spi_device_id *id = spi_get_device_id(spi);
-	int hw_id = id->driver_data;
-	enum inv_icm42600_chip chip;
+	bool multi_driver = false;
 	struct regmap *regmap;
+	int res, hw_id;
 
-	chip = (enum inv_icm42600_chip)hw_id;
+	if (!id) {
+		if (!strcmp(spi->modalias, "multi-driver")) {
+			multi_driver = true;
+		} else {
+			dev_err(&spi->dev, "Failed to get spi id: %s\n",
+				spi->modalias);
+			return -ENODEV;
+		}
+	} else
+		hw_id = id->driver_data;
 
 	regmap = devm_regmap_init_spi(spi, &inv_icm42600_regmap_config);
-	if (IS_ERR(regmap))
+	if (IS_ERR(regmap)) {
+		dev_err(&spi->dev, "Failed to register spi regmap %d\n",
+			(int)PTR_ERR(regmap));
 		return PTR_ERR(regmap);
+	}
 
-	return inv_icm42600_core_probe(regmap, chip, spi->irq,
-				       inv_icm42600_spi_bus_setup);
+try_next:
+	if (multi_driver) {
+		hw_id = inv_icm42600_find_compat(spi, &of_id);
+		if (hw_id < 0)
+			return hw_id;
+	}
+
+	res = inv_icm42600_core_probe(regmap, hw_id, spi->irq,
+				      inv_icm42600_spi_bus_setup);
+
+	if (multi_driver) {
+		if (res)
+			goto try_next;
+		dev_info(&spi->dev, "Probed\n");
+	}
+
+	return res;
 }
 
 static const struct of_device_id inv_icm42600_of_matches[] = {
