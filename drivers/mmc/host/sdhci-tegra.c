@@ -223,6 +223,7 @@ struct sdhci_tegra {
 	bool wake_enable_failed;
 	bool cd_wakeup_capable;
 	int cd_gpio;
+	u32 cd_debounce;
 	bool enable_hwcq;
 	struct pinctrl *pinctrl_sdmmc;
 	struct pinctrl_state *e_33v_enable;
@@ -2141,6 +2142,7 @@ static int sdhci_tegra_parse_dt(struct platform_device *pdev)
 	tegra_host->cd_gpio = of_get_named_gpio(np, "cd-gpios", 0);
 	tegra_host->cd_wakeup_capable = of_property_read_bool(np,
 		"nvidia,cd-wakeup-capable");
+	of_property_read_u32(np, "cd-debounce", (u32 *)&tegra_host->cd_debounce);
 #ifdef CONFIG_MMC_CQ_HCI
 	tegra_host->enable_hwcq = of_property_read_bool(np, "nvidia,enable-hwcq");
 #endif
@@ -2417,6 +2419,10 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 
 	if (gpio_is_valid(tegra_host->cd_gpio) &&
 			tegra_host->cd_wakeup_capable) {
+		if (tegra_host->cd_debounce) {
+			gpio_set_debounce(tegra_host->cd_gpio,
+					  tegra_host->cd_debounce * 1000);
+		}
 		tegra_host->cd_irq = gpio_to_irq(tegra_host->cd_gpio);
 		if (tegra_host->cd_irq <= 0) {
 			dev_err(mmc_dev(host->mmc),
