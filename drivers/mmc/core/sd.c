@@ -147,10 +147,8 @@ static ssize_t ios_timing_show(struct device *dev,
 }
 
 static DEVICE_ATTR(ios_timing, S_IRUGO,	ios_timing_show, NULL);
-#define SD_POWEROFF_NOTIFY_TIMEOUT_MS 2000
+#define SD_POWEROFF_NOTIFY_TIMEOUT_MS 1000
 #define SD_WRITE_EXTR_SINGLE_TIMEOUT_MS 1000
-
-#define SD_POWEROFF_NOTIFY_TIMEOUT_MS 2000
 
 struct sd_busy_data {
 	struct mmc_card *card;
@@ -1594,16 +1592,6 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 			goto free_card;
 	}
 
-	if (host->cqe_ops && !host->cqe_enabled) {
-		err = host->cqe_ops->cqe_enable(host, card);
-		if (!err) {
-			host->cqe_enabled = true;
-			host->hsq_enabled = true;
-			pr_info("%s: Host Software Queue enabled\n",
-				mmc_hostname(host));
-		}
-	}
-
 	host->card = card;
 	return 0;
 
@@ -1731,6 +1719,12 @@ static int sd_poweroff_notify(struct mmc_card *card)
 			mmc_hostname(card->host), err);
 		goto out;
 	}
+
+	/* Find out when the command is completed. */
+	err = mmc_poll_for_busy(card, SD_WRITE_EXTR_SINGLE_TIMEOUT_MS, false,
+				MMC_BUSY_EXTR_SINGLE);
+	if (err)
+		goto out;
 
 	cb_data.card = card;
 	cb_data.reg_buf = reg_buf;
