@@ -261,7 +261,7 @@ static int mmc_ffu_restart(struct mmc_card *card)
 	struct mmc_host *host = card->host;
 	int err = 0;
 
-	mmc_flush_cache(card);
+	_mmc_flush_cache(card);
 	err = mmc_power_save_host(host);
 	if (err) {
 		pr_warn("%s: going to sleep failed (%d)!!!\n",
@@ -405,7 +405,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const char *name)
 	mmc_claim_host(card->host);
 
 	/* trigger flushing */
-	err = mmc_flush_cache(card);
+	err = _mmc_flush_cache(card);
 	if (err) {
 		pr_err("FFU: %s: error %d flushing data\n",
 				mmc_hostname(card->host), err);

@@ -49,6 +49,7 @@
 
 #include "queue.h"
 #include "block.h"
+#include "../core/core.h"
 
 MODULE_ALIAS("mmc:block");
 #ifdef MODULE_PARAM_PREFIX
@@ -1655,7 +1656,7 @@ static int mmc_blk_issue_flush(struct mmc_queue *mq, struct request *req)
 		return 0;
 	}
 
-	ret = mmc_flush_cache(card);
+	ret = mmc_flush_cache(card->host);
 	if (ret)
 		ret = -EIO;
 
@@ -3076,6 +3077,8 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 {
 	struct mmc_blk_data *md;
 	int devidx, ret;
+	bool cache_enabled = false;
+	bool fua_enabled = false;
 
 again:
 	if (!ida_pre_get(&mmc_blk_ida, GFP_KERNEL))
@@ -3167,14 +3170,18 @@ again:
 			md->flags |= MMC_BLK_CMD23;
 	}
 
-	if (mmc_card_mmc(card) &&
-	    md->flags & MMC_BLK_CMD23 &&
+	if (md->flags & MMC_BLK_CMD23 &&
 	    ((card->ext_csd.rel_param & EXT_CSD_WR_REL_PARAM_EN) ||
 	     card->ext_csd.rel_sectors)) {
 		md->flags |= MMC_BLK_REL_WR;
-		blk_queue_write_cache(md->queue.queue, true, true);
+		fua_enabled = true;
+		cache_enabled = true;
 		card->host->cache_flush_needed = true;
 	}
+	if (mmc_cache_enabled(card->host))
+		cache_enabled = true;
+
+	blk_queue_write_cache(md->queue.queue, cache_enabled, fua_enabled);
 
 	if (card->cmdq_init) {
 		md->flags |= MMC_BLK_CMD_QUEUE;
