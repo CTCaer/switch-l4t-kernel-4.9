@@ -360,6 +360,9 @@ static int mmc_read_ssr(struct mmc_card *card)
 			}
 			card->speed_class = UNSTUFF_BITS(card->raw_ssr,
 								440 - 384, 8);
+			card->ssr.uc = UNSTUFF_BITS(card->raw_ssr, 396 - 384, 4);
+			card->ssr.vc = UNSTUFF_BITS(card->raw_ssr, 384 - 384, 8);
+			card->ssr.ac = UNSTUFF_BITS((&card->raw_ssr[4]), 336 - 256, 4);
 		} else {
 			pr_warn("%s: SD Status: Invalid Allocation Unit size\n",
 				mmc_hostname(card->host));
@@ -782,6 +785,9 @@ MMC_DEV_ATTR(oemid, "0x%04x\n", card->cid.oemid);
 MMC_DEV_ATTR(serial, "0x%08x\n", card->cid.serial);
 MMC_DEV_ATTR(ocr, "0x%08x\n", card->ocr);
 MMC_DEV_ATTR(speed_class, "%u\n", card->speed_class);
+MMC_DEV_ATTR(uhs_grade, "U%u\n", card->ssr.uc);
+MMC_DEV_ATTR(video_class, "V%u\n", card->ssr.vc);
+MMC_DEV_ATTR(app_class, "A%u\n", card->ssr.ac);
 
 static ssize_t mmc_dsr_show(struct device *dev,
                            struct device_attribute *attr,
@@ -816,6 +822,9 @@ static struct attribute *sd_std_attrs[] = {
 	&dev_attr_ocr.attr,
 	&dev_attr_dsr.attr,
 	&dev_attr_speed_class.attr,
+	&dev_attr_uhs_grade.attr,
+	&dev_attr_video_class.attr,
+	&dev_attr_app_class.attr,
 	&dev_attr_ios_timing.attr,
 	&dev_attr_error_stats.attr,
 	NULL,
@@ -1358,6 +1367,18 @@ static int sd_read_ext_regs(struct mmc_card *card)
 				mmc_hostname(card->host), err);
 			goto out;
 		}
+	}
+
+	/*
+	 * Some A2 SD cards erroneously omit general info.
+	 * General info is mandatory for application profile 2 support.
+	 * In such cases, parse page 0 of function 1 and 2.
+	 */
+	if (!num_ext && card->ssr.ac == 2) {
+		pr_warn("%s: SD ext general info missing\n", mmc_hostname(card->host));
+		/* Do not check for parsing errors, since they are not fatal */
+		sd_parse_ext_reg_power(card, 1, 0, 0);
+		sd_parse_ext_reg_perf(card, 2, 0, 0);
 	}
 
 out:

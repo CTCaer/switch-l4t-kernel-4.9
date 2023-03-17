@@ -152,6 +152,9 @@ struct sd_scr {
 
 struct sd_ssr {
 	unsigned int		au;			/* In sectors */
+	unsigned int		uc;			/* UHS grade */
+	unsigned int		vc;			/* Video class */
+	unsigned int		ac;			/* Application class */
 	unsigned int		erase_timeout;		/* In milliseconds */
 	unsigned int		erase_offset;		/* In milliseconds */
 };
