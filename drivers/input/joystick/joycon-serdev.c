@@ -49,6 +49,8 @@
  * https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering
  */
 
+#define DETECT_PIN_SETTLE_TIME_MS		32
+
 /* UART header commands */
 static const u8 JC_CMD_EXTSEND			= 0x91;
 static const u8 JC_CMD_EXTRET			= 0x92;
@@ -1739,7 +1741,7 @@ static irqreturn_t joycon_detection_irq(int irq, void *dev_id)
 }
 
 /* Approx. 3 seconds which is the time it takes for Joy-Con to reboot */
-#define JOYCON_IRQ_DETECTION_RETRIES 6
+#define JOYCON_IRQ_DETECTION_RETRIES 30
 
 static int joycon_enter_detection(struct joycon_ctlr *ctlr)
 {
@@ -1778,8 +1780,8 @@ static int joycon_enter_detection(struct joycon_ctlr *ctlr)
 			return ret;
 		}
 
-		/* Wait 5 ms for detection pin to settle */
-		msleep(5);
+		/* Wait for detection pin to settle */
+		msleep(DETECT_PIN_SETTLE_TIME_MS * 2);
 
 		ctlr->detection_irq_retries = JOYCON_IRQ_DETECTION_RETRIES;
 
@@ -3026,7 +3028,7 @@ retry:
 	}
 
 	queue_delayed_work(ctlr->detection_queue, &ctlr->detection_worker,
-			   msecs_to_jiffies(500));
+			   msecs_to_jiffies(!ctlr->is_sio ? 100 : 500));
 }
 
 static int joycon_serdev_receive_buf(struct serdev_device *serdev,
@@ -3447,8 +3449,9 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 			devm_gpio_free(dev, ctlr->detect_gpio);
 			goto polling_mode;
 		}
-		/* Set debounce to 32 ms to avoid misfires */
-		gpio_set_debounce(ctlr->detect_gpio, 32000);
+		/* Set debounce to avoid misfires */
+		gpio_set_debounce(ctlr->detect_gpio,
+				  DETECT_PIN_SETTLE_TIME_MS * 1000);
 
 		ctlr->detect_irq = gpio_to_irq(ctlr->detect_gpio);
 		if (devm_request_threaded_irq(dev, ctlr->detect_irq,
