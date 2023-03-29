@@ -425,6 +425,7 @@ static int mmc_read_switch(struct mmc_card *card)
 
 	if (card->scr.sda_spec3) {
 		card->sw_caps.sd3_bus_mode = status[13];
+		card->sw_caps.sd3_cmd_system = status[11] | status[10] << 8;
 		/* Driver Strengths supported by the card */
 		card->sw_caps.sd3_drv_type = status[9];
 		card->sw_caps.sd3_curr_limit = status[7] | status[6] << 8;

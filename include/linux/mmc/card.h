@@ -183,6 +183,18 @@ struct sd_switch_caps {
 #define SD_MODE_UHS_SDR50	(1 << UHS_SDR50_BUS_SPEED)
 #define SD_MODE_UHS_SDR104	(1 << UHS_SDR104_BUS_SPEED)
 #define SD_MODE_UHS_DDR50	(1 << UHS_DDR50_BUS_SPEED)
+	unsigned int		sd3_cmd_system;
+#define SD_SET_CMD_SYSTEM_DEF 0
+#define SD_SET_CMD_SYSTEM_MEC 1
+#define SD_SET_CMD_SYSTEM_OTP 3
+#define SD_SET_CMD_SYSTEM_OSD 3
+#define SD_SET_CMD_SYSTEM_VND 14
+
+#define SD_CMD_SYSTEM_DEF  (1 << SD_SET_CMD_SYSTEM_DEF)
+#define SD_CMD_SYSTEM_MEC  (1 << SD_SET_CMD_SYSTEM_MEC)
+#define SD_CMD_SYSTEM_OTP  (1 << SD_SET_CMD_SYSTEM_OTP)
+#define SD_CMD_SYSTEM_OSD  (1 << SD_SET_CMD_SYSTEM_OSD)
+#define SD_CMD_SYSTEM_VND  (1 << SD_SET_CMD_SYSTEM_VND)
 	unsigned int		sd3_drv_type;
 #define SD_DRIVER_TYPE_B	0x01
 #define SD_DRIVER_TYPE_A	0x02
