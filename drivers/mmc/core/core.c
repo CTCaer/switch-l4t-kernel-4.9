@@ -2118,14 +2118,17 @@ void mmc_power_off(struct mmc_host *host)
 	 * XO-1.5, require a short delay after poweroff before the card
 	 * can be successfully turned on again.
 	 */
-	mmc_delay(1);
+	if (!(host->caps2 & MMC_CAP2_NO_SD))
+		mmc_delay(239);
+	else
+		mmc_delay(1);
 }
 
 void mmc_power_cycle(struct mmc_host *host, u32 ocr)
 {
 	mmc_power_off(host);
 	/* Wait at least 1 ms according to SD spec */
-	mmc_delay(100);
+	mmc_delay(1);
 	mmc_power_up(host, ocr);
 }
 

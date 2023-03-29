@@ -1829,8 +1829,8 @@ static int _mmc_sd_resume(struct mmc_host *host)
 		if (err) {
 			printk(KERN_ERR "%s: Re-init card rc = %d (retries = %d)\n",
 			       mmc_hostname(host), err, retries);
-			mdelay(5);
 			retries--;
+			mmc_power_cycle(host, host->card->ocr);
 			continue;
 		}
 		break;
@@ -1972,6 +1972,7 @@ int mmc_attach_sd(struct mmc_host *host)
 		err = mmc_sd_init_card(host, rocr, NULL);
 		if (err) {
 			retries--;
+			mmc_power_cycle(host, host->ocr_avail);
 			continue;
 		}
 		break;
