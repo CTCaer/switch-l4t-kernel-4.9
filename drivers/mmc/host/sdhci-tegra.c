@@ -93,7 +93,7 @@
 #define SDHCI_TUN_CTRL0_TUNING_ITER_SHIFT	13
 #define SDHCI_TUN_CTRL0_TUNING_WORD_SEL_MASK	0x7
 #define SDHCI_VNDR_TUN_CTRL0_0_TUN_ITER_MASK	0x000E000
-#define TUNING_WORD_SEL_MASK	0x7
+#define TUNING_WORD_SEL_MASK			0x7
 
 #define SDHCI_TEGRA_VNDR_TUNING_STATUS0		0x1C8
 
@@ -111,8 +111,8 @@
 #define SDHCI_AUTO_CAL_ENABLE			BIT(29)
 #define SDHCI_AUTO_CAL_PUPD_OFFSETS		0x00007F7F
 
-#define SDHCI_TEGRA_AUTO_CAL_STATUS	0x1EC
-#define SDHCI_TEGRA_AUTO_CAL_ACTIVE	0x80000000
+#define SDHCI_TEGRA_AUTO_CAL_STATUS		0x1EC
+#define SDHCI_TEGRA_AUTO_CAL_ACTIVE		0x80000000
 
 #define NVQUIRK_FORCE_SDHCI_SPEC_200	BIT(0)
 #define NVQUIRK_ENABLE_BLOCK_GAP_DET	BIT(1)
@@ -131,20 +131,20 @@
 #define NVQUIRK_UPDATE_PIN_CNTRL_REG	BIT(13)
 
 
-#define MAX_CLK_PARENTS	5
+#define MAX_CLK_PARENTS		5
 #define MAX_DIVISOR_VALUE	128
-#define MAX_TAP_VALUE	256
+#define MAX_TAP_VALUE		256
 
-#define SET_REQ_TAP	0x0
-#define SET_DDR_TAP	0x1
-#define SET_DEFAULT_TAP	0x2
-#define TUNING_WORD_BIT_SIZE 32
+#define SET_REQ_TAP		0x0
+#define SET_DDR_TAP		0x1
+#define SET_DEFAULT_TAP		0x2
+#define TUNING_WORD_BIT_SIZE	32
 #define SDHOST_LOW_VOLT_MIN	1800000
 
 /* Set min identification clock of 400 KHz */
 #define SDMMC_TEGRA_FALLBACK_CLK_HZ	400000
-#define SDHCI_RTPM_MSEC_TMOUT 10
-#define SDMMC_EMC_MAX_FREQ	150000000
+#define SDHCI_RTPM_MSEC_TMOUT		10
+#define SDMMC_EMC_MAX_FREQ		150000000
 #define SDMMC_TIMEOUT_CLK_FREQ_HZ	12000000
 #define SDMMC_TIMEOUT_CLK_FREQ_MHZ	12
 
@@ -210,6 +210,7 @@ struct sdhci_tegra {
 	struct tegra_prod *prods;
 	u8 tuned_tap_delay;
 	bool rate_change_needs_clk;
+	bool emc_clk_set;
 	struct tegra_bwmgr_client *emc_clk;
 	unsigned int tuning_status;
 	#define TUNING_STATUS_DONE	1
@@ -241,6 +242,7 @@ struct sdhci_tegra {
 	int parent_clk_index[MMC_TIMING_COUNTER];
 	bool disable_rtpm;
 	bool disable_clk_gate;
+	bool disable_host_clk_gate;
 	bool is_rail_enabled;
 	bool vqmmc_always_on;
 	bool vmmc_always_on;
@@ -1165,7 +1167,18 @@ static void tegra_sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 		dev_dbg(mmc_dev(host->mmc), "Enabling clk %u, clk enabled %d\n",
 			clock, host->mmc->is_host_clk_enabled);
 
-		if (host->mmc->skip_host_clkgate) {
+		if (!tegra_host->emc_clk_set && tegra_host->emc_clk) {
+			rc = tegra_bwmgr_set_emc(tegra_host->emc_clk,
+						SDMMC_EMC_MAX_FREQ,
+						TEGRA_BWMGR_SET_EMC_SHARED_BW);
+			if (rc)
+				dev_err(mmc_dev(host->mmc),
+					"enabling eMC clock failed, err: %d\n",
+					rc);
+			tegra_host->emc_clk_set = true;
+		}
+
+		if (host->mmc->skip_host_clkgate && host->mmc->is_host_clk_enabled) {
 			sdhci_set_card_clock(host, true);
 			return;
 		}
@@ -1194,15 +1207,6 @@ static void tegra_sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 				SDHCI_TEGRA_VENDOR_CLOCK_CTRL);
 			/* power up / active state */
 			tegra_sdhci_vendor_trim_clear_sel_vreg(host, true);
-			if (tegra_host->emc_clk) {
-				rc = tegra_bwmgr_set_emc(tegra_host->emc_clk,
-						SDMMC_EMC_MAX_FREQ,
-						TEGRA_BWMGR_SET_EMC_SHARED_BW);
-				if (rc)
-					dev_err(mmc_dev(host->mmc),
-					"enabling eMC clock failed, err: %d\n",
-					rc);
-			}
 		}
 
 		/* Set the desired clk freq rate */
@@ -1231,6 +1235,16 @@ static void tegra_sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 		dev_dbg(mmc_dev(host->mmc), "Disabling clk %u, clk enabled %d\n",
 			clock, host->mmc->is_host_clk_enabled);
 
+		if (tegra_host->emc_clk_set && tegra_host->emc_clk) {
+			rc = tegra_bwmgr_set_emc(tegra_host->emc_clk, 0,
+						TEGRA_BWMGR_SET_EMC_SHARED_BW);
+			if (rc)
+				dev_err(mmc_dev(host->mmc),
+					"disabling eMC clock failed, err: %d\n",
+					rc);
+			tegra_host->emc_clk_set = false;
+		}
+
 		if (host->mmc->skip_host_clkgate) {
 			sdhci_set_card_clock(host, false);
 			return;
@@ -1251,14 +1265,6 @@ static void tegra_sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 			host->mmc->is_host_clk_enabled = false;
 			clk_disable_unprepare(tegra_host->tmclk);
 			clk_disable_unprepare(pltfm_host->clk);
-			if (tegra_host->emc_clk) {
-				rc = tegra_bwmgr_set_emc(tegra_host->emc_clk, 0,
-						TEGRA_BWMGR_SET_EMC_SHARED_BW);
-				if (rc)
-					dev_err(mmc_dev(host->mmc),
-					"disabling eMC clock failed, err: %d\n",
-					rc);
-			}
 		}
 
 	}
@@ -2143,6 +2149,8 @@ static int sdhci_tegra_parse_dt(struct platform_device *pdev)
 			dev_info(&pdev->dev, "clock gating disabled\n");
 #endif
 	}
+	tegra_host->disable_host_clk_gate = of_property_read_bool(np,
+		"disable-dynamic-host-clk-gating");
 
 	tegra_host->vqmmc_always_on = of_property_read_bool(np,
 		"nvidia,vqmmc-always-on");
@@ -2513,8 +2521,13 @@ static int tegra_sdhci_runtime_suspend(struct sdhci_host *host)
 	struct sdhci_tegra *tegra_host = sdhci_pltfm_priv(pltfm_host);
 
 	/* Disable clock */
-	if (!tegra_host->disable_clk_gate)
+	if (!tegra_host->disable_clk_gate) {
+		if (tegra_host->disable_host_clk_gate)
+			host->mmc->skip_host_clkgate = true;
 		tegra_sdhci_set_clock(host, 0);
+		if (tegra_host->disable_host_clk_gate)
+			host->mmc->skip_host_clkgate = false;
+	}
 
 	return 0;
 }
@@ -2534,7 +2547,11 @@ static int tegra_sdhci_runtime_resume(struct sdhci_host *host)
 		else
 			clk = SDMMC_TEGRA_FALLBACK_CLK_HZ;
 
+		if (tegra_host->disable_host_clk_gate)
+			host->mmc->skip_host_clkgate = true;
 		tegra_sdhci_set_clock(host, clk);
+		if (tegra_host->disable_host_clk_gate)
+			host->mmc->skip_host_clkgate = false;
 	}
 
 	return 0;
