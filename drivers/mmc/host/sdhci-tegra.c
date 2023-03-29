@@ -206,6 +206,9 @@ struct sdhci_tegra {
 	unsigned long curr_clk_rate;
 	unsigned long max_clk_limit;
 	unsigned long max_ddr_clk_limit;
+	unsigned long max_ddr50_clk_limit;
+	unsigned long max_sdr50_clk_limit;
+	unsigned long max_sdr104_hs200_clk_limit;
 	u32 boot_detect_delay;
 	struct tegra_prod *prods;
 	u8 tuned_tap_delay;
@@ -1138,14 +1141,37 @@ static unsigned long tegra_sdhci_apply_clk_limits(struct sdhci_host *host,
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_tegra *tegra_host = sdhci_pltfm_priv(pltfm_host);
+	unsigned long max_timing_clk = 0;
 	unsigned long host_clk;
 
-	if (tegra_host->ddr_signaling)
-		host_clk = (tegra_host->max_ddr_clk_limit) ?
+	/* SDR/DDR max clock limit */
+	if (tegra_host->ddr_signaling) {
+		host_clk = (clock > tegra_host->max_ddr_clk_limit) ?
 			tegra_host->max_ddr_clk_limit * 2 : clock * 2;
-	else
+	} else {
 		host_clk = (clock > tegra_host->max_clk_limit) ?
 			tegra_host->max_clk_limit : clock;
+	}
+
+	/* Per timings max clock limit */
+	switch (host->mmc->ios.timing) {
+	case MMC_TIMING_UHS_DDR50:
+	case MMC_TIMING_MMC_DDR52:
+		max_timing_clk = tegra_host->max_ddr50_clk_limit * 2;
+		break;
+	case MMC_TIMING_UHS_SDR50:
+		max_timing_clk = tegra_host->max_sdr50_clk_limit;
+		break;
+	case MMC_TIMING_UHS_SDR104:
+	case MMC_TIMING_MMC_HS200:
+	case MMC_TIMING_MMC_HS400:
+		max_timing_clk = tegra_host->max_sdr104_hs200_clk_limit;
+		break;
+	}
+
+	if (max_timing_clk)
+		host_clk = (host_clk > max_timing_clk) ? max_timing_clk :
+							 host_clk;
 
 	dev_dbg(mmc_dev(host->mmc), "Setting clk limit %lu\n", host_clk);
 	return host_clk;
@@ -2085,9 +2111,16 @@ static int sdhci_tegra_parse_dt(struct platform_device *pdev)
 	if (of_property_read_bool(np, "max-current-800ma"))
 		host->quirks2 |= SDHCI_QUIRK2_REG_800MA_SUPPORT;
 
-	of_property_read_u32(np, "max-clk-limit", (u32 *)&tegra_host->max_clk_limit);
+	of_property_read_u32(np, "max-clk-limit",
+		(u32 *)&tegra_host->max_clk_limit);
 	of_property_read_u32(np, "ddr-clk-limit",
 		(u32 *)&tegra_host->max_ddr_clk_limit);
+	of_property_read_u32(np, "ddr50-clk-limit",
+		(u32 *)&tegra_host->max_ddr50_clk_limit);
+	of_property_read_u32(np, "sdr50-clk-limit",
+		(u32 *)&tegra_host->max_sdr50_clk_limit);
+	of_property_read_u32(np, "sdr104-hs200-clk-limit",
+		(u32 *)&tegra_host->max_sdr104_hs200_clk_limit);
 	tegra_host->pwrdet_support = of_property_read_bool(np,
 		"pwrdet-support");
 	tegra_host->update_pinctrl_settings = of_property_read_bool(np,
