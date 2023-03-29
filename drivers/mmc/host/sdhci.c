@@ -3972,6 +3972,12 @@ int sdhci_setup_host(struct sdhci_host *host)
 				   SDHCI_MAX_CURRENT_MULTIPLIER;
 	}
 
+	if (host->quirks2 & SDHCI_QUIRK2_REG_800MA_SUPPORT) {
+		mmc->max_current_330 = 800;
+		mmc->max_current_300 = 800;
+		mmc->max_current_180 = 800;
+	}
+
 	/* If OCR set by host, use it instead. */
 	if (host->ocr_mask)
 		ocr_avail = host->ocr_mask;

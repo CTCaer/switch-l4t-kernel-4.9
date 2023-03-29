@@ -458,6 +458,8 @@ struct sdhci_host {
 /* Controller doesn't calculate max_busy_timeout */
 #define SDHCI_QUIRK2_NO_CALC_MAX_BUSY_TO		(1<<20)
 #define SDHCI_QUIRK2_PERIODIC_CALIBRATION		(1<<21)
+/* No regulator current limit info but supported 800mA */
+#define SDHCI_QUIRK2_REG_800MA_SUPPORT			(1<<31)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
