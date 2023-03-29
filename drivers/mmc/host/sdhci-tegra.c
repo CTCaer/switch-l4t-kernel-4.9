@@ -2706,13 +2706,6 @@ static void sdhci_tegra_debugfs_init(struct sdhci_host *host)
 			clk_src_data->curr_parent_clk_idx]);
 	if (!retval)
 		goto err;
-	/* backup original host timing capabilities as
-	 * debugfs may override it later
-	 */
-	host->caps_timing_orig = host->mmc->caps &
-				(MMC_CAP_SD_HIGHSPEED | MMC_CAP_UHS_DDR50
-				 | MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25
-				 | MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104);
 
 	retval = debugfs_create_file("card_insert", S_IRUSR | S_IWUSR,
 			sdhcidir, host, &sdhci_tegra_card_insert_fops);

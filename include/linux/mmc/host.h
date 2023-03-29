@@ -394,7 +394,6 @@ struct mmc_host {
 #define MMC_CAP2_HS400_ES	(1 << 20)	/* Host supports enhanced strobe */
 #define MMC_CAP2_NO_SD		(1 << 21)	/* Do not send SD commands during initialization */
 #define MMC_CAP2_NO_MMC		(1 << 22)	/* Do not send (e)MMC commands during initialization */
-#define MMC_CAP2_HS533		(1 << 23)	/* Can support HS533 */
 #define MMC_CAP2_NO_EXTENDED_GP	(1 << 24)	/* Do not support extended GP */
 #define MMC_CAP2_HW_CQ		(1 << 25)	/* support eMMC command queue */
 #define MMC_CAP2_CMDQ_QBR	(1 << 26)	/* CMDQ Queue barrier supported */

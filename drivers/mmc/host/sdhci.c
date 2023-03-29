@@ -2270,8 +2270,7 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		break;
 
 	case MMC_TIMING_UHS_SDR50:
-		if (host->flags & SDHCI_SDR50_NEEDS_TUNING ||
-		    host->flags & SDHCI_SDR104_NEEDS_TUNING)
+		if (host->flags & SDHCI_SDR50_NEEDS_TUNING)
 			break;
 		/* FALLTHROUGH */
 
