@@ -2082,6 +2082,9 @@ static int sdhci_tegra_parse_dt(struct platform_device *pdev)
 		}
 	}
 
+	if (of_property_read_bool(np, "max-current-800ma"))
+		host->quirks2 |= SDHCI_QUIRK2_REG_800MA_SUPPORT;
+
 	of_property_read_u32(np, "max-clk-limit", (u32 *)&tegra_host->max_clk_limit);
 	of_property_read_u32(np, "ddr-clk-limit",
 		(u32 *)&tegra_host->max_ddr_clk_limit);
