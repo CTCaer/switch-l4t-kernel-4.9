@@ -1424,8 +1424,7 @@ static void tegra210_pllu_set_defaults(struct tegra_clk_pll_params *pllu)
 #define mask(w) ((1 << (w)) - 1)
 #define divm_mask(p) mask(p->params->div_nmp->divm_width)
 #define divn_mask(p) mask(p->params->div_nmp->divn_width)
-#define divp_mask(p) (p->params->flags & TEGRA_PLLU ? PLLU_POST_DIVP_MASK :\
-		      mask(p->params->div_nmp->divp_width))
+#define divp_mask(p) mask(p->params->div_nmp->divp_width)
 
 #define divm_shift(p) ((p)->params->div_nmp->divm_shift)
 #define divn_shift(p) ((p)->params->div_nmp->divn_shift)
@@ -3799,6 +3798,7 @@ static unsigned long pll_a_out0_rate, pll_c4_out3_rate;
 static unsigned long pll_p_out_rate[5];
 static unsigned long pll_u_out1_rate, pll_u_out2_rate;
 static unsigned long pll_mb_rate;
+static u32 pll_c4_vco;
 static u32 pll_m_v;
 static u32 pll_p_outa, pll_p_outb;
 static u32 pll_re_out_div, pll_re_out_1;
@@ -3900,6 +3900,8 @@ static u32 * __init tegra210_init_suspend_ctx(void)
 
 static int tegra210_clk_suspend(void)
 {
+	struct tegra_clk_pll *pllc4 =
+		to_clk_pll(__clk_get_hw(clks[TEGRA210_CLK_PLL_C4]));
 	int i;
 	unsigned long off;
 	struct device_node *node;
@@ -3930,6 +3932,13 @@ static int tegra210_clk_suspend(void)
 	}
 	pll_p_outa = car_readl(PLLP_OUTA, 0);
 	pll_p_outb = car_readl(PLLP_OUTB, 0);
+
+	/* PLLC4 can be reset on SC7 (UARTA) so allow to be re-initialized */
+	pll_c4_vco = car_readl(PLLC4_BASE, 0);
+	pll_c4_vco &= BIT(pllc4->params->iddq_bit_idx) |
+		      divm_mask_shifted(pllc4) |
+		      divn_mask_shifted(pllc4) |
+		      divp_mask_shifted(pllc4);
 
 	for (i = 0; i < ARRAY_SIZE(cpu_softrst_ctx); i++)
 		cpu_softrst_ctx[i] = car_readl(CPU_SOFTRST_CTRL, i);
@@ -4011,6 +4020,9 @@ static void tegra210_clk_resume(void)
 	tegra_clk_pll_resume(clks[TEGRA210_CLK_PLL_D], pll_d_rate);
 	tegra_clk_pll_resume(clks[TEGRA210_CLK_PLL_D2], pll_d2_rate);
 	tegra_clk_pll_resume(clks[TEGRA210_CLK_PLL_DP], pll_dp_rate);
+
+	/* PLLC4 can be reset on SC7 (UARTA) so restore its config */
+	car_writel(pll_c4_vco, PLLC4_BASE, 0);
 	tegra_clk_pll_resume(clks[TEGRA210_CLK_PLL_C4], pll_c4_rate);
 
 	/* enable the PLLD */
