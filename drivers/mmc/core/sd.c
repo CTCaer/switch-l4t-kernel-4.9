@@ -5,6 +5,7 @@
  *  SD support Copyright (C) 2004 Ian Molton, All Rights Reserved.
  *  Copyright (C) 2005-2007 Pierre Ossman, All Rights Reserved.
  *  Copyright (c) 2017-2019, NVIDIA CORPORATION.  All rights reserved.
+ *  Copyright (c) 2023, CTCaer.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -138,6 +139,9 @@ static ssize_t ios_timing_show(struct device *dev,
 		case MMC_TIMING_MMC_HS400:
 			str = mmc_card_hs400es(host->card) ?
 				"mmc HS400 enhanced strobe" : "mmc HS400";
+			break;
+		case MMC_TIMING_UHS_DDR200:
+			str = "sd uhs DDR200";
 			break;
 		default:
 			str = "invalid";
@@ -524,8 +528,19 @@ static void sd_update_bus_speed_mode(struct mmc_card *card)
 		return;
 	}
 
-	if ((card->host->caps & MMC_CAP_UHS_SDR104) &&
-	    (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR104)) {
+	/*
+	 * UHS DDR200/DDR208 support
+	 *
+	 * The proprietary DDR200/208 mode is checked and enabled by the Vendor
+	 * Specific bit in the Command System group. Currently only SD6.0 and up
+	 * SD cards support it, so actively check that too.
+	 */
+	if ((card->host->caps2 & MMC_CAP2_UHS_DDR200) &&
+		(card->sw_caps.sd3_cmd_system & SD_MODE_UHS_DDR200) &&
+		(card->scr.sda_specx >= 2)) {
+			card->sd_bus_speed = UHS_DDR200_BUS_SPEED;
+	} else if ((card->host->caps & MMC_CAP_UHS_SDR104) &&
+			 (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR104)) {
 			card->sd_bus_speed = UHS_SDR104_BUS_SPEED;
 	} else if ((card->host->caps & MMC_CAP_UHS_DDR50) &&
 		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_DDR50)) {
@@ -549,9 +564,20 @@ static void sd_update_bus_speed_mode(struct mmc_card *card)
 static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
 {
 	int err;
+	int group = 0, shift = 0;
 	unsigned int timing = 0;
 
 	switch (card->sd_bus_speed) {
+	case UHS_DDR200_BUS_SPEED:
+		timing = MMC_TIMING_UHS_DDR200;
+		card->sw_caps.uhs_max_dtr = UHS_DDR200_MAX_DTR;
+		/*
+		 * UHS DDR200 does not use the access mode group but the command
+		 * system group. So if selected, set it to the proper group.
+		 */
+		group = 1;
+		shift = 4;
+		break;
 	case UHS_SDR104_BUS_SPEED:
 		timing = MMC_TIMING_UHS_SDR104;
 		card->sw_caps.uhs_max_dtr = UHS_SDR104_MAX_DTR;
@@ -576,11 +602,17 @@ static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
 		return 0;
 	}
 
-	err = mmc_sd_switch(card, 1, 0, card->sd_bus_speed, status);
+	if (card->sd_bus_speed == MMC_TIMING_UHS_DDR200) {
+		err = mmc_sd_switch(card, 1, group, 0, status);
+		if (err)
+			return err;
+	}
+
+	err = mmc_sd_switch(card, 1, group, card->sd_bus_speed, status);
 	if (err)
 		return err;
 
-	if ((status[16] & 0xF) != card->sd_bus_speed)
+	if (((status[16] >> shift) & 0xF) != card->sd_bus_speed)
 		pr_warn("%s: Problem setting bus speed mode!\n",
 			mmc_hostname(card->host));
 	else {
@@ -623,12 +655,13 @@ static int sd_set_current_limit(struct mmc_card *card, u8 *status)
 	u32 max_current;
 
 	/*
-	 * Current limit switch is only defined for SDR50, SDR104, and DDR50
-	 * bus speed modes. For other bus speed modes, we do not change the
-	 * current limit.
+	 * Current limit switch is only defined for SDR50, SDR104, DDR50 and
+	 * DDR200, bus speed modes. For other bus speed modes, we do not
+	 * change the current limit.
 	 */
 	if ((card->sd_bus_speed != UHS_SDR50_BUS_SPEED) &&
 	    (card->sd_bus_speed != UHS_SDR104_BUS_SPEED) &&
+	    (card->sd_bus_speed != UHS_DDR200_BUS_SPEED) &&
 	    (card->sd_bus_speed != UHS_DDR50_BUS_SPEED))
 		return 0;
 
@@ -739,7 +772,8 @@ static int mmc_sd_init_uhs_card(struct mmc_card *card)
 	if (!mmc_host_is_spi(card->host) &&
 		(card->host->ios.timing == MMC_TIMING_UHS_SDR50 ||
 		 card->host->ios.timing == MMC_TIMING_UHS_DDR50 ||
-		 card->host->ios.timing == MMC_TIMING_UHS_SDR104)) {
+		 card->host->ios.timing == MMC_TIMING_UHS_SDR104 ||
+		 card->host->ios.timing == MMC_TIMING_UHS_DDR200)) {
 		err = mmc_execute_tuning(card);
 
 		/*
@@ -1570,6 +1604,7 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 			card->host->caps &= ~(MMC_CAP_UHS_SDR12 |
 				MMC_CAP_UHS_SDR25 | MMC_CAP_UHS_SDR50 |
 				MMC_CAP_UHS_SDR104 | MMC_CAP_UHS_DDR50);
+			card->host->caps2 &= ~MMC_CAP2_UHS_DDR200;
 			goto free_card;
 		}
 	} else {

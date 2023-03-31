@@ -1359,6 +1359,11 @@ static u16 sdhci_get_preset_value(struct sdhci_host *host)
 	case MMC_TIMING_MMC_HS400:
 		preset = sdhci_readw(host, SDHCI_PRESET_FOR_HS400);
 		break;
+	case MMC_TIMING_UHS_DDR200:
+		pr_warn("%s: Presets not supported on DDR200 mode\n",
+			mmc_hostname(host->mmc));
+		preset = sdhci_readw(host, SDHCI_PRESET_FOR_DDR50);
+		break;
 	default:
 		pr_warn("%s: Invalid UHS-I mode selected\n",
 			mmc_hostname(host->mmc));
@@ -1795,7 +1800,8 @@ void sdhci_set_uhs_signaling(struct sdhci_host *host, unsigned timing)
 		else
 			ctrl_2 |= SDHCI_CTRL_UHS_SDR50;
 	} else if ((timing == MMC_TIMING_UHS_DDR50) ||
-		 (timing == MMC_TIMING_MMC_DDR52))
+		   (timing == MMC_TIMING_MMC_DDR52) ||
+		   (timing == MMC_TIMING_UHS_DDR200))
 		ctrl_2 |= SDHCI_CTRL_UHS_DDR50;
 	else if (timing == MMC_TIMING_MMC_HS400)
 		ctrl_2 |= SDHCI_CTRL_HS400; /* Non-standard */
@@ -1885,6 +1891,7 @@ static void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		    (ios->timing == MMC_TIMING_MMC_DDR52) ||
 		    (ios->timing == MMC_TIMING_UHS_SDR50) ||
 		    (ios->timing == MMC_TIMING_UHS_SDR104) ||
+		    (ios->timing == MMC_TIMING_UHS_DDR200) ||
 		    (ios->timing == MMC_TIMING_UHS_DDR50) ||
 		    (ios->timing == MMC_TIMING_UHS_SDR25))
 			ctrl |= SDHCI_CTRL_HISPD;
@@ -2247,8 +2254,8 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	 * The Host Controller needs tuning in case of SDR104 and DDR50
 	 * mode, and for SDR50 mode when Use Tuning for SDR50 is set in
 	 * the Capabilities register.
-	 * If the Host Controller supports the HS200 mode then the
-	 * tuning function has to be executed.
+	 * If the Host Controller supports the HS200 or DDR200 mode then
+	 * the tuning function has to be executed.
 	 */
 	switch (host->timing) {
 	/* HS400 tuning is done in HS200 mode */
@@ -2265,6 +2272,11 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 			tuning_count = 0;
 		break;
 
+	case MMC_TIMING_UHS_DDR200:
+		if (host->ops->platform_execute_tuning_ddr200) {
+			spin_unlock_irqrestore(&host->lock, flags);
+			return host->ops->platform_execute_tuning_ddr200(host);
+		}
 	case MMC_TIMING_UHS_SDR104:
 	case MMC_TIMING_UHS_DDR50:
 		break;
@@ -2968,7 +2980,13 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 		host->data->error = -EILSEQ;
 		error_data_crc++;
 		pr_err("%s: Data CRC error\n", mmc_hostname(host->mmc));
-		sdhci_dumpregs(host);
+		/*
+		 * DDR200 has tight timings and normally needs manual tuning.
+		 * A re-tuning request will happen on CRC errors.
+		 * Because that's expected, do not dump sd registers.
+		 */
+		if (host->mmc->ios.timing != MMC_TIMING_UHS_DDR200)
+			sdhci_dumpregs(host);
 	} else if (intmask & SDHCI_INT_ADMA_ERROR) {
 		pr_err("%s: ADMA error\n", mmc_hostname(host->mmc));
 		sdhci_adma_show_error(host);
@@ -4009,7 +4027,8 @@ int sdhci_setup_host(struct sdhci_host *host)
 	if ((mmc->caps & (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
 			  MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104 |
 			  MMC_CAP_UHS_DDR50 | MMC_CAP_1_8V_DDR)) ||
-	    (mmc->caps2 & (MMC_CAP2_HS200_1_8V_SDR | MMC_CAP2_HS400_1_8V)))
+	    (mmc->caps2 & (MMC_CAP2_HS200_1_8V_SDR | MMC_CAP2_HS400_1_8V |
+	    		   MMC_CAP2_UHS_DDR200)))
 		host->flags |= SDHCI_SIGNALING_180;
 
 	if (mmc->caps2 & MMC_CAP2_HSX00_1_2V)

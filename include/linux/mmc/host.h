@@ -69,7 +69,8 @@ struct mmc_ios {
 #define MMC_TIMING_MMC_DDR52	8
 #define MMC_TIMING_MMC_HS200	9
 #define MMC_TIMING_MMC_HS400	10
-#define MMC_TIMING_COUNTER	11
+#define MMC_TIMING_UHS_DDR200	11
+#define MMC_TIMING_COUNTER	12
 
 	unsigned char	signal_voltage;		/* signalling voltage (1.8V or 3.3V) */
 
@@ -371,6 +372,7 @@ struct mmc_host {
 #define MMC_CAP2_BOOTPART_NOACC	(1 << 0)	/* Boot partition no access */
 #define MMC_CAP2_SLOT_REG_ALWAYS_ON (1 << 1)    /* Card slot regulator always on */
 #define MMC_CAP2_FULL_PWR_CYCLE	(1 << 2)	/* Can do full power cycle */
+#define MMC_CAP2_UHS_DDR200	(1 << 3)	/* Host supports UHS DDR200 mode */
 #define MMC_CAP2_HS200_1_8V_SDR	(1 << 5)        /* can support */
 #define MMC_CAP2_HS200_1_2V_SDR	(1 << 6)        /* can support */
 #define MMC_CAP2_HS200		(MMC_CAP2_HS200_1_8V_SDR | \

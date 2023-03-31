@@ -4,6 +4,7 @@
  *  Copyright (C) 2003 Russell King, All Rights Reserved.
  *  Copyright (C) 2007 Pierre Ossman
  *  Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
+ *  Copyright (c) 2023, CTCaer.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -321,6 +322,7 @@ int mmc_add_card(struct mmc_card *card)
 		[UHS_SDR50_BUS_SPEED] = "SDR50 ",
 		[UHS_SDR104_BUS_SPEED] = "SDR104 ",
 		[UHS_DDR50_BUS_SPEED] = "DDR50 ",
+		[UHS_DDR200_BUS_SPEED] = "DDR200 ",
 	};
 
 
@@ -353,7 +355,8 @@ int mmc_add_card(struct mmc_card *card)
 	}
 
 	if (mmc_card_uhs(card) &&
-		(card->sd_bus_speed < ARRAY_SIZE(uhs_speeds)))
+		(card->sd_bus_speed < ARRAY_SIZE(uhs_speeds)) &&
+		uhs_speeds[card->sd_bus_speed])
 		uhs_bus_speed_mode = uhs_speeds[card->sd_bus_speed];
 
 	if (mmc_host_is_spi(card->host)) {

@@ -154,6 +154,9 @@ static int mmc_ios_show(struct seq_file *s, void *data)
 		str = mmc_card_hs400es(host->card) ?
 			"mmc HS400 enhanced strobe" : "mmc HS400";
 		break;
+	case MMC_TIMING_UHS_DDR200:
+		str = "sd uhs DDR200";
+		break;
 	default:
 		str = "invalid";
 		break;

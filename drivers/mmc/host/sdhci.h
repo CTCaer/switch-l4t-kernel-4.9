@@ -5,6 +5,7 @@
  *
  *  Copyright (C) 2005-2008 Pierre Ossman, All Rights Reserved.
  *  Copyright (c) 2012-2017, NVIDIA CORPORATION.  All rights reserved.
+ *  Copyright (c) 2023, CTCaer.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -595,6 +596,7 @@ struct sdhci_ops {
 	unsigned int    (*get_ro)(struct sdhci_host *host);
 	void		(*reset)(struct sdhci_host *host, u8 mask);
 	int	(*platform_execute_tuning)(struct sdhci_host *host, u32 opcode);
+	int	(*platform_execute_tuning_ddr200)(struct sdhci_host *host);
 	void	(*set_uhs_signaling)(struct sdhci_host *host, unsigned int uhs);
 	void	(*hw_reset)(struct sdhci_host *host);
 	void    (*adma_workaround)(struct sdhci_host *host, u32 intmask);
