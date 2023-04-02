@@ -817,8 +817,9 @@ static void sdhci_set_timeout(struct sdhci_host *host, struct mmc_command *cmd)
 
 static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_command *cmd)
 {
-	u8 ctrl;
 	struct mmc_data *data = cmd->data;
+	u64 adma_address;
+	u8 ctrl;
 
 	if (sdhci_data_line_cmd(cmd))
 		sdhci_set_timeout(host, cmd);
@@ -903,17 +904,24 @@ static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_command *cmd)
 			 */
 			WARN_ON(1);
 			host->flags &= ~SDHCI_REQ_USE_DMA;
-		} else if (host->flags & SDHCI_USE_ADMA) {
-			sdhci_adma_table_pre(host, data, sg_cnt);
+		} else if (host->flags & SDHCI_USE_ADMA ||
+			   host->version >= SDHCI_SPEC_400) {
 
-			sdhci_writel(host,
-					(host->adma_addr & 0xFFFFFFFF),
-					SDHCI_ADMA_ADDRESS);
+			if (host->flags & SDHCI_USE_ADMA) {
+				sdhci_adma_table_pre(host, data, sg_cnt);
+				adma_address = (u64)host->adma_addr;
+			} else {
+				WARN_ON(sg_cnt != 1);
+				adma_address = (u64)sg_dma_address(data->sg);
+			}
+
+			sdhci_writel(host, (adma_address & 0xFFFFFFFF),
+				     SDHCI_ADMA_ADDRESS);
 				if (host->flags & SDHCI_USE_64_BIT_DMA) {
 					if (host->quirks2 &
 					    SDHCI_QUIRK2_USE_64BIT_ADDR) {
 						sdhci_writel(host,
-						((u64)host->adma_addr >> 32)
+						(adma_address >> 32)
 							& 0xFFFFFFFF,
 						SDHCI_ADMA_ADDRESS_HI);
 					} else {
@@ -972,7 +980,7 @@ static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_command *cmd)
 static inline bool sdhci_auto_cmd12(struct sdhci_host *host,
 				    struct mmc_request *mrq)
 {
-	return !mrq->sbc && (host->flags & SDHCI_AUTO_CMD12) &&
+	return mrq->sbc && (host->flags & SDHCI_AUTO_CMD12) &&
 	       !mrq->cap_cmd_during_tfr;
 }
 
@@ -3671,8 +3679,9 @@ int sdhci_setup_host(struct sdhci_host *host)
 		}
 	}
 
-	/* SDMA does not support 64-bit DMA */
-	if (host->flags & SDHCI_USE_64_BIT_DMA)
+	/* SDMA does not support 64-bit DMA on SHCI3.0 and below */
+	if ((host->version < SDHCI_SPEC_400) &&
+	    (host->flags & SDHCI_USE_64_BIT_DMA))
 		host->flags &= ~SDHCI_USE_SDMA;
 
 	if (host->flags & SDHCI_USE_ADMA) {
