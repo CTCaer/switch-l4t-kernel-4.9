@@ -933,6 +933,14 @@ config HID_XINMO
 	standard. Currently only supports the Xin-Mo Dual Arcade. Say Y here
 	if you have a Xin-Mo Dual Arcade controller.
 
+config HID_XPADNEO
+	tristate "XBOX ONE S and X controller over Bluetooth, including FF"
+	depends on HID
+	select INPUT_FF_MEMLESS
+	help
+	  Support for Xbox One S and X controllers over BT, including
+	  force-feedback.
+
 config HID_ZEROPLUS
 	tristate "Zeroplus based game controller support"
 	depends on HID
