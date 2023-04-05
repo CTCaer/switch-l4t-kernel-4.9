@@ -16,7 +16,7 @@
 #ifndef _UAPI__ASM_SIGCONTEXT_H
 #define _UAPI__ASM_SIGCONTEXT_H
 
-#ifdef CONFIG_64BIT
+#if (!defined(__ARM_32BIT_STATE) || !__ARM_32BIT_STATE)
 #include <linux/types.h>
 
 /*
