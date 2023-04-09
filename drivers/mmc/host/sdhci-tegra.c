@@ -212,6 +212,7 @@ struct sdhci_tegra {
 	unsigned long max_sdr50_clk_limit;
 	unsigned long max_sdr104_hs200_clk_limit;
 	unsigned long max_ddr200_clk_limit;
+	int adma_xfer_size_limit;
 	u32 boot_detect_delay;
 	struct tegra_prod *prods;
 	u8 tuned_tap_delay;
@@ -1443,6 +1444,28 @@ static unsigned int tegra_sdhci_get_timeout_clock(struct sdhci_host *host)
 	return SDMMC_TIMEOUT_CLK_FREQ_MHZ;
 }
 
+static int tegra_sdhci_adma_get_req_limit(struct sdhci_host *host)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_tegra *tegra_host = sdhci_pltfm_priv(pltfm_host);
+
+	/*
+	 * Some boards can limit size of ADMA transfers before the next re-tuning
+	 * request can happen. In all other cases follow the SDHCI spec.
+	 */
+	if (tegra_host->adma_xfer_size_limit)
+		return tegra_host->adma_xfer_size_limit;
+
+	/*
+	 * Tuning modes 1 and 2 limit max transfers to 4MiB.
+	 * For tuning mode 3, the next power of 2 under 32MiB is selected.
+	 */
+	if (host->tuning_mode != SDHCI_TUNING_MODE_3)
+		return 4194304;
+	else
+		return 16777216;
+}
+
 static void tegra_sdhci_set_tap(struct sdhci_host *host, unsigned int tap,
 	int type)
 {
@@ -2091,6 +2114,7 @@ static const struct sdhci_ops tegra_sdhci_ops = {
 	.set_clock  = tegra_sdhci_set_clock,
 	.set_bus_width = tegra_sdhci_set_bus_width,
 	.reset      = tegra_sdhci_reset,
+	.adma_get_req_limit = tegra_sdhci_adma_get_req_limit,
 	.platform_execute_tuning_ddr200 = tegra_sdhci_execute_tuning_ddr200,
 	.set_uhs_signaling = tegra_sdhci_set_uhs_signaling,
 	.voltage_switch = tegra_sdhci_voltage_switch,
@@ -2321,6 +2345,9 @@ static int sdhci_tegra_parse_dt(struct platform_device *pdev)
 
 	if (of_property_read_bool(np, "max-current-800ma"))
 		host->quirks2 |= SDHCI_QUIRK2_REG_800MA_SUPPORT;
+
+	of_property_read_u32(np, "adma-xfer-size",
+		(u32 *)&tegra_host->adma_xfer_size_limit);
 
 	of_property_read_u32(np, "max-clk-limit",
 		(u32 *)&tegra_host->max_clk_limit);
