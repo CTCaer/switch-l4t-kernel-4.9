@@ -338,10 +338,10 @@ struct sdhci_adma2_64_desc {
 #define ADMA2_END		0x2
 
 /*
- * Maximum segments assuming a 512KiB maximum requisition size and a minimum
+ * Maximum segments assuming a 16MiB maximum requisition size and a minimum
  * 4KiB page size.
  */
-#define SDHCI_MAX_SEGS		128
+#define SDHCI_MAX_SEGS		4096
 
 /* Allow for a a command request and a data request at the same time */
 #define SDHCI_MAX_MRQS		2
@@ -584,6 +584,7 @@ struct sdhci_ops {
 			     unsigned short vdd);
 
 	int		(*enable_dma)(struct sdhci_host *host);
+	int		(*adma_get_req_limit)(struct sdhci_host *host);
 	unsigned int	(*get_max_clock)(struct sdhci_host *host);
 	unsigned int	(*get_min_clock)(struct sdhci_host *host);
 	unsigned int	(*get_timeout_clock)(struct sdhci_host *host);
@@ -593,14 +594,14 @@ struct sdhci_ops {
 	void		(*set_bus_width)(struct sdhci_host *host, int width);
 	void (*platform_send_init_74_clocks)(struct sdhci_host *host,
 					     u8 power_mode);
-	unsigned int    (*get_ro)(struct sdhci_host *host);
+	unsigned int	(*get_ro)(struct sdhci_host *host);
 	void		(*reset)(struct sdhci_host *host, u8 mask);
 	int	(*platform_execute_tuning)(struct sdhci_host *host, u32 opcode);
 	int	(*platform_execute_tuning_ddr200)(struct sdhci_host *host);
 	void	(*set_uhs_signaling)(struct sdhci_host *host, unsigned int uhs);
 	void	(*hw_reset)(struct sdhci_host *host);
-	void    (*adma_workaround)(struct sdhci_host *host, u32 intmask);
-	void    (*card_event)(struct sdhci_host *host);
+	void	(*adma_workaround)(struct sdhci_host *host, u32 intmask);
+	void	(*card_event)(struct sdhci_host *host);
 	void	(*voltage_switch)(struct sdhci_host *host);
 	int	(*select_drive_strength)(struct sdhci_host *host,
 					 struct mmc_card *card,
