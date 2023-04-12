@@ -1663,6 +1663,7 @@ static void tegra_sdhci_execute_manual_tuning(struct sdhci_host *host, int num_i
 }
 
 #define INVALID_TAP 0x100
+#define SAMPLING_WINDOW_SIZE_MIN 8 /* DDR200 */
 static int tegra_sdhci_execute_tuning_ddr200(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -1728,6 +1729,15 @@ static int tegra_sdhci_execute_tuning_ddr200(struct sdhci_host *host)
 				win_size  = 0;
 			}
 		}
+	}
+
+	if (best_size < SAMPLING_WINDOW_SIZE_MIN) {
+		dev_err(mmc_dev(host->mmc),
+			"manual tuning failed, "
+			"sampling window size (%d) too small...\n",
+			best_size);
+		err = -EIO;
+		goto out;
 	}
 
 	if (!best_tap) {
