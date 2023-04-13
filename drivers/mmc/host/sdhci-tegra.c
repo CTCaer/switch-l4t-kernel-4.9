@@ -1662,6 +1662,45 @@ static void tegra_sdhci_execute_manual_tuning(struct sdhci_host *host, int num_i
 	spin_unlock_irqrestore(&host->lock, flags);
 }
 
+/*
+ * SD Card DDR200 (DDR208) support
+ *
+ * DLL Tuning (a) or Tuning Window (b) procedure:
+ * 1. Check that Vendor Specific Command System is supported.
+ *    Used as Enable DDR200 Bus.
+ * 2. Enable DDR200 bus mode via setting 14 to Group 2 via CMD6.
+ *    Access Mode group is left to default 0 (SDR12).
+ * 3. Setup clock to 200 or 208 MHz.
+ * 4a. Set host to DDR200/HS400 bus mode that enables DLL syncing.
+ *     Actual implementation supported by all DDR200 cards.
+ * --
+ * 4b. Set host to DDR50 bus mode that supports such high clocks.
+ *     Execute Manual Tuning.
+ *     Limited to non-Sandisk cards.
+ *
+ * On Tegra SoCs, that can be done with DDR50 host mode.
+ * That's because HS400 4-bit or HS400 generally, is not supported on SD SDMMC.
+ * And also, tuning can't be done automatically on any DDR mode.
+ * So it needs to be done manually and selected tap will be applied from the
+ * biggest sampling window.
+ * That allows DDR200 support on every DDR200 SD card, other than the original
+ * maker of DDR200, Sandisk.
+ *
+ * On the original implementation of DDR200 from Sandisk, a DLL mechanism,
+ * like the one in eMMC HS400 is mandatory.
+ * So the card can start data signals whenever it wants, and the host should
+ * synchronize to the first DAT signal edge change.
+ * Every single other vendor that implemented that, always starts data transfers
+ * aligned to clock. That basically makes DDR200 in such SD cards a SDR104 but
+ * sampled on both edges. So effectively, it's an in-spec signal with DDR50,
+ * only that is clocked at 200MHz, instead of 50MHz.
+ * So the extra needed thing is using a tuning window, which is absent from the
+ * original implementation, since DDL syncing does not use that.
+ *
+ * On DLL tuning method expected cards, the tuning window is tiny.
+ * So check against a minimum of 8 taps window, to disallow DDR200.
+ */
+
 #define INVALID_TAP 0x100
 #define SAMPLING_WINDOW_SIZE_MIN 8 /* DDR200 */
 static int tegra_sdhci_execute_tuning_ddr200(struct sdhci_host *host)
@@ -1731,18 +1770,17 @@ static int tegra_sdhci_execute_tuning_ddr200(struct sdhci_host *host)
 		}
 	}
 
-	if (best_size < SAMPLING_WINDOW_SIZE_MIN) {
-		dev_err(mmc_dev(host->mmc),
-			"manual tuning failed, "
-			"sampling window size (%d) too small...\n",
-			best_size);
-		err = -EIO;
-		goto out;
-	}
+	if (!best_tap || best_size < SAMPLING_WINDOW_SIZE_MIN) {
 
-	if (!best_tap) {
-		dev_err(mmc_dev(host->mmc),
-			"manual tuning failed, no best tap...\n");
+		if (!best_tap) {
+			dev_err(mmc_dev(host->mmc),
+				"manual tuning failed, no valid tap...\n");
+		} else {
+			dev_err(mmc_dev(host->mmc),
+				"manual tuning failed, "
+				"sampling window size (%d) too small...\n",
+				best_size);
+		}
 		err = -EIO;
 		goto out;
 	}
