@@ -772,9 +772,9 @@ static int joycon_read_stick_calibration(struct joycon_ctlr *ctlr, u16 cal_addr,
 	return 0;
 }
 
-#define DFLT_STICK_CAL_CEN		2000
-#define DFLT_STICK_CAL_MAX		3500
-#define DFLT_STICK_CAL_MIN		500
+#define DFLT_STICK_CAL_CEN		2048
+#define DFLT_STICK_CAL_MAX		3072
+#define DFLT_STICK_CAL_MIN		1024
 static int joycon_request_calibration(struct joycon_ctlr *ctlr)
 {
 	u16 left_stick_addr = JC_CAL_FCT_DATA_LEFT_ADDR;
@@ -804,7 +804,7 @@ static int joycon_request_calibration(struct joycon_ctlr *ctlr)
 					    true);
 	if (ret) {
 		hid_warn(ctlr->hdev,
-			 "Failed to read left stick cal, using dflts; e=%d\n",
+			 "Failed to read left stick cal, using defaults; e=%d\n",
 			 ret);
 
 		ctlr->left_stick_cal_x.center = DFLT_STICK_CAL_CEN;
