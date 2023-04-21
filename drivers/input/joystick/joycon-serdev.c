@@ -985,12 +985,12 @@ static int joycon_read_stick_calibration(struct joycon_ctlr *ctlr, u16 cal_addr,
 	return 0;
 }
 
-static const u16 DFLT_STICK_CAL_CEN = 2000;
-static const u16 DFLT_STICK_CAL_MAX = 3500;
-static const u16 DFLT_STICK_CAL_MIN = 500;
-static const u16 DFLT_HORI_STICK_CAL_CEN = 2048;
-static const u16 DFLT_HORI_STICK_CAL_MAX = 4095;
-static const u16 DFLT_HORI_STICK_CAL_MIN = 0;
+static const u16 DFLT_STICK_CAL_CEN = 2048;
+static const u16 DFLT_STICK_CAL_MAX = 3072;
+static const u16 DFLT_STICK_CAL_MIN = 1024;
+static const u16 HORI_STICK_CAL_CEN = 2048;
+static const u16 HORI_STICK_CAL_MAX = 4095;
+static const u16 HORI_STICK_CAL_MIN = 0;
 static int joycon_request_calibration(struct joycon_ctlr *ctlr)
 {
 	u16 stick_addr = JC_CAL_FCT_DATA_LEFT_ADDR;
@@ -1024,7 +1024,7 @@ static int joycon_request_calibration(struct joycon_ctlr *ctlr)
 					    type == JOYCON_TYPE_LEFT);
 	if (ret) {
 		dev_warn(dev,
-			 "Failed to read stick cal, using dflts; e=%d\n",
+			 "Failed to read stick cal, using defaults; e=%d\n",
 			 ret);
 
 		ctlr->stick_cal_x.center = DFLT_STICK_CAL_CEN;
@@ -2818,13 +2818,13 @@ static int joycon_handshake(struct joycon_ctlr *ctlr)
 		dev_info(dev, "completed handshake - Joycon\n");
 		goto exit;
 	} else {
-		ctlr->stick_cal_x.center = DFLT_HORI_STICK_CAL_CEN;
-		ctlr->stick_cal_x.max = DFLT_HORI_STICK_CAL_MAX;
-		ctlr->stick_cal_x.min = DFLT_HORI_STICK_CAL_MIN;
+		ctlr->stick_cal_x.center = HORI_STICK_CAL_CEN;
+		ctlr->stick_cal_x.max = HORI_STICK_CAL_MAX;
+		ctlr->stick_cal_x.min = HORI_STICK_CAL_MIN;
 
-		ctlr->stick_cal_y.center = DFLT_HORI_STICK_CAL_CEN;
-		ctlr->stick_cal_y.max = DFLT_HORI_STICK_CAL_MAX;
-		ctlr->stick_cal_y.min = DFLT_HORI_STICK_CAL_MIN;
+		ctlr->stick_cal_y.center = HORI_STICK_CAL_CEN;
+		ctlr->stick_cal_y.max = HORI_STICK_CAL_MAX;
+		ctlr->stick_cal_y.min = HORI_STICK_CAL_MIN;
 		dev_info(dev, "completed handshake - Hori\n");
 		goto exit;
 	}
@@ -2890,21 +2890,25 @@ static int sio_handshake(struct joycon_ctlr *ctlr)
 	if (!ctlr->mac_addr_str)
 		return -ENOMEM;
 
-	ctlr->stick_cal_x.center = DFLT_STICK_CAL_CEN;
-	ctlr->stick_cal_x.max = DFLT_STICK_CAL_MAX;
-	ctlr->stick_cal_x.min = DFLT_STICK_CAL_MIN;
+	if (!ctlr->stick_cal_x.center) {
+		ctlr->stick_cal_x.center = DFLT_STICK_CAL_CEN;
+		ctlr->stick_cal_x.max = DFLT_STICK_CAL_MAX;
+		ctlr->stick_cal_x.min = DFLT_STICK_CAL_MIN;
 
-	ctlr->stick_cal_y.center = DFLT_STICK_CAL_CEN;
-	ctlr->stick_cal_y.max = DFLT_STICK_CAL_MAX;
-	ctlr->stick_cal_y.min = DFLT_STICK_CAL_MIN;
+		ctlr->stick_cal_y.center = DFLT_STICK_CAL_CEN;
+		ctlr->stick_cal_y.max = DFLT_STICK_CAL_MAX;
+		ctlr->stick_cal_y.min = DFLT_STICK_CAL_MIN;
+	}
 
-	ctlr->right_stick_cal_x.center = DFLT_STICK_CAL_CEN;
-	ctlr->right_stick_cal_x.max = DFLT_STICK_CAL_MAX;
-	ctlr->right_stick_cal_x.min = DFLT_STICK_CAL_MIN;
+	if (!ctlr->right_stick_cal_x.center) {
+		ctlr->right_stick_cal_x.center = DFLT_STICK_CAL_CEN;
+		ctlr->right_stick_cal_x.max = DFLT_STICK_CAL_MAX;
+		ctlr->right_stick_cal_x.min = DFLT_STICK_CAL_MIN;
 
-	ctlr->right_stick_cal_y.center = DFLT_STICK_CAL_CEN;
-	ctlr->right_stick_cal_y.max = DFLT_STICK_CAL_MAX;
-	ctlr->right_stick_cal_y.min = DFLT_STICK_CAL_MIN;
+		ctlr->right_stick_cal_y.center = DFLT_STICK_CAL_CEN;
+		ctlr->right_stick_cal_y.max = DFLT_STICK_CAL_MAX;
+		ctlr->right_stick_cal_y.min = DFLT_STICK_CAL_MIN;
+	}
 
 	dev_info(dev, "Completed handshake - Sio\n");
 
@@ -3286,6 +3290,7 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 	struct joycon_ctlr *ctlr;
 	struct device *dev = &serdev->dev;
 	struct clk *sio_pclk_pll = NULL, *sio_pclk = NULL, *sio_pclk_mux = NULL;
+	u32 stick_cal[6];
 	int ret = 0, pclk_rate = 0;
 
 	dev_info(dev, "joycon_serdev_probe\n");
@@ -3338,6 +3343,34 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 			return ret;
 		}
 
+		/* Sio stores factory/user calibration to prodinfo/settings */
+		ret = of_property_read_u32_array(dev->of_node,
+						 "sio-stick-cal-l",
+						  stick_cal, 6);
+		if (!ret) {
+			ctlr->stick_cal_x.min = stick_cal[0];
+			ctlr->stick_cal_x.center = stick_cal[1];
+			ctlr->stick_cal_x.max = stick_cal[2];
+
+			ctlr->stick_cal_y.min = stick_cal[3];
+			ctlr->stick_cal_y.center = stick_cal[4];
+			ctlr->stick_cal_y.max = stick_cal[5];
+		} else
+			ctlr->stick_cal_x.center = 0;
+
+		ret = of_property_read_u32_array(dev->of_node,
+						 "sio-stick-cal-r",
+						 stick_cal, 6);
+		if (!ret) {
+			ctlr->right_stick_cal_x.min = stick_cal[0];
+			ctlr->right_stick_cal_x.center = stick_cal[1];
+			ctlr->right_stick_cal_x.max = stick_cal[2];
+
+			ctlr->right_stick_cal_y.min = stick_cal[3];
+			ctlr->right_stick_cal_y.center = stick_cal[4];
+			ctlr->right_stick_cal_y.max = stick_cal[5];
+		} else
+			ctlr->right_stick_cal_x.center = 0;
 	}
 
 	crc8_populate_msb(ctlr->joycon_crc_table, JC_CRC8_POLY);
