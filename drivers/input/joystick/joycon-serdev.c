@@ -478,6 +478,7 @@ struct joycon_ctlr {
 	struct led_classdev home_led;
 	enum joycon_ctlr_state ctlr_state;
 	enum joycon_ctlr_type ctlr_type;
+	struct mutex init_mutex;
 	spinlock_t lock;
 	u8 mac_addr[6];
 	char *mac_addr_str;
@@ -3007,6 +3008,8 @@ static void joycon_detection_poller(struct work_struct *work)
 
 	dev_dbg(dev, "Polling for Joy-con\n");
 
+	mutex_lock(&ctlr->init_mutex);
+
 	if (!ctlr->is_sio)
 		ret = joycon_handshake(ctlr);
 	else
@@ -3021,9 +3024,12 @@ static void joycon_detection_poller(struct work_struct *work)
 		dev_err(dev, "Failed post handshake procedure; ret=%d\n", ret);
 		goto retry;
 	}
+	mutex_unlock(&ctlr->init_mutex);
 	return;
 
 retry:
+	mutex_unlock(&ctlr->init_mutex);
+
 	/* If irq based detection, decrease retries */
 	if (ctlr->detection_irq_retries && !(--ctlr->detection_irq_retries)) {
 		/* Stop trying and re-enter irq-based detection */
@@ -3386,6 +3392,7 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 
 	ctlr->sdev = serdev;
 	serdev_device_set_drvdata(serdev, ctlr);
+	mutex_init(&ctlr->init_mutex);
 	mutex_init(&ctlr->output_mutex);
 	init_waitqueue_head(&ctlr->wait);
 	spin_lock_init(&ctlr->lock);
@@ -3604,6 +3611,8 @@ static int __maybe_unused joycon_serdev_suspend(struct device *dev)
 	ctlr->suspending = true;
 	spin_unlock_irqrestore(&ctlr->lock, flags);
 
+	mutex_lock(&ctlr->init_mutex);
+
 	/* Stop charging */
 	if (!IS_ERR_OR_NULL(ctlr->charger_reg) &&
 	    regulator_is_enabled(ctlr->charger_reg) > 0)
@@ -3620,6 +3629,8 @@ static int __maybe_unused joycon_serdev_suspend(struct device *dev)
 	}
 
 	joycon_stop_queues(ctlr);
+
+	mutex_unlock(&ctlr->init_mutex);
 
 	return 0;
 }
