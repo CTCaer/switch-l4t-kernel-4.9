@@ -1567,8 +1567,10 @@ static int tegra_sdhci_execute_tuning(struct sdhci_host *host, u32 opcode)
 	return mmc_send_tuning(host->mmc, opcode, NULL);
 }
 
-static void tegra_sdhci_execute_manual_tuning(struct sdhci_host *host, int num_iter, u32 *results)
+static int tegra_sdhci_execute_manual_tuning(struct sdhci_host *host,
+					     int num_iter, u32 *results)
 {
+	int retries = num_iter / TUNING_WORD_BIT_SIZE;
 	unsigned long flags;
 	u32 stable_clk;
 	u16 ctrl, clk;
@@ -1622,11 +1624,26 @@ static void tegra_sdhci_execute_manual_tuning(struct sdhci_host *host, int num_i
 
 		wait_event_timeout(host->buf_ready_int,
 				   (host->tuning_done == 1),
-				   msecs_to_jiffies(800));
+				   msecs_to_jiffies(50));
 
 		spin_lock_irqsave(&host->lock, flags);
 
 		if (!host->tuning_done) {
+			retries--;
+
+			if (!retries) {
+				dev_warn(mmc_dev(host->mmc),
+					 "manual tuning failed, timed out...\n");
+
+				ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+				ctrl &= ~(SDHCI_CTRL_TUNED_CLK |
+					  SDHCI_CTRL_EXEC_TUNING);
+				sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+			} else {
+				dev_info(mmc_dev(host->mmc),
+					 "manual tuning timed out, retrying...\n");
+			}
+
 			if (host->quirks2 &
 				SDHCI_QUIRK2_ISSUE_CMD_DAT_RESET_TOGETHER) {
 				tegra_sdhci_reset(host, SDHCI_RESET_CMD |
@@ -1634,6 +1651,15 @@ static void tegra_sdhci_execute_manual_tuning(struct sdhci_host *host, int num_i
 			} else {
 				tegra_sdhci_reset(host, SDHCI_RESET_CMD);
 				tegra_sdhci_reset(host, SDHCI_RESET_DATA);
+			}
+
+			if (!retries) {
+				sdhci_writel(host, host->ier, SDHCI_INT_ENABLE);
+				sdhci_writel(host, host->ier, SDHCI_SIGNAL_ENABLE);
+
+				spin_unlock_irqrestore(&host->lock, flags);
+
+				return -EIO;
 			}
 		}
 
@@ -1660,6 +1686,8 @@ static void tegra_sdhci_execute_manual_tuning(struct sdhci_host *host, int num_i
 	sdhci_writel(host, host->ier, SDHCI_SIGNAL_ENABLE);
 
 	spin_unlock_irqrestore(&host->lock, flags);
+
+	return 0;
 }
 
 /*
@@ -1676,15 +1704,15 @@ static void tegra_sdhci_execute_manual_tuning(struct sdhci_host *host, int num_i
  * --
  * 4b. Set host to DDR50 bus mode that supports such high clocks.
  *     Execute Manual Tuning.
- *     Limited to non-Sandisk cards.
+ *     Limited to anything where the Sandisk method is not mandatory.
  *
  * On Tegra SoCs, that can be done with DDR50 host mode.
  * That's because HS400 4-bit or HS400 generally, is not supported on SD SDMMC.
  * And also, tuning can't be done automatically on any DDR mode.
  * So it needs to be done manually and selected tap will be applied from the
  * biggest sampling window.
- * That allows DDR200 support on every DDR200 SD card, other than the original
- * maker of DDR200, Sandisk.
+ * That allows DDR200 support on every DDR200 SD card, other than the ones that
+ * strictly follow the method of the original maker of DDR200, Sandisk.
  *
  * On the original implementation of DDR200 from Sandisk, a DLL mechanism,
  * like the one in eMMC HS400 is mandatory.
@@ -1740,7 +1768,9 @@ static int tegra_sdhci_execute_tuning_ddr200(struct sdhci_host *host)
 		WARN_ON("Invalid value of number of tuning iterations");
 	}
 
-	tegra_sdhci_execute_manual_tuning(host, num_tun_iter, results);
+	err = tegra_sdhci_execute_manual_tuning(host, num_tun_iter, results);
+	if (err)
+		goto out;
 
 	for (i = 0; i < num_tun_iter; i++) {
 		iter_end = i == (num_tun_iter - 1) ? 1 : 0;
@@ -1771,12 +1801,11 @@ static int tegra_sdhci_execute_tuning_ddr200(struct sdhci_host *host)
 	}
 
 	if (!best_tap || best_size < SAMPLING_WINDOW_SIZE_MIN) {
-
 		if (!best_tap) {
-			dev_err(mmc_dev(host->mmc),
+			dev_warn(mmc_dev(host->mmc),
 				"manual tuning failed, no valid tap...\n");
 		} else {
-			dev_err(mmc_dev(host->mmc),
+			dev_warn(mmc_dev(host->mmc),
 				"manual tuning failed, "
 				"sampling window size (%d) too small...\n",
 				best_size);
