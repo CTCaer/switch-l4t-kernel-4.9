@@ -1404,18 +1404,6 @@ static int sd_read_ext_regs(struct mmc_card *card)
 		}
 	}
 
-	/*
-	 * Some A2 SD cards erroneously omit general info.
-	 * General info is mandatory for application profile 2 support.
-	 * In such cases, parse page 0 of function 1 and 2.
-	 */
-	if (!num_ext && card->ssr.ac == 2) {
-		pr_warn("%s: SD ext general info missing\n", mmc_hostname(card->host));
-		/* Do not check for parsing errors, since they are not fatal */
-		sd_parse_ext_reg_power(card, 1, 0, 0);
-		sd_parse_ext_reg_perf(card, 2, 0, 0);
-	}
-
 out:
 	kfree(gen_info_buf);
 	return err;
