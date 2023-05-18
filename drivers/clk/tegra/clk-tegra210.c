@@ -3538,7 +3538,7 @@ static __init void tegra210_shared_clk_init(char *sclk_high_clk)
 
 	clk = tegra_clk_register_shared_master("emc_master", "emc",
 		emc_is_native ? TEGRA_SHARED_BUS_EMC_NATIVE : 0,
-		12750000, t210b01 ? 2133000000 : 1996800000);
+		12750000, t210b01 ? 3200000000 : 2000000000);
 	if (clk) {
 		to_clk_cbus_shared(__clk_get_hw(clk))->users_default_rate =
 			204000000;
