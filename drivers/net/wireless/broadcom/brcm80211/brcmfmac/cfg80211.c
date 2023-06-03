@@ -6179,20 +6179,28 @@ static __le16 brcmf_get_mcs_map(u32 nchain, enum ieee80211_vht_mcs_support supp)
 	return cpu_to_le16(mcs_map);
 }
 
-static void brcmf_update_vht_cap(struct ieee80211_supported_band *band,
+static void brcmf_update_vht_cap(struct brcmf_if *ifp,
+				 struct ieee80211_supported_band *band,
 				 u32 bw_cap[2], u32 nchain, u32 txstreams,
 				 u32 txbf_bfe_cap, u32 txbf_bfr_cap)
 {
+	u32 bw_band_cap;
 	__le16 mcs_map;
 
 	/* not allowed in 2.4G band */
 	if (band->band == NL80211_BAND_2GHZ)
 		return;
 
-	band->vht_cap.vht_supported = true;
 	/* 80MHz is mandatory */
-	band->vht_cap.cap |= IEEE80211_VHT_CAP_SHORT_GI_80;
-	if (bw_cap[band->band] & WLC_BW_160MHZ_BIT) {
+	bw_band_cap = bw_cap[band->band] | WLC_BW_80MHZ_BIT;
+
+	/* Mask out not allowed widths */
+	bw_band_cap &= ~ifp->drvr->settings->vht_mask;
+
+	band->vht_cap.vht_supported = true;
+	if (bw_band_cap & WLC_BW_80MHZ_BIT)
+		band->vht_cap.cap |= IEEE80211_VHT_CAP_SHORT_GI_80;
+	if (bw_band_cap & WLC_BW_160MHZ_BIT) {
 		band->vht_cap.cap |= IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160MHZ;
 		band->vht_cap.cap |= IEEE80211_VHT_CAP_SHORT_GI_160;
 	}
@@ -6281,7 +6289,7 @@ static int brcmf_setup_wiphybands(struct wiphy *wiphy)
 		if (nmode)
 			brcmf_update_ht_cap(band, bw_cap, nchain);
 		if (vhtmode)
-			brcmf_update_vht_cap(band, bw_cap, nchain, txstreams,
+			brcmf_update_vht_cap(ifp, band, bw_cap, nchain, txstreams,
 					     txbf_bfe_cap, txbf_bfr_cap);
 	}
 

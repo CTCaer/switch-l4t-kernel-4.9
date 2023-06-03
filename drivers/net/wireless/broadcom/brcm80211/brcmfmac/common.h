@@ -60,6 +60,7 @@ struct brcmf_mp_device {
 	int		fcmode;
 	bool		roamoff;
 	bool		ignore_probe_fail;
+	unsigned int	vht_mask;
 	struct brcmfmac_pd_cc *country_codes;
 	union {
 		struct brcmfmac_sdio_pd sdio;
