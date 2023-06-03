@@ -2126,11 +2126,17 @@ static void sio_set_imu_calibration(struct joycon_ctlr *ctlr)
 {
 	int i;
 
-	for (i = 0; i < 3; i++) {
-		ctlr->accel_cal.offset[i] = DFLT_ACCEL_OFFSET;
-		ctlr->accel_cal.scale[i] = DFLT_ACCEL_SCALE;
-		ctlr->gyro_cal.offset[i] = DFLT_GYRO_OFFSET;
-		ctlr->gyro_cal.scale[i] = DFLT_GYRO_SCALE;
+	if (ctlr->accel_cal.offset[0] == -1) {
+		for (i = 0; i < 3; i++) {
+			ctlr->accel_cal.offset[i] = DFLT_ACCEL_OFFSET;
+			ctlr->accel_cal.scale[i] = DFLT_ACCEL_SCALE;
+		}
+	}
+	if (ctlr->gyro_cal.offset[0] == -1) {
+		for (i = 0; i < 3; i++) {
+			ctlr->gyro_cal.offset[i] = DFLT_GYRO_OFFSET;
+			ctlr->gyro_cal.scale[i] = DFLT_GYRO_SCALE;
+		}
 	}
 
 	for (i = 0; i < 3; i++) {
@@ -3296,7 +3302,7 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 	struct joycon_ctlr *ctlr;
 	struct device *dev = &serdev->dev;
 	struct clk *sio_pclk_pll = NULL, *sio_pclk = NULL, *sio_pclk_mux = NULL;
-	u32 stick_cal[6];
+	u32 calibration[6];
 	int ret = 0, pclk_rate = 0;
 
 	dev_info(dev, "joycon_serdev_probe\n");
@@ -3352,31 +3358,59 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 		/* Sio stores factory/user calibration to prodinfo/settings */
 		ret = of_property_read_u32_array(dev->of_node,
 						 "sio-stick-cal-l",
-						  stick_cal, 6);
+						  calibration, 6);
 		if (!ret) {
-			ctlr->stick_cal_x.min = stick_cal[0];
-			ctlr->stick_cal_x.center = stick_cal[1];
-			ctlr->stick_cal_x.max = stick_cal[2];
+			ctlr->stick_cal_x.min = calibration[0];
+			ctlr->stick_cal_x.center = calibration[1];
+			ctlr->stick_cal_x.max = calibration[2];
 
-			ctlr->stick_cal_y.min = stick_cal[3];
-			ctlr->stick_cal_y.center = stick_cal[4];
-			ctlr->stick_cal_y.max = stick_cal[5];
+			ctlr->stick_cal_y.min = calibration[3];
+			ctlr->stick_cal_y.center = calibration[4];
+			ctlr->stick_cal_y.max = calibration[5];
 		} else
 			ctlr->stick_cal_x.center = 0;
 
 		ret = of_property_read_u32_array(dev->of_node,
 						 "sio-stick-cal-r",
-						 stick_cal, 6);
+						 calibration, 6);
 		if (!ret) {
-			ctlr->right_stick_cal_x.min = stick_cal[0];
-			ctlr->right_stick_cal_x.center = stick_cal[1];
-			ctlr->right_stick_cal_x.max = stick_cal[2];
+			ctlr->right_stick_cal_x.min = calibration[0];
+			ctlr->right_stick_cal_x.center = calibration[1];
+			ctlr->right_stick_cal_x.max = calibration[2];
 
-			ctlr->right_stick_cal_y.min = stick_cal[3];
-			ctlr->right_stick_cal_y.center = stick_cal[4];
-			ctlr->right_stick_cal_y.max = stick_cal[5];
+			ctlr->right_stick_cal_y.min = calibration[3];
+			ctlr->right_stick_cal_y.center = calibration[4];
+			ctlr->right_stick_cal_y.max = calibration[5];
 		} else
 			ctlr->right_stick_cal_x.center = 0;
+
+		ret = of_property_read_u32_array(dev->of_node,
+						 "sio-acc-cal",
+						  calibration, 6);
+		if (!ret) {
+			ctlr->accel_cal.offset[0] = (s16)calibration[0];
+			ctlr->accel_cal.offset[1] = (s16)calibration[1];
+			ctlr->accel_cal.offset[2] = (s16)calibration[2];
+
+			ctlr->accel_cal.scale[0] = (s16)calibration[3];
+			ctlr->accel_cal.scale[1] = (s16)calibration[4];
+			ctlr->accel_cal.scale[2] = (s16)calibration[5];
+		} else
+			ctlr->accel_cal.offset[0] = -1;
+
+		ret = of_property_read_u32_array(dev->of_node,
+						 "sio-gyr-cal",
+						  calibration, 6);
+		if (!ret) {
+			ctlr->gyro_cal.offset[0] = (s16)calibration[0];
+			ctlr->gyro_cal.offset[1] = (s16)calibration[1];
+			ctlr->gyro_cal.offset[2] = (s16)calibration[2];
+
+			ctlr->gyro_cal.scale[0] = (s16)calibration[3];
+			ctlr->gyro_cal.scale[1] = (s16)calibration[4];
+			ctlr->gyro_cal.scale[2] = (s16)calibration[5];
+		} else
+			ctlr->gyro_cal.offset[0] = -1;
 	}
 
 	crc8_populate_msb(ctlr->joycon_crc_table, JC_CRC8_POLY);
