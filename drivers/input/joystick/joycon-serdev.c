@@ -138,7 +138,7 @@ static const u16 JC_CAL_FCT_DATA_RIGHT_ADDR	= 0x6046;
 /* The raw analog joystick values will be mapped in terms of this magnitude */
 static const u16 JC_MAX_STICK_MAG		= 32767;
 static const u16 JC_STICK_FUZZ			= 250;
-static const u16 JC_STICK_FLAT			= 500;
+static const u16 JC_STICK_FLAT			= 1500;
 
 /* Under most circumstances IMU reports are pushed every 15ms; use as default */
 static const u16 JC_IMU_DFLT_AVG_DELTA_MS	= 15;
@@ -3302,7 +3302,7 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 	struct joycon_ctlr *ctlr;
 	struct device *dev = &serdev->dev;
 	struct clk *sio_pclk_pll = NULL, *sio_pclk = NULL, *sio_pclk_mux = NULL;
-	u32 calibration[6];
+	u32 calibration[6], cal_center_offset[2];
 	int ret = 0, pclk_rate = 0;
 
 	dev_info(dev, "joycon_serdev_probe\n");
@@ -3360,13 +3360,21 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 						 "sio-stick-cal-l",
 						  calibration, 6);
 		if (!ret) {
-			ctlr->stick_cal_x.min = calibration[0];
 			ctlr->stick_cal_x.center = calibration[1];
-			ctlr->stick_cal_x.max = calibration[2];
-
-			ctlr->stick_cal_y.min = calibration[3];
 			ctlr->stick_cal_y.center = calibration[4];
-			ctlr->stick_cal_y.max = calibration[5];
+
+			if (!of_property_read_u32_array(dev->of_node,
+						 "sio-stick-cnt-off-l",
+						  cal_center_offset, 2)) {
+				ctlr->stick_cal_x.center += (s32)cal_center_offset[0];
+				ctlr->stick_cal_y.center += (s32)cal_center_offset[1];
+			}
+
+			ctlr->stick_cal_x.min = ctlr->stick_cal_x.center - calibration[0];
+			ctlr->stick_cal_x.max = ctlr->stick_cal_x.center + calibration[2];
+
+			ctlr->stick_cal_y.min = ctlr->stick_cal_y.center - calibration[5];
+			ctlr->stick_cal_y.max = ctlr->stick_cal_y.center + calibration[3];
 		} else
 			ctlr->stick_cal_x.center = 0;
 
@@ -3374,13 +3382,21 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 						 "sio-stick-cal-r",
 						 calibration, 6);
 		if (!ret) {
-			ctlr->right_stick_cal_x.min = calibration[0];
-			ctlr->right_stick_cal_x.center = calibration[1];
-			ctlr->right_stick_cal_x.max = calibration[2];
+			if (!of_property_read_u32_array(dev->of_node,
+						 "sio-stick-cnt-off-r",
+						  cal_center_offset, 2)) {
+				ctlr->right_stick_cal_x.center += (s32)cal_center_offset[0];
+				ctlr->right_stick_cal_y.center += (s32)cal_center_offset[1];
+			}
 
-			ctlr->right_stick_cal_y.min = calibration[3];
+			ctlr->right_stick_cal_x.center = calibration[1];
 			ctlr->right_stick_cal_y.center = calibration[4];
-			ctlr->right_stick_cal_y.max = calibration[5];
+
+			ctlr->right_stick_cal_x.min = ctlr->right_stick_cal_x.center - calibration[2];
+			ctlr->right_stick_cal_x.max = ctlr->right_stick_cal_x.center + calibration[0];
+
+			ctlr->right_stick_cal_y.min = ctlr->right_stick_cal_y.center - calibration[3];
+			ctlr->right_stick_cal_y.max = ctlr->right_stick_cal_y.center + calibration[5];
 		} else
 			ctlr->right_stick_cal_x.center = 0;
 
