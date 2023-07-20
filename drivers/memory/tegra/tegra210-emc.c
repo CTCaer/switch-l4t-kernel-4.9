@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2019, NVIDIA CORPORATION.  All rights reserved.
- * Copyright (c) 2020-2022, CTCaer.
+ * Copyright (c) 2020-2023, CTCaer.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -2057,7 +2057,7 @@ DEFINE_SIMPLE_ATTRIBUTE(mr4_force_poll_fops,
 
 static int dram_info_show(struct seq_file *s, void *data)
 {
-	uint32_t mr5, mr6, mr7, mr8, strap;
+	uint32_t mr5, mr6, mr7, mr8, mr5_1, mr6_1, mr7_1, mr8_1, strap;
 	unsigned long flags;
 
 	strap = tegra_read_ram_code();
@@ -2066,13 +2066,21 @@ static int dram_info_show(struct seq_file *s, void *data)
 	mr6 = emc_read_mrr(0, 6) & 0xffU;
 	mr7 = emc_read_mrr(0, 7) & 0xffU;
 	mr8 = emc_read_mrr(0, 8) & 0xffU;
+	if (tegra_dram_dev_num == 2) {
+		mr5_1 = emc_read_mrr(1, 5) & 0xffU;
+		mr6_1 = emc_read_mrr(1, 6) & 0xffU;
+		mr7_1 = emc_read_mrr(1, 7) & 0xffU;
+		mr8_1 = emc_read_mrr(1, 8) & 0xffU;
+	} else
+		mr5_1 = mr6_1 = mr7_1 = mr8_1 = 0;
+
 	spin_unlock_irqrestore(&emc_access_lock, flags);
 	seq_printf(s, "DRAM strap: %u\n"
-		      "Manufacturer ID (MR5): %u\n"
-		      "Revision ID-1 (MR6): %u\n"
-		      "Revision ID-2 (MR7): %u\n"
-		      "IO Width/Density/Type (MR8): 0x%02x\n",
-		      strap, mr5, mr6, mr7, mr8);
+		      "Manufacturer ID (MR5): %u %u\n"
+		      "Revision ID-1 (MR6): %u %u\n"
+		      "Revision ID-2 (MR7): %u %u\n"
+		      "IO Width/Density/Type (MR8): 0x%02x 0x%02x\n",
+		      strap, mr5, mr5_1, mr6, mr6_1, mr7, mr7_1, mr8, mr8_1);
 
 	return 0;
 }
