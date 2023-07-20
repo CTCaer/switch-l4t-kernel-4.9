@@ -2110,10 +2110,17 @@ static int tegra_emc_debug_init(void)
 		return -ENOMEM;
 
 	if (tegra_emc_t210b01_io_get_done) {
-		if (!debugfs_create_file("dram_temp", S_IRUGO,
-					 emc_debugfs_root, NULL,
-					 &dram_temp_fops))
+		if (tegra_dram_type == DRAM_TYPE_LPDDR2 ||
+			tegra_dram_type == DRAM_TYPE_LPDDR4) {
+			if (!debugfs_create_file("dram_temp", S_IRUGO,
+						 emc_debugfs_root, NULL,
+						 &dram_temp_fops))
+				goto err_out;
+		}
+		if (!debugfs_create_file("dram_info", 0444, emc_debugfs_root,
+				 NULL, &dram_info_fops))
 			goto err_out;
+
 		return 0;
 	}
 
@@ -2561,20 +2568,36 @@ static int tegra210_emc_probe(struct platform_device *pdev)
 
 static int tegra210b01_emc_probe(struct platform_device *pdev)
 {
+	struct device_node *node;
 	struct resource *r;
+
 	emc_override_clk = devm_clk_get(&pdev->dev, "emc_override");
 	if (IS_ERR(emc_override_clk)) {
 		dev_err(&pdev->dev, "Cannot find T210B01 EMC override clock\n");
 		return -ENODATA;
 	}
 
+	node = of_find_matching_node(NULL, mc_match);
+	if (node)
+		mc_base = of_iomap(node, 0);
+
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (r)
 		emc_base = devm_ioremap_resource(&pdev->dev, r);
-	if (emc_base) {
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (r)
+		emc0_base = devm_ioremap_resource(&pdev->dev, r);
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+	if (r)
+		emc1_base = devm_ioremap_resource(&pdev->dev, r);
+
+	if (mc_base && emc_base && emc0_base && emc1_base) {
 		tegra_dram_type = (emc_readl(EMC_FBIO_CFG5) &
 			   EMC_FBIO_CFG5_DRAM_TYPE_MASK) >>
 			   EMC_FBIO_CFG5_DRAM_TYPE_SHIFT;
+
+		tegra_dram_dev_num = (mc_readl(MC_EMEM_ADR_CFG) & 0x1) + 1;
+
 		tegra_emc_t210b01_io_get_done = true;
 	}
 
