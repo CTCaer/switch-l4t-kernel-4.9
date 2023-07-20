@@ -438,7 +438,11 @@ struct sio_input_report
 	u8 button_status[3];
 	u8 left_stick[3];
 	u8 right_stick[3];
-	u8 sixaxis_report_num; /* Max 15. Each report is 800 us? */
+	/* bit0-3 is number of reports. bit4-7 is IMU type */
+	#define SIO_IMU_LSM6DSE  0
+	#define SIO_IMU_ICM42607 1
+	#define SIO_IMU_NOTFOUND 15
+	u8 sixaxis_report; /* Max 15. Each report is 800 us? */
 	union {
 		struct joycon_imu_data sixaxis[15];
 		/* IMU input reports contain 3 samples */
@@ -1260,12 +1264,13 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
 
 static void sio_input_report_parse_imu_data(struct joycon_ctlr *ctlr,
 					       struct sio_input_report *rep,
-					       struct joycon_imu_data *imu_data)
+					       struct joycon_imu_data *imu_data,
+					       int report_num)
 {
 	u8 *raw = rep->imu_raw_bytes;
 	int i;
 
-	for (i = 0; i < rep->sixaxis_report_num; i++) {
+	for (i = 0; i < report_num; i++) {
 		struct joycon_imu_data *data = &imu_data[i];
 
 		data->accel_x = get_unaligned_le16(raw + 0);
@@ -1287,64 +1292,24 @@ static void sio_parse_imu_report(struct joycon_ctlr *ctlr,
 	struct input_dev *idev = ctlr->imu_input;
 	unsigned int msecs = jiffies_to_msecs(jiffies);
 	unsigned int last_msecs = ctlr->imu_last_pkt_ms;
-	int i;
+	int imu_type = (rep->sixaxis_report >> 4) & 0xF;
+	int report_num = rep->sixaxis_report & 0xF;
 	int value[6];
+	int i;
 
-	/*
-	 * Only max of 15 is allowed for num of reports.
-	 * On errors, that value is normally 0xF0;
-	 */
-	if (!rep->sixaxis_report_num || rep->sixaxis_report_num > 15)
+	/* Return if there is no imu report */
+	if (imu_type == SIO_IMU_NOTFOUND || !report_num)
 		return;
 
-	sio_input_report_parse_imu_data(ctlr, rep, imu_data);
+	sio_input_report_parse_imu_data(ctlr, rep, imu_data, report_num);
 
 	/*
-	 * There are complexities surrounding how we determine the timestamps we
-	 * associate with the samples we pass to userspace. The IMU input
-	 * reports do not provide us with a good timestamp. There's a quickly
-	 * incrementing 8-bit counter per input report, but it is not very
-	 * useful for this purpose (it is not entirely clear what rate it
-	 * increments at or if it varies based on packet push rate - more on
-	 * the push rate below...).
-	 *
-	 * The reverse engineering work done on the joy-cons and pro controllers
-	 * by the community seems to indicate the following:
-	 * - The controller samples the IMU every 1.35ms. It then does some of
-	 *   its own processing, probably averaging the samples out.
-	 * - Each imu input report contains 3 IMU samples, (usually 5ms apart).
-	 * - In the standard reporting mode (which this driver uses exclusively)
-	 *   input reports are pushed from the controller as follows:
-	 *      * joy-con (bluetooth): every 15 ms
-	 *      * joy-cons (in charging grip via USB): every 15 ms
-	 *      * pro controller (USB): every 15 ms
-	 *      * pro controller (bluetooth): every 8 ms (this is the wildcard)
-	 *
-	 * Further complicating matters is that some bluetooth stacks are known
-	 * to alter the controller's packet rate by hardcoding the bluetooth
-	 * SSR for the switch controllers (android's stack currently sets the
-	 * SSR to 11ms for both the joy-cons and pro controllers).
-	 *
-	 * In my own testing, I've discovered that my pro controller either
-	 * reports IMU sample batches every 11ms or every 15ms. This rate is
-	 * stable after connecting. It isn't 100% clear what determines this
-	 * rate. Importantly, even when sending every 11ms, none of the samples
-	 * are duplicates. This seems to indicate that the time deltas between
-	 * reported samples can vary based on the input report rate.
-	 *
-	 * The solution employed in this driver is to keep track of the average
-	 * time delta between IMU input reports. In testing, this value has
-	 * proven to be stable, staying at 15ms or 11ms, though other hardware
-	 * configurations and bluetooth stacks could potentially see other rates
-	 * (hopefully this will become more clear as more people use the
-	 * driver).
-	 *
 	 * Keeping track of the average report delta allows us to submit our
-	 * timestamps to userspace based on that. Each report contains 3
-	 * samples, so the IMU sampling rate should be avg_time_delta/3. We can
-	 * also use this average to detect events where we have dropped a
+	 * timestamps to userspace based on that. Each report contains up to 15
+	 * samples, so the IMU sampling rate should be avg_time_delta/samples.
+	 * We can also use this average to detect events where we have dropped a
 	 * packet. The userspace timestamp for the samples will be adjusted
-	 * accordingly to prevent unwanted behvaior.
+	 * accordingly to prevent unwanted behavior.
 	 */
 	if (!ctlr->imu_first_packet_received) {
 		ctlr->imu_timestamp_us = 0;
@@ -1396,7 +1361,7 @@ static void sio_parse_imu_report(struct joycon_ctlr *ctlr,
 	ctlr->imu_last_pkt_ms = msecs;
 
 	/* Each IMU input report contains 15 samples max */
-	for (i = 0; i < rep->sixaxis_report_num; i++) {
+	for (i = 0; i < report_num; i++) {
 		input_event(idev, EV_MSC, MSC_TIMESTAMP,
 			    ctlr->imu_timestamp_us);
 
@@ -1473,8 +1438,7 @@ static void sio_parse_imu_report(struct joycon_ctlr *ctlr,
 		input_sync(idev);
 
 		/* Convert to micros and divide by samples per report. */
-		ctlr->imu_timestamp_us += ctlr->imu_avg_delta_ms * 1000 /
-					  rep->sixaxis_report_num;
+		ctlr->imu_timestamp_us += ctlr->imu_avg_delta_ms * 1000 / report_num;
 	}
 }
 
