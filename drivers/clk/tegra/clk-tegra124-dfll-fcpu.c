@@ -2,7 +2,7 @@
  * Tegra124 DFLL FCPU clock source driver
  *
  * Copyright (C) 2012-2014 NVIDIA Corporation.  All rights reserved.
- * Copyright (c) 2021-2022, CTCaer
+ * Copyright (c) 2021-2023, CTCaer
  *
  * Aleksandr Frid <afrid@nvidia.com>
  * Paul Walmsley <pwalmsley@nvidia.com>
@@ -27,6 +27,7 @@
 #include <linux/regulator/consumer.h>
 #include <soc/tegra/cvb.h>
 #include <soc/tegra/fuse.h>
+#include <soc/tegra/tegra_emc.h>
 
 #include <dt-bindings/thermal/tegra210-dfll-trips.h>
 #include <dt-bindings/thermal/tegra210b01-trips.h>
@@ -514,6 +515,9 @@ struct cvb_table tegra210_cpu_cvb_tables[] = {
 	},
 };
 
+#define CPUB01_B0_EMC_HIGH_RATE	2666000000ul
+#define CPUB01_B0_EMC_HIGH_VMIN	620000
+
 static const unsigned long tegra210b01_cpu_max_freq_table[] = {
 	[0] = 2295000000UL, /* Overclocked from 1963500000UL */
 	[1] = 1963500000UL,
@@ -649,12 +653,6 @@ struct cvb_table tegra210b01_cpu_cvb_tables[] = {
 		.process_id = -1,
 		.max_millivolts = 1120,
 		CPUB01_CVB_TABLE,
-	},
-	{
-		.speedo_id = 2,
-		.process_id = 2,
-		.max_millivolts = 1235, /* Allow OC max voltage of 1235 mV from 1120 */
-		CPUB01_CVB_TABLE_SLT_B1,
 	},
 	{
 		.speedo_id = 2,
@@ -823,8 +821,9 @@ static int tegra124_dfll_fcpu_probe(struct platform_device *pdev)
 	const struct dfll_fcpu_data *fcpu_data;
 	struct rail_alignment align;
 	const struct thermal_table *thermal;
-	unsigned long max_freq;
+	unsigned long max_freq, emc_max_freq;
 	u32 f;
+	int i;
 	bool ucm2;
 
 	of_id = of_match_device(tegra124_dfll_fcpu_of_match, &pdev->dev);
@@ -874,6 +873,21 @@ static int tegra124_dfll_fcpu_probe(struct platform_device *pdev)
 	if (!align.step_uv) {
 		dev_err(&pdev->dev, "missing step uv\n");
 		return -EINVAL;
+	}
+
+	/* Adjust T210B01 cpu vmin if needed */
+	emc_max_freq = tegra210_predict_emc_rate(INT_MAX);
+	if (emc_max_freq > CPUB01_B0_EMC_HIGH_RATE) {
+		for (i = 0; i < ARRAY_SIZE(tegra210b01_cpu_cvb_tables); i++) {
+			struct cvb_coefficients *vmin_coeff =
+				&tegra210b01_cpu_cvb_tables[i].vmin_coefficients;
+
+			if (tegra210b01_cpu_cvb_tables[i].process_id != 0)
+				continue;
+
+			if (vmin_coeff->c0 < CPUB01_B0_EMC_HIGH_VMIN)
+				vmin_coeff->c0 = CPUB01_B0_EMC_HIGH_VMIN;
+		}
 	}
 
 	soc->max_freq = max_freq;
