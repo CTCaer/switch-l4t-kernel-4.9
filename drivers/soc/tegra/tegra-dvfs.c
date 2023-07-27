@@ -516,7 +516,7 @@ static unsigned long *dvfs_get_freqs(struct dvfs *d)
 static int __tegra_dvfs_set_rate(struct dvfs *d, unsigned long rate)
 {
 	int i = 0;
-	int ret, mv;
+	int ret;
 	unsigned long *freqs = dvfs_get_freqs(d);
 	const int *millivolts = dvfs_get_millivolts(d, rate);
 
@@ -549,7 +549,6 @@ static int __tegra_dvfs_set_rate(struct dvfs *d, unsigned long rate)
 			return -EINVAL;
 		}
 
-		mv = millivolts[i];
 		d->cur_millivolts = millivolts[i];
 	}
 
@@ -572,6 +571,23 @@ static struct dvfs *tegra_clk_to_dvfs(struct clk *c)
 		list_for_each_entry(d, &rail->dvfs, reg_node) {
 			if (clk_is_match(c, d->clk))
 				return d;
+		}
+	}
+	return NULL;
+}
+
+static struct dvfs *tegra_clk_to_multirailed_dvfs(struct clk_notifier_data *cnd)
+{
+	struct dvfs *d;
+	struct dvfs_rail *rail;
+
+	list_for_each_entry(rail, &dvfs_rail_list, node) {
+		list_for_each_entry(d, &rail->dvfs, reg_node) {
+			if (clk_is_match(cnd->clk, d->clk)) {
+				if (d->multi_rail && cnd->new_rate == d->cur_rate)
+					break;
+				return d;
+			}
 		}
 	}
 	return NULL;
@@ -1031,7 +1047,7 @@ static int tegra_dvfs_clk_event(struct notifier_block *this,
 	struct dvfs *d;
 	int new_mv, err = 0;
 
-	d = tegra_clk_to_dvfs(cnd->clk);
+	d = tegra_clk_to_multirailed_dvfs(cnd);
 	if (d == NULL)
 		return NOTIFY_DONE;
 

@@ -156,6 +156,7 @@ struct dvfs {
 	const int *dfll_millivolts;
 	struct dvfs_rail *dvfs_rail;
 	bool auto_dvfs;
+	bool multi_rail;
 
 	int max_millivolts;
 	int num_freqs;
