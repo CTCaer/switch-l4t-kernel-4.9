@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2013-2017, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2022-2023, CTCaer.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -275,7 +276,7 @@ void __init tegra210_init_speedo_data(struct tegra_sku_info *sku_info)
 
 	soc_speedo[0] = tegra_fuse_read_early(FUSE_SOC_SPEEDO_0);
 	soc_speedo[1] = tegra_fuse_read_early(FUSE_SOC_SPEEDO_1);
-	soc_speedo[2] = tegra_fuse_read_early(FUSE_CPU_SPEEDO_2);
+	soc_speedo[2] = tegra_fuse_read_early(FUSE_SOC_SPEEDO_2);
 
 	sku_info->cpu_iddq_value = tegra_fuse_read_early(FUSE_CPU_IDDQ) * 4;
 	sku_info->soc_iddq_value = tegra_fuse_read_early(FUSE_SOC_IDDQ) * 4;
@@ -288,27 +289,21 @@ void __init tegra210_init_speedo_data(struct tegra_sku_info *sku_info)
 	speedo_revision = get_speedo_revision();
 	sku_info->speedo_rev = speedo_revision;
 
-	if (is_t210b01_sku(sku_info)) {
+	if (is_t210b01_sku(sku_info) || speedo_revision >= 3) {
 		sku_info->cpu_speedo_value = cpu_speedo[0];
 		sku_info->gpu_speedo_value = cpu_speedo[2];
 		sku_info->soc_speedo_value = soc_speedo[0];
+	} else if (speedo_revision == 2) {
+		sku_info->cpu_speedo_value =
+			(-1938 + (1095 * cpu_speedo[0] / 100)) / 10;
+		sku_info->gpu_speedo_value =
+			(-1662 + (1082 * cpu_speedo[2] / 100)) / 10;
+		sku_info->soc_speedo_value =
+			(-705 + (1037 * soc_speedo[0] / 100)) / 10;
 	} else {
-		if (speedo_revision >= 3) {
-			sku_info->cpu_speedo_value = cpu_speedo[0];
-			sku_info->gpu_speedo_value = cpu_speedo[2];
-			sku_info->soc_speedo_value = soc_speedo[0];
-		} else if (speedo_revision == 2) {
-			sku_info->cpu_speedo_value =
-				(-1938 + (1095 * cpu_speedo[0] / 100)) / 10;
-			sku_info->gpu_speedo_value =
-				(-1662 + (1082 * cpu_speedo[2] / 100)) / 10;
-			sku_info->soc_speedo_value =
-				(-705 + (1037 * soc_speedo[0] / 100)) / 10;
-		} else {
-			sku_info->cpu_speedo_value = 2100;
-			sku_info->gpu_speedo_value = cpu_speedo[2] - 75;
-			sku_info->soc_speedo_value = 1900;
-		}
+		sku_info->cpu_speedo_value = 2100;
+		sku_info->gpu_speedo_value = cpu_speedo[2] - 75;
+		sku_info->soc_speedo_value = 1900;
 	}
 
 	if ((sku_info->cpu_speedo_value <= 0) ||
