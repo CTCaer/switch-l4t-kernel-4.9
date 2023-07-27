@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2019 NVIDIA CORPORATION.  All rights reserved.
- * Copyright (c) 2021-2022, CTCaer
+ * Copyright (c) 2021-2023, CTCaer.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -1908,6 +1908,13 @@ static struct tegra_clk_pll_freq_table pll_m_freq_table[] = {
 	{ 38400000, 2064000000, 215, 4, 1, 0 },
 	{ 38400000, 2099200000, 164, 3, 1, 0 },
 	{ 38400000, 2131200000, 111, 2, 1, 0 },
+	{ 38400000, 2163200000, 169, 3, 0 },
+	{ 38400000, 2188800000,  57, 1, 0 },
+	{ 38400000, 2227200000,  58, 1, 0 },
+	{ 38400000, 2265600000,  59, 1, 0 },
+	{ 38400000, 2291200000, 179, 3, 0 },
+	{ 38400000, 2329600000, 182, 3, 0 },
+	{ 38400000, 2361600000, 123, 2, 0 },
 	{        0,          0,   0, 0, 0, 0 },
 };
 
@@ -1929,7 +1936,7 @@ static struct tegra_clk_pll_params pll_m_params = {
 	.cf_min = 9600000,
 	.cf_max = 19200000,
 	.vco_min = 800000000,
-	.vco_max = 2133000000,
+	.vco_max = 2366000000,
 	.base_reg = PLLM_BASE,
 	.misc_reg = PLLM_MISC2,
 	.lock_mask = PLL_BASE_LOCK,
@@ -1956,7 +1963,7 @@ static struct tegra_clk_pll_params pll_mb_params = {
 	.cf_min = 9600000,
 	.cf_max = 19200000,
 	.vco_min = 800000000,
-	.vco_max = 2133000000,
+	.vco_max = 2366000000,
 	.base_reg = PLLMB_BASE,
 	.misc_reg = PLLMB_MISC1,
 	.lock_mask = PLL_BASE_LOCK,
@@ -3542,7 +3549,7 @@ static __init void tegra210_shared_clk_init(char *sclk_high_clk)
 
 	clk = tegra_clk_register_shared_master("emc_master", "emc",
 		emc_is_native ? TEGRA_SHARED_BUS_EMC_NATIVE : 0,
-		12750000, t210b01 ? 3200000000 : 2133000000);
+		12750000, t210b01 ? 3200000000 : 2366000000);
 	if (clk) {
 		to_clk_cbus_shared(__clk_get_hw(clk))->users_default_rate =
 			204000000;
