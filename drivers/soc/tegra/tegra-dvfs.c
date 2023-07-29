@@ -1820,6 +1820,8 @@ static int tegra_config_dvfs(struct dvfs_rail *rail)
 	int i;
 	struct dvfs *d;
 
+	mutex_unlock(&dvfs_lock);
+
 	list_for_each_entry(d, &rail->dvfs, reg_node) {
 		if (__clk_is_enabled(d->clk) || __clk_is_prepared(d->clk)) {
 			d->cur_rate = clk_get_rate(d->clk);
@@ -1833,10 +1835,10 @@ static int tegra_config_dvfs(struct dvfs_rail *rail)
 				d->cur_millivolts = d->millivolts[i];
 		}
 
-		mutex_unlock(&dvfs_lock);
 		clk_notifier_register(d->clk, &tegra_dvfs_nb);
-		mutex_lock(&dvfs_lock);
 	}
+
+	mutex_lock(&dvfs_lock);
 
 	return 0;
 }
