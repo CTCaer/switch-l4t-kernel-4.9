@@ -938,6 +938,9 @@ static struct clk *vgpu_cap_clk;
 
 /* Core DVFS tables */
 static int core_millivolts[MAX_DVFS_FREQS];
+static const int gpub01emc_millivolts[MAX_DVFS_FREQS] = {
+	590, 600, 610, 620, 630, 640, 650, 660, 670, 680, 690, 700, 710, 720, 730, 740, 760
+};
 
 #define CORE_DVFS(_clk_name, _speedo_id, _process_id, _auto, _mult, _freqs...) \
 	{							\
@@ -951,6 +954,26 @@ static int core_millivolts[MAX_DVFS_FREQS];
 		.dvfs_rail	= &vdd_core_rail,	\
 	}
 
+#define GPU_DVFS(_clk_name, _speedo_id, _process_id, _auto, _mult, _freqs...) \
+	{							\
+		.clk_name	= _clk_name,			\
+		.speedo_id	= _speedo_id,			\
+		.process_id	= _process_id,			\
+		.freqs		= {_freqs},			\
+		.freqs_mult	= _mult,			\
+		.millivolts	= gpub01emc_millivolts,		\
+		.auto_dvfs	= _auto,			\
+		.multi_rail	= true,				\
+		.dvfs_rail	= &vdd_gpu_rail,	\
+	}
+
+static struct dvfs gpub01_dvfs_table[] = {
+/* Per-bin Tables */
+	/* Gpu voltages(mV):		 590,  600,  610,  620,  630,  640,  650,  660,  670,  680,  690,  700,  710,  720,  730,  740,  760 */
+	GPU_DVFS("emc",	-1, 0, 1, MHZ,	2166, 2233, 2300, 2366, 2400, 2466, 2533, 2566, 2633, 2700, 2766, 2833, 2900, 2966, 3033, 3100, 3200),
+	GPU_DVFS("emc",	-1, 1, 1, MHZ,	2233, 2333, 2366, 2433, 2500, 2533, 2600, 2666, 2733, 2800, 2866, 2933, 3000, 3066, 3133, 3200, 3200),
+	GPU_DVFS("emc",	-1, 2, 1, MHZ,	2466, 2500, 2600, 2633, 2666, 2733, 2800, 2866, 2900, 2966, 3033, 3100, 3166, 3200, 3200, 3200, 3200),
+};
 
 /* Include T210 core DVFS tables generated from characterization data */
 #include "tegra210-core-dvfs.c"
@@ -2194,6 +2217,8 @@ static void init_core_dvfs_table(int soc_speedo_id, int core_process_id)
 					core_process_id, dvbd, d);
 			else
 				adjust_emc_dvfs_from_timing_table(d);
+
+			d->multi_rail = true;
 		}
 	}
 
@@ -2255,6 +2280,8 @@ static struct tegra_dvfs_data tegra210b01_dvfs_data = {
 	.cpu_fv_table_size = ARRAY_SIZE(cpub01_fv_dvfs_table),
 	.gpu_cvb_table = gpub01_cvb_dvfs_table,
 	.gpu_cvb_table_size = ARRAY_SIZE(gpub01_cvb_dvfs_table),
+	.gpu_vf_table = gpub01_dvfs_table,
+	.gpu_vf_table_size = ARRAY_SIZE(gpub01_dvfs_table),
 
 	.emc_dvb_table = emcb01_dvb_dvfs_table,
 	.emc_dvb_table_size = ARRAY_SIZE(emcb01_dvb_dvfs_table),
@@ -2285,6 +2312,8 @@ static struct tegra_dvfs_data tegra210b01slt_dvfs_data = {
 	.cpu_fv_table_size = ARRAY_SIZE(cpub01_fv_dvfs_table),
 	.gpu_cvb_table = gpub01_cvb_dvfs_table,
 	.gpu_cvb_table_size = ARRAY_SIZE(gpub01_cvb_dvfs_table),
+	.gpu_vf_table = gpub01_dvfs_table,
+	.gpu_vf_table_size = ARRAY_SIZE(gpub01_dvfs_table),
 
 	.emc_dvb_table = emcb01slt_dvb_dvfs_table,
 	.emc_dvb_table_size = ARRAY_SIZE(emcb01slt_dvb_dvfs_table),
