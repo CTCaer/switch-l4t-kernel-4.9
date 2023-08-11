@@ -25,7 +25,7 @@
 #include "fuse.h"
 
 #define CPU_PROCESS_CORNERS	2
-#define GPU_PROCESS_CORNERS	2
+#define GPU_PROCESS_CORNERS	3
 #define SOC_PROCESS_CORNERS	3
 
 #define FUSE_CPU_SPEEDO_0	0x014
@@ -53,9 +53,9 @@ static const u32 __initconst cpu_process_speedos[][CPU_PROCESS_CORNERS] = {
 };
 
 static const u32 __initconst gpu_process_speedos[][GPU_PROCESS_CORNERS] = {
-	{ UINT_MAX, UINT_MAX },
-	{ UINT_MAX, UINT_MAX },
-	{ UINT_MAX, UINT_MAX },
+	{ UINT_MAX, UINT_MAX, UINT_MAX },
+	{ UINT_MAX, UINT_MAX, UINT_MAX },
+	{ 1584,     1695,     UINT_MAX }, /* T210B01 custom */
 };
 
 static const u32 __initconst soc_process_speedos[][SOC_PROCESS_CORNERS] = {
