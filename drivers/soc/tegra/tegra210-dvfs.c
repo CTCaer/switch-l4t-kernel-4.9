@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014-2019, NVIDIA CORPORATION.  All rights reserved.
- * Copyright (c) 2021-2023, CTCaer
+ * Copyright (c) 2021-2023, CTCaer.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -49,6 +49,8 @@ struct tegra_dvfs_data {
 	int cpu_fv_table_size;
 	struct cvb_dvfs *gpu_cvb_table;
 	int gpu_cvb_table_size;
+	struct dvfs *gpu_vf_table;
+	int gpu_vf_table_size;
 	struct dvb_dvfs *emc_dvb_table;
 	int emc_dvb_table_size;
 
@@ -2101,6 +2103,33 @@ static void init_gpu_dvfs_table(struct device_node *node,
 	BUG_ON((i == table_size) || ret);
 }
 
+static void init_gpu_vf_table(void)
+{
+	int i, j, max_gpu_mv_index = 0;
+
+	if (!dvfs_data->gpu_vf_table_size)
+		return;
+
+	for (i = 0; i < dvfs_data->gpu_vf_table_size; i++) {
+		struct dvfs *d = &dvfs_data->gpu_vf_table[i];
+		if (!match_dvfs_one(d->clk_name, d->speedo_id, d->process_id,
+			tegra_sku_info.gpu_speedo_id,
+			tegra_sku_info.gpu_process_id))
+			continue;
+
+		for (j = 0; j < MAX_DVFS_FREQS; j++) {
+			max_gpu_mv_index = j;
+			if (!d->millivolts[j])
+				break;
+		}
+
+		init_dvfs_one(d, max_gpu_mv_index - 1);
+
+		/* Parse only the first matched table */
+		break;
+	}
+}
+
 static void init_core_dvfs_table(int soc_speedo_id, int core_process_id)
 {
 	int core_nominal_mv_index;
@@ -2315,7 +2344,7 @@ static int tegra210x_init_dvfs(struct device *dev, bool cpu_lp_init)
 
 		reg = regulator_get(dev, vdd_dvfs_rails[i]->reg_id);
 		if (IS_ERR(reg)) {
-			pr_info("tegra_dvfs: Unable to get %s rail for step info, defering probe\n",
+			pr_info("tegra_dvfs: Unable to get %s rail for step info, deferring probe\n",
 					vdd_dvfs_rails[i]->reg_id);
 			return -EPROBE_DEFER;
 		}
@@ -2381,6 +2410,7 @@ static int tegra210x_init_dvfs(struct device *dev, bool cpu_lp_init)
 	if (cpu_lp_init)
 		init_dvfs_one(&cpu_lp_dvfs, cpu_lp_max_freq_index);
 	init_dvfs_one(&gpu_dvfs, gpu_max_freq_index);
+	init_gpu_vf_table();
 
 	disable_rail_scaling(node);
 
