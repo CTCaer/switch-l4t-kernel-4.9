@@ -2269,18 +2269,20 @@ static int nintendo_hid_probe(struct hid_device *hdev,
 	if ((jc_type_is_procon(ctlr) || jc_type_is_chrggrip(ctlr)) &&
 	    !joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ)) {
 		hid_dbg(hdev, "detected USB controller\n");
-		/* set baudrate for improved latency */
+		/*
+		 * set baudrate for improved internal usb<->uart speed
+		 * not supported by bad clones that are usb-only
+		 */
 		ret = joycon_send_usb(ctlr, JC_USB_CMD_BAUDRATE_3M, HZ);
-		if (ret) {
-			hid_err(hdev, "Failed to set baudrate; ret=%d\n", ret);
-			goto err_mutex;
+		if (!ret) {
+			/* re-handshake */
+			ret = joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ);
+			if (ret) {
+				hid_err(hdev, "Failed handshake; ret=%d\n", ret);
+				goto err_mutex;
+			}
 		}
-		/* handshake */
-		ret = joycon_send_usb(ctlr, JC_USB_CMD_HANDSHAKE, HZ);
-		if (ret) {
-			hid_err(hdev, "Failed handshake; ret=%d\n", ret);
-			goto err_mutex;
-		}
+
 		/*
 		 * Set no timeout (to keep controller in USB mode).
 		 * This doesn't send a response, so ignore the timeout.
