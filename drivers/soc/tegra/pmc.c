@@ -2469,7 +2469,7 @@ static void tegra_pmc_soc_power_off(void)
 	tegra_pmc_reset_system();
 }
 
-static int tegra_pmc_init_boorom_cmds(struct device *dev)
+static int tegra_pmc_init_bootrom_cmds(struct device *dev)
 {
 	int ret;
 
@@ -3962,7 +3962,7 @@ static int tegra_pmc_probe(struct platform_device *pdev)
 		pr_err("ERROR: Pad control driver init failed: %d\n", err);
 
 	if (pmc->soc->has_bootrom_command)
-		tegra_pmc_init_boorom_cmds(&pdev->dev);
+		tegra_pmc_init_bootrom_cmds(&pdev->dev);
 
 	/* handle PMC reboot reason with PSCI */
 	if (!pmc->soc->skip_arm_pm_restart && arm_pm_restart)
