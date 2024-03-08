@@ -1,7 +1,5 @@
 menu "Android"
 
-if ANDROID
-
 config ASHMEM
 	bool "Enable the Anonymous Shared Memory Subsystem"
 	default n
@@ -13,6 +11,8 @@ config ASHMEM
 
 	  It is, in theory, a good memory allocator for low-memory devices,
 	  because it can discard shared memory units when under memory pressure.
+
+if ANDROID
 
 config ANDROID_LOW_MEMORY_KILLER
 	bool "Android Low Memory Killer"
